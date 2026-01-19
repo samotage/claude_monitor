@@ -23,3 +23,9 @@ build/
 
 # Logs
 *.log
+
+# Claude Monitor state files (created at runtime)
+.claude-monitor-*.json
+
+# User config (use config.yaml.example as template)
+config.yaml

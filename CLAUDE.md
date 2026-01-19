@@ -2,20 +2,22 @@
 
 ## Project Overview
 
-Claude Monitor is a Kanban-style web dashboard for tracking Claude Code sessions across multiple projects. It monitors iTerm windows and displays real-time session status with click-to-focus functionality.
+Claude Monitor is a Kanban-style web dashboard for tracking Claude Code sessions across multiple projects. It monitors iTerm windows and displays real-time session status with click-to-focus functionality and native macOS notifications.
 
 **Purpose:**
 - Track active Claude Code sessions across projects
-- Display session status (active/completed) in a visual dashboard
+- Display session status (processing/input needed/idle) in a visual dashboard
 - Click-to-focus: bring iTerm windows to foreground from the dashboard
+- Native macOS notifications when input is needed or tasks complete
 - Auto-refresh to keep status current
 
 ## Tech Stack
 
-- **Python:** 3.14+
+- **Python:** 3.10+
 - **Framework:** Flask
 - **Config:** PyYAML
 - **macOS Integration:** AppleScript via osascript subprocess
+- **Notifications:** terminal-notifier
 
 ## Common Commands
 
@@ -30,29 +32,35 @@ pip install -r requirements.txt
 python monitor.py
 # Dashboard available at http://localhost:5050
 
-# Restart the server (use this!)
+# Restart the server
 ./restart_server.sh
 
-# Run tests (when added)
+# Run tests
 pytest
 pytest --cov=.  # With coverage
+
+# Start a monitored Claude session (in your project directory)
+claude-monitor start
 ```
 
 ## Directory Structure
 
 ```
 claude_monitor/
-├── monitor.py          # Main application (all-in-one Flask app)
-├── restart_server.sh   # Script to restart the Flask server
-├── config.yaml         # Project paths and settings
-├── requirements.txt    # Python dependencies
-├── venv/               # Python 3.14 virtual environment
-├── .claude/            # Claude Code configuration
-│   ├── settings.json       # Permissions for bash commands
-│   ├── settings.local.json # Local-only permissions (git)
-│   └── rules/
-│       └── ai-guardrails.md # AI behavior rules
-└── CLAUDE.md           # This file
+├── monitor.py           # Main application (all-in-one Flask app)
+├── install.sh           # Installation script
+├── restart_server.sh    # Script to restart the Flask server
+├── config.yaml.example  # Configuration template
+├── config.yaml          # User configuration (gitignored)
+├── requirements.txt     # Python dependencies
+├── bin/
+│   └── claude-monitor   # Session wrapper script
+├── venv/                # Python virtual environment
+├── .claude/             # Claude Code configuration
+│   └── settings.json    # Permissions for bash commands
+├── CLAUDE.md            # This file
+├── README.md            # User documentation
+└── LICENSE              # MIT license
 ```
 
 ## Configuration
@@ -64,16 +72,18 @@ projects:
   - name: "project_name"
     path: "/absolute/path/to/project"
 
-scan_interval: 2          # Refresh interval in seconds
+scan_interval: 5          # Refresh interval in seconds
 iterm_focus_delay: 0.1    # Delay before focusing window
 ```
 
 ## How It Works
 
-1. **State Files:** Claude Code sessions write `.claude-monitor-*.json` files in project directories
+1. **State Files:** The `claude-monitor start` wrapper creates `.claude-monitor-*.json` files in project directories
 2. **PID/TTY Matching:** The monitor reads the PID from state files, finds its TTY, and matches to iTerm sessions
-3. **Status Detection:** Sessions with matching iTerm windows are "active"; others are "completed"
-4. **Focus Feature:** Clicking a card runs AppleScript to bring that iTerm window to foreground
+3. **Activity Detection:** Terminal content is analyzed to detect if Claude is processing, idle, or waiting for input
+4. **Status Detection:** Sessions with matching iTerm windows are "active"; others are hidden
+5. **Notifications:** State changes trigger macOS notifications via terminal-notifier
+6. **Focus Feature:** Clicking a card or notification runs AppleScript to bring that iTerm window to foreground
 
 ## Key Functions
 
@@ -82,8 +92,10 @@ iterm_focus_delay: 0.1    # Delay before focusing window
 | `scan_sessions()` | Scan all project directories for session state files |
 | `get_iterm_windows()` | Get iTerm sessions mapped by TTY via AppleScript |
 | `get_pid_tty()` | Get the TTY for a given process ID |
+| `parse_activity_state()` | Determine if session is processing/input_needed/idle |
 | `focus_iterm_window_by_pid()` | Bring iTerm window to foreground by matching PID to TTY |
-| `extract_task_summary()` | Parse task info from window title |
+| `send_macos_notification()` | Send notification via terminal-notifier |
+| `check_state_changes_and_notify()` | Track state changes and trigger notifications |
 
 ## API Endpoints
 
@@ -92,19 +104,23 @@ iterm_focus_delay: 0.1    # Delay before focusing window
 | `/` | GET | Main Kanban dashboard |
 | `/api/sessions` | GET | JSON list of all sessions |
 | `/api/focus/<pid>` | POST | Focus iTerm window by process ID |
+| `/api/config` | GET/POST | Read/write configuration |
+| `/api/notifications` | GET/POST | Notification enable/disable |
+| `/api/notifications/test` | POST | Send test notification |
 
 ## Notes for AI Assistants
 
 - **Single-file application:** All code is in `monitor.py` including HTML/CSS/JS template
 - **macOS-only:** AppleScript integration requires macOS with iTerm2
-- **State files:** Created by Claude Code hooks, not this application
+- **State files:** Created by `claude-monitor start` wrapper, not this application
 - **No database:** All state is read from filesystem and iTerm at request time
+- **Notifications:** Require terminal-notifier to be installed via Homebrew
 
 ### Development Tips
 
 - The Flask app runs on port 5050 (not the default 5000)
 - Debug mode is disabled by default for cleaner output
-- AppleScript calls have 5-second timeouts to prevent hangs
+- AppleScript calls have timeouts to prevent hangs
 - The HTML template uses vanilla JS with no external dependencies
 
 ### Testing AppleScript
@@ -123,4 +139,4 @@ When making changes that require a server restart, **use the restart script**:
 ./restart_server.sh
 ```
 
-**DO NOT** create your own restart commands. The script handles everything: kills old process, activates venv, starts new one, verifies it's running.
+The script handles everything: kills old process, activates venv, starts new one, verifies it's running.

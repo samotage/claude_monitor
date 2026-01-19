@@ -1,0 +1,24 @@
+# Claude Monitor Configuration
+#
+# Add your projects below. Each project needs:
+#   - name: A display name for the dashboard
+#   - path: Absolute path to the project directory
+#
+# The monitor will scan these directories for .claude-monitor-*.json
+# state files created by the claude-monitor wrapper script.
+
+projects:
+  # Example projects - replace with your own
+  - name: "my-project"
+    path: "/Users/yourname/dev/my-project"
+
+  - name: "another-project"
+    path: "/Users/yourname/dev/another-project"
+
+# How often to refresh the dashboard (in seconds)
+# Lower values = more responsive but more CPU usage
+scan_interval: 5
+
+# Delay before focusing iTerm window (in seconds)
+# Increase if focus isn't working reliably
+iterm_focus_delay: 0.1

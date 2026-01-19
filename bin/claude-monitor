@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""
+dev-monitor: Wrapper script to launch Claude Code with monitoring support.
+
+Usage:
+    dev-monitor start    Launch Claude Code with a unique session UUID
+"""
+
+import json
+import os
+import subprocess
+import sys
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+def get_project_name(project_dir: Path) -> str:
+    """Extract a reasonable project name from the directory path."""
+    return project_dir.name
+
+
+def create_state_file(session_uuid: str, project_dir: Path) -> Path:
+    """Create the .claude-monitor-<uuid>.json state file."""
+    state_file = project_dir / f".claude-monitor-{session_uuid}.json"
+    state = {
+        "uuid": session_uuid,
+        "project_dir": str(project_dir),
+        "project_name": get_project_name(project_dir),
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "pid": None,  # Will be updated after Claude Code launches
+    }
+    state_file.write_text(json.dumps(state, indent=2))
+    return state_file
+
+
+def update_state_pid(state_file: Path, pid: int) -> None:
+    """Update the state file with the Claude Code process PID."""
+    state = json.loads(state_file.read_text())
+    state["pid"] = pid
+    state_file.write_text(json.dumps(state, indent=2))
+
+
+def launch_claude_code(session_uuid: str) -> subprocess.Popen:
+    """Launch Claude Code in the background with the monitor UUID."""
+    env = os.environ.copy()
+    env["CLAUDE_MONITOR_UUID"] = session_uuid
+
+    # Launch claude in the current terminal
+    # We use 'claude' assuming it's in PATH
+    process = subprocess.Popen(
+        ["claude"],
+        env=env,
+        stdin=sys.stdin,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    )
+    return process
+
+
+def cmd_start() -> None:
+    """Handle the 'start' command."""
+    project_dir = Path.cwd().resolve()
+    session_uuid = str(uuid.uuid4())
+
+    print(f"Starting Claude Code session: {session_uuid[:8]}...")
+
+    # Create state file
+    state_file = create_state_file(session_uuid, project_dir)
+    print(f"Created state file: {state_file.name}")
+
+    # Launch Claude Code
+    process = launch_claude_code(session_uuid)
+
+    # Update state with PID
+    update_state_pid(state_file, process.pid)
+
+    # Wait for Claude Code to finish (it takes over the terminal)
+    try:
+        process.wait()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # Clean up state file when session ends
+        if state_file.exists():
+            state_file.unlink()
+            print(f"\nSession {session_uuid[:8]} ended. State file removed.")
+
+
+def cmd_help() -> None:
+    """Show help message."""
+    print(__doc__)
+    print("Commands:")
+    print("  start    Launch Claude Code with monitoring enabled")
+    print("  help     Show this help message")
+
+
+def main() -> None:
+    if len(sys.argv) < 2:
+        cmd_help()
+        sys.exit(1)
+
+    command = sys.argv[1].lower()
+
+    if command == "start":
+        cmd_start()
+    elif command in ("help", "-h", "--help"):
+        cmd_help()
+    else:
+        print(f"Unknown command: {command}")
+        cmd_help()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
