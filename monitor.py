@@ -1587,9 +1587,12 @@ HTML_TEMPLATE = '''
 
             let html = '';
             for (const [projectName, projectSessions] of Object.entries(byProject)) {
-                const activeSessions = projectSessions.filter(s => s.status === 'active');
-                const count = activeSessions.length;
-                const countClass = count === 0 ? 'zero' : '';
+                // Skip projects with no sessions
+                if (projectSessions.length === 0) {
+                    continue;
+                }
+
+                const count = projectSessions.length;
 
                 html += `
                     <div class="column">
@@ -1602,15 +1605,12 @@ HTML_TEMPLATE = '''
                                 </div>
                                 <span class="column-name">${escapeHtml(projectName)}</span>
                             </div>
-                            <span class="column-count ${countClass}">${count} active</span>
+                            <span class="column-count">${count} active</span>
                         </div>
                         <div class="column-body">
                 `;
 
-                if (projectSessions.length === 0) {
-                    html += '<div class="empty-column">no active sessions</div>';
-                } else {
-                    projectSessions.forEach((session, idx) => {
+                projectSessions.forEach((session, idx) => {
                         const statusClass = session.status === 'active' ? 'active-session' : 'completed-session';
                         const inputNeededClass = session.activity_state === 'input_needed' ? 'input-needed-card' : '';
                         const lineNums = ['01', '02', '03', '04'].join('<br>');
@@ -1637,13 +1637,12 @@ HTML_TEMPLATE = '''
                                 </div>
                             </div>
                         `;
-                    });
-                }
+                });
 
                 html += '</div></div>';
             }
 
-            kanban.innerHTML = html || '<div class="no-sessions">no projects configured</div>';
+            kanban.innerHTML = html || '<div class="no-sessions">no active sessions</div>';
         }
 
         function getActivityInfo(state) {
