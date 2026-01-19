@@ -1,0 +1,11 @@
+projects:
+- name: raglue
+  path: /Users/samotage/dev/otagelabs/raglue/1_raglue
+- name: ot_monitor
+  path: /Users/samotage/dev/otagelabs/monitors/ot_monitor
+- name: claude_monitor
+  path: /Users/samotage/dev/otagelabs/monitors/claude_monitor
+- name: smac_temp
+  path: /Users/samotage/temp
+scan_interval: 1
+iterm_focus_delay: 0.1
