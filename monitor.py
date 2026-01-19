@@ -111,23 +111,19 @@ def check_state_changes_and_notify(sessions: list[dict]) -> None:
 
         # Notify: became input_needed
         if current_state == "input_needed" and previous_state != "input_needed":
-            print(f"[NOTIFY] State change: {previous_state} → {current_state} for {project}")
-            success = send_macos_notification(
+            send_macos_notification(
                 "Input Needed",
                 f"{project}: {task}",
                 pid=session.get("pid")
             )
-            print(f"[NOTIFY] Notification sent: {success}")
 
         # Notify: processing finished (became idle)
         if current_state == "idle" and previous_state == "processing":
-            print(f"[NOTIFY] State change: {previous_state} → {current_state} for {project}")
-            success = send_macos_notification(
+            send_macos_notification(
                 "Task Complete",
                 f"{project}: {task}",
                 pid=session.get("pid")
             )
-            print(f"[NOTIFY] Notification sent: {success}")
 
         previous_session_states[uuid] = current_state
 
@@ -2072,6 +2068,47 @@ def api_notifications_test():
     """Send a test notification."""
     success = send_macos_notification("Test Notification", "Notifications are working")
     return jsonify({"success": success})
+
+
+@app.route("/api/notifications/test/<int:pid>", methods=["POST"])
+def api_notifications_test_pid(pid: int):
+    """Send a test notification for a specific session (with click-to-focus)."""
+    config = load_config()
+    sessions = scan_sessions(config)
+    session = next((s for s in sessions if s.get("pid") == pid), None)
+    if not session:
+        return jsonify({"success": False, "error": "Session not found"})
+
+    project = session.get("project_name", "Unknown")
+    task = session.get("task_summary", "")[:50]
+    success = send_macos_notification(
+        "Test: Input Needed",
+        f"{project}: {task}",
+        pid=pid
+    )
+    return jsonify({"success": success, "project": project, "task": task})
+
+
+@app.route("/api/debug/content/<int:pid>")
+def api_debug_content(pid: int):
+    """Debug endpoint to see terminal content for a specific PID."""
+    tty = get_pid_tty(pid)
+    if not tty:
+        return jsonify({"error": "PID not found or no TTY"})
+
+    iterm_windows = get_iterm_windows()
+    window_info = iterm_windows.get(tty, {})
+
+    return jsonify({
+        "pid": pid,
+        "tty": tty,
+        "window_title": window_info.get("title", ""),
+        "content_tail": window_info.get("content_tail", "")[:500],  # First 500 chars for display
+        "detected_state": parse_activity_state(
+            window_info.get("title", ""),
+            window_info.get("content_tail", "")
+        )[0]
+    })
 
 
 @app.route("/api/readme")
