@@ -7,5 +7,5 @@ projects:
   path: /Users/samotage/dev/otagelabs/monitors/claude_monitor
 - name: smac_temp
   path: /Users/samotage/temp
-scan_interval: 1
+scan_interval: 7
 iterm_focus_delay: 0.1

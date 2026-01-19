@@ -23,6 +23,120 @@ app = Flask(__name__)
 # Load config
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
 
+# Track session states for notifications
+previous_session_states: dict[str, str] = {}
+notifications_enabled = True
+
+
+def send_macos_notification(title: str, message: str, sound: bool = True, pid: int = None) -> bool:
+    """Send a native macOS notification via terminal-notifier with click-to-focus."""
+    try:
+        cmd = [
+            "terminal-notifier",
+            "-title", title,
+            "-message", message,
+            "-sender", "com.googlecode.iterm2",  # Shows iTerm icon
+        ]
+
+        if sound:
+            cmd.extend(["-sound", "default"])
+
+        # If PID provided, clicking notification will focus that iTerm session
+        if pid:
+            # Create AppleScript to focus the window by PID's TTY
+            focus_script = f'''
+            tell application "iTerm"
+                activate
+                set targetTty to do shell script "ps -p {pid} -o tty= 2>/dev/null || echo ''"
+                if targetTty is not "" then
+                    set targetTty to "/dev/" & targetTty
+                    repeat with w in windows
+                        repeat with t in tabs of w
+                            repeat with s in sessions of t
+                                try
+                                    if tty of s is targetTty then
+                                        select w
+                                        select t
+                                        select s
+                                        return
+                                    end if
+                                end try
+                            end repeat
+                        end repeat
+                    end repeat
+                end if
+            end tell
+            '''
+            # Write script to temp file for execution on click
+            import tempfile
+            script_file = tempfile.NamedTemporaryFile(mode='w', suffix='.applescript', delete=False)
+            script_file.write(focus_script)
+            script_file.close()
+            cmd.extend(["-execute", f'osascript "{script_file.name}"'])
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            print(f"Notification error: {result.stderr}")
+            return False
+        return True
+    except Exception as e:
+        print(f"Notification exception: {e}")
+        return False
+
+
+def check_state_changes_and_notify(sessions: list[dict]) -> None:
+    """Check for state changes and send macOS notifications."""
+    global previous_session_states
+
+    if not notifications_enabled:
+        return
+
+    for session in sessions:
+        uuid = session.get("uuid", "")
+        current_state = session.get("activity_state", "unknown")
+        previous_state = previous_session_states.get(uuid)
+
+        # Skip if no previous state (first scan)
+        if previous_state is None:
+            previous_session_states[uuid] = current_state
+            continue
+
+        project = session.get("project_name", "Unknown")
+        task = session.get("task_summary", "")[:50]
+
+        # Notify: became input_needed
+        if current_state == "input_needed" and previous_state != "input_needed":
+            print(f"[NOTIFY] State change: {previous_state} → {current_state} for {project}")
+            success = send_macos_notification(
+                "Input Needed",
+                f"{project}: {task}",
+                pid=session.get("pid")
+            )
+            print(f"[NOTIFY] Notification sent: {success}")
+
+        # Notify: processing finished (became idle)
+        if current_state == "idle" and previous_state == "processing":
+            print(f"[NOTIFY] State change: {previous_state} → {current_state} for {project}")
+            success = send_macos_notification(
+                "Task Complete",
+                f"{project}: {task}",
+                pid=session.get("pid")
+            )
+            print(f"[NOTIFY] Notification sent: {success}")
+
+        previous_session_states[uuid] = current_state
+
+    # Clean up old sessions
+    current_uuids = {s.get("uuid") for s in sessions}
+    for uuid in list(previous_session_states.keys()):
+        if uuid not in current_uuids:
+            del previous_session_states[uuid]
+
 
 def load_config() -> dict:
     """Load configuration from config.yaml."""
@@ -242,18 +356,27 @@ def parse_activity_state(window_title: str, content_tail: str = "") -> tuple[str
         "❯ 1.",  # Numbered choice prompt
         "❯ Yes",
         "❯ No",
+        # AskUserQuestion tool patterns
+        "Enter to select",
+        "to navigate",
+        "Type something",
     ]
 
     # Get the first character to determine base state
     first_char = window_title[0] if window_title else ""
 
+    # Check content for input_needed patterns
+    content_lower = content_tail.lower()
+    is_input_needed = any(pattern.lower() in content_lower for pattern in input_needed_patterns)
+
     if first_char in spinner_chars:
         activity_state = "processing"
     elif first_char in idle_chars:
         # Check terminal content to distinguish input_needed vs idle
-        content_lower = content_tail.lower()
-        is_input_needed = any(pattern.lower() in content_lower for pattern in input_needed_patterns)
         activity_state = "input_needed" if is_input_needed else "idle"
+    elif is_input_needed:
+        # Even if first char is unrecognized, if content shows input prompts, mark as input_needed
+        activity_state = "input_needed"
     else:
         activity_state = "unknown"
 
@@ -699,7 +822,6 @@ HTML_TEMPLATE = '''
             padding: 0;
             margin-bottom: 10px;
             cursor: pointer;
-            transition: all 0.15s ease;
             overflow: hidden;
             position: relative;
         }
@@ -713,7 +835,6 @@ HTML_TEMPLATE = '''
             width: 3px;
             background: var(--cyan);
             opacity: 0;
-            transition: opacity 0.15s ease;
         }
 
         .card.active-session::before {
@@ -729,10 +850,6 @@ HTML_TEMPLATE = '''
         .card:hover {
             border-color: var(--cyan);
             transform: translateX(4px);
-            box-shadow:
-                0 0 0 1px var(--cyan-dim),
-                0 4px 20px rgba(0, 0, 0, 0.4),
-                -4px 0 20px var(--cyan-glow);
         }
 
         .card:hover::before {
@@ -808,12 +925,6 @@ HTML_TEMPLATE = '''
             background: var(--green);
             border-radius: 50%;
             margin-right: 6px;
-            animation: blink 1s ease-in-out infinite;
-        }
-
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.3; }
         }
 
         .status.completed {
@@ -849,15 +960,6 @@ HTML_TEMPLATE = '''
             color: var(--green);
         }
 
-        .activity-state.processing .activity-icon {
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-
         /* INPUT NEEDED - Claude is blocked waiting for response */
         .activity-state.input_needed {
             background: rgba(255, 180, 100, 0.2);
@@ -887,12 +989,6 @@ HTML_TEMPLATE = '''
             background: rgba(255, 87, 34, 0.15);
             border: 1px solid rgba(255, 87, 34, 0.3);
             color: #ff5722;
-            animation: pulse 1.5s ease-in-out infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.6; }
         }
 
         .activity-state.completed, .activity-state.unknown {
@@ -1509,6 +1605,23 @@ HTML_TEMPLATE = '''
                     </div>
                 </div>
             </div>
+
+            <div class="settings-section">
+                <div class="settings-section-header">
+                    <h2>notifications</h2>
+                </div>
+                <div class="settings-section-body">
+                    <p class="settings-description">Native macOS notifications when input is needed or tasks complete.</p>
+                    <div class="setting-row">
+                        <label>enabled</label>
+                        <button id="notification-toggle-btn" class="btn btn-secondary" onclick="toggleNotifications()">loading...</button>
+                    </div>
+                    <div class="setting-row">
+                        <label>test</label>
+                        <button class="btn btn-secondary" onclick="testMacNotification()">send test notification</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1519,6 +1632,92 @@ HTML_TEMPLATE = '''
     <script>
         const REFRESH_INTERVAL = {{ scan_interval * 1000 }};
         let currentProjects = [];
+        let pollingInterval = null;
+        let isPollingActive = true;
+
+        // Page Visibility API - pause polling when tab is hidden
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                stopPolling();
+            } else {
+                startPolling();
+                fetchSessions(); // Immediate refresh when tab becomes visible
+            }
+        });
+
+        function startPolling() {
+            if (!pollingInterval && !document.hidden) {
+                isPollingActive = true;
+                pollingInterval = setInterval(fetchSessions, REFRESH_INTERVAL);
+            }
+        }
+
+        function stopPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+                isPollingActive = false;
+            }
+        }
+
+        // macOS Notification functions
+        let notificationsEnabled = true;
+
+        async function loadNotificationStatus() {
+            try {
+                const response = await fetch('/api/notifications');
+                const data = await response.json();
+                notificationsEnabled = data.enabled;
+                updateNotificationButton();
+            } catch (error) {
+                console.error('Failed to load notification status:', error);
+            }
+        }
+
+        function updateNotificationButton() {
+            const btn = document.getElementById('notification-toggle-btn');
+            if (!btn) return;
+            if (notificationsEnabled) {
+                btn.textContent = 'ON';
+                btn.style.background = 'var(--green)';
+                btn.style.color = 'var(--bg-void)';
+            } else {
+                btn.textContent = 'OFF';
+                btn.style.background = 'transparent';
+                btn.style.color = 'var(--text-muted)';
+                btn.style.border = '1px solid var(--border)';
+            }
+        }
+
+        async function toggleNotifications() {
+            try {
+                const response = await fetch('/api/notifications', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: !notificationsEnabled })
+                });
+                const data = await response.json();
+                notificationsEnabled = data.enabled;
+                updateNotificationButton();
+            } catch (error) {
+                console.error('Failed to toggle notifications:', error);
+            }
+        }
+
+        async function testMacNotification() {
+            try {
+                const response = await fetch('/api/notifications/test', { method: 'POST' });
+                const data = await response.json();
+                if (!data.success) {
+                    alert('Failed to send notification');
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        // Load notification status on page load
+        setTimeout(loadNotificationStatus, 100);
 
         // Tab switching
         document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -1541,11 +1740,27 @@ HTML_TEMPLATE = '''
         });
 
         // Kanban functions
+        function getSessionFingerprint(sessions) {
+            // Create a lightweight fingerprint for change detection
+            return sessions.map(s => `${s.uuid}:${s.activity_state}:${s.status}:${s.elapsed}`).join('|');
+        }
+
+        let lastFingerprint = '';
+
         async function fetchSessions() {
             try {
                 const response = await fetch('/api/sessions');
                 const data = await response.json();
-                renderKanban(data.sessions, data.projects);
+
+                // Check if anything actually changed before re-rendering
+                const fingerprint = getSessionFingerprint(data.sessions);
+                const hasChanges = fingerprint !== lastFingerprint;
+
+                if (hasChanges) {
+                    renderKanban(data.sessions, data.projects);
+                    lastFingerprint = fingerprint;
+                }
+
                 updateStats(data.sessions);
                 updateRefreshIndicator();
             } catch (error) {
@@ -1800,7 +2015,7 @@ HTML_TEMPLATE = '''
 
         // Initial load
         fetchSessions();
-        setInterval(fetchSessions, REFRESH_INTERVAL);
+        startPolling();
     </script>
 </body>
 </html>
@@ -1822,6 +2037,8 @@ def api_sessions():
     """API endpoint to get all sessions."""
     config = load_config()
     sessions = scan_sessions(config)
+    # Check for state changes and send macOS notifications
+    check_state_changes_and_notify(sessions)
     return jsonify({
         "sessions": sessions,
         "projects": config.get("projects", []),
@@ -1832,6 +2049,28 @@ def api_sessions():
 def api_focus(pid: int):
     """API endpoint to focus an iTerm window by PID."""
     success = focus_iterm_window_by_pid(pid)
+    return jsonify({"success": success})
+
+
+@app.route("/api/notifications", methods=["GET"])
+def api_notifications_get():
+    """Get notification settings."""
+    return jsonify({"enabled": notifications_enabled})
+
+
+@app.route("/api/notifications", methods=["POST"])
+def api_notifications_post():
+    """Toggle notifications."""
+    global notifications_enabled
+    data = request.get_json() or {}
+    notifications_enabled = data.get("enabled", True)
+    return jsonify({"enabled": notifications_enabled})
+
+
+@app.route("/api/notifications/test", methods=["POST"])
+def api_notifications_test():
+    """Send a test notification."""
+    success = send_macos_notification("Test Notification", "Notifications are working")
     return jsonify({"success": success})
 
 
