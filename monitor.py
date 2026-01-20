@@ -173,9 +173,11 @@ def get_iterm_windows() -> dict[str, dict]:
                     try
                         set sTty to tty of s
                         set sText to text of s
-                        -- Get last 400 chars to check for input prompts
-                        if length of sText > 400 then
-                            set sText to text -400 thru -1 of sText
+                        -- Get last 5000 chars to check for input prompts
+                        -- Claude Code has UI chrome at the bottom (dividers, status bar, prompt)
+                        -- so we need enough chars to capture the output ABOVE that chrome
+                        if length of sText > 5000 then
+                            set sText to text -5000 thru -1 of sText
                         end if
                         set end of output to sTty & "|||" & wName & "|||" & sText
                     end try
