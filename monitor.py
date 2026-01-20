@@ -342,6 +342,7 @@ def parse_activity_state(window_title: str, content_tail: str = "") -> tuple[str
     # Patterns in terminal content that indicate Claude is waiting for user input
     # These appear when Claude asks a question or needs permission
     input_needed_patterns = [
+        # Claude Code built-in UI patterns
         "Esc to cancel",
         "Tab to add additional instructions",
         "Do you want to proceed?",
@@ -356,6 +357,61 @@ def parse_activity_state(window_title: str, content_tail: str = "") -> tuple[str
         "Enter to select",
         "to navigate",
         "Type something",
+        # Yes/no prompt variations
+        "[y/n]",
+        "[Y/n]",
+        "[y/N]",
+        "(y/n)",
+        "(Y/n)",
+        "(y/N)",
+        "[yes/no]",
+        "(yes/no)",
+        "yes or no",
+        "y or n?",
+        # Proceed/continue prompts
+        "proceed?",
+        "continue?",
+        "should I proceed",
+        "should I continue",
+        "shall I proceed",
+        "shall I continue",
+        "want me to proceed",
+        "want me to continue",
+        "ready to proceed",
+        # Confirmation prompts
+        "confirm?",
+        "is this correct",
+        "is that correct",
+        "does this look",
+        "sound good?",
+        "look good?",
+        "looks good?",
+        "make sense?",
+        "what do you think",
+        # Choice/selection prompts
+        "which option",
+        "which approach",
+        "what would you prefer",
+        "would you prefer",
+        "please choose",
+        "please select",
+        "your choice",
+        # Permission prompts
+        "may I",
+        "can I proceed",
+        "shall I",
+        "would you like me to",
+        "do you want me to",
+        # Waiting for input
+        "waiting for your",
+        "let me know",
+        "please respond",
+        "your input",
+        "your feedback",
+        "awaiting your",
+        # Checkpoint patterns (like the example)
+        "CHECKPOINT:",
+        "checkpoint:",
     ]
 
     # Get the first character to determine base state
