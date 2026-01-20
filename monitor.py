@@ -466,9 +466,10 @@ HTML_TEMPLATE = '''
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Claude Monitor</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111114'/%3E%3Crect x='5' y='10' width='9' height='14' rx='2' fill='%2356d4dd'/%3E%3Crect x='18' y='6' width='9' height='18' rx='2' fill='%2373e0a0'/%3E%3C/svg%3E">
+    <!-- Fonts simplified for performance - using system monospace with optional JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     <style>
         :root {
             /* Terminal-inspired color palette */
@@ -503,8 +504,8 @@ HTML_TEMPLATE = '''
             --border: #252530;
             --border-bright: #363644;
 
-            /* Fonts */
-            --font-mono: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', 'Consolas', monospace;
+            /* Fonts - system fonts first for performance, then web fonts */
+            --font-mono: 'SF Mono', 'Monaco', 'Menlo', 'JetBrains Mono', 'Consolas', monospace;
         }
 
         * {
@@ -527,38 +528,8 @@ HTML_TEMPLATE = '''
             overflow-x: hidden;
         }
 
-        /* Scanline overlay effect */
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: repeating-linear-gradient(
-                0deg,
-                transparent,
-                transparent 2px,
-                rgba(0, 0, 0, 0.03) 2px,
-                rgba(0, 0, 0, 0.03) 4px
-            );
-            pointer-events: none;
-            z-index: 9999;
-        }
-
-        /* Subtle noise texture */
-        body::after {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-            opacity: 0.02;
-            pointer-events: none;
-            z-index: 9998;
-        }
+        /* Scanline and noise effects REMOVED for performance
+           These caused constant GPU compositing across the entire viewport */
 
         /* Tab Navigation - styled like terminal tabs */
         .tab-nav {
@@ -660,13 +631,8 @@ HTML_TEMPLATE = '''
             white-space: pre;
             line-height: 1.1;
             text-shadow: 0 0 20px var(--cyan-glow);
-            animation: glowPulse 4s ease-in-out infinite;
+            /* Animation removed for performance - was causing constant repaints */
             letter-spacing: -0.02em;
-        }
-
-        @keyframes glowPulse {
-            0%, 100% { text-shadow: 0 0 20px var(--cyan-glow); }
-            50% { text-shadow: 0 0 30px var(--cyan-dim), 0 0 60px var(--cyan-glow); }
         }
 
         .subtitle {
@@ -1628,8 +1594,9 @@ HTML_TEMPLATE = '''
     <script>
         const REFRESH_INTERVAL = {{ scan_interval * 1000 }};
         let currentProjects = [];
-        let pollingInterval = null;
+        let pollingTimeoutId = null;
         let isPollingActive = true;
+        let lastFetchTime = 0;
 
         // Page Visibility API - pause polling when tab is hidden
         document.addEventListener('visibilitychange', () => {
@@ -1642,18 +1609,28 @@ HTML_TEMPLATE = '''
         });
 
         function startPolling() {
-            if (!pollingInterval && !document.hidden) {
+            if (!pollingTimeoutId && !document.hidden) {
                 isPollingActive = true;
-                pollingInterval = setInterval(fetchSessions, REFRESH_INTERVAL);
+                scheduleNextPoll();
             }
         }
 
         function stopPolling() {
-            if (pollingInterval) {
-                clearInterval(pollingInterval);
-                pollingInterval = null;
+            if (pollingTimeoutId) {
+                clearTimeout(pollingTimeoutId);
+                pollingTimeoutId = null;
                 isPollingActive = false;
             }
+        }
+
+        function scheduleNextPoll() {
+            // Use setTimeout instead of setInterval for better control
+            // This ensures we wait REFRESH_INTERVAL after fetch completes
+            pollingTimeoutId = setTimeout(() => {
+                if (!document.hidden && isPollingActive) {
+                    fetchSessions().finally(scheduleNextPoll);
+                }
+            }, REFRESH_INTERVAL);
         }
 
         // macOS Notification functions
@@ -1764,13 +1741,32 @@ HTML_TEMPLATE = '''
             }
         }
 
+        // Cache stats DOM elements
+        const inputNeededCountEl = document.getElementById('input-needed-count');
+        const workingCountEl = document.getElementById('working-count');
+        const idleCountEl = document.getElementById('idle-count');
+
+        // Track previous values to avoid unnecessary DOM updates
+        let prevStats = { inputNeeded: -1, working: -1, idle: -1 };
+
         function updateStats(sessions) {
             const inputNeeded = sessions.filter(s => s.activity_state === 'input_needed').length;
             const working = sessions.filter(s => s.activity_state === 'processing').length;
             const idle = sessions.filter(s => s.activity_state === 'idle').length;
-            document.getElementById('input-needed-count').textContent = inputNeeded;
-            document.getElementById('working-count').textContent = working;
-            document.getElementById('idle-count').textContent = idle;
+
+            // Only update DOM if values changed
+            if (prevStats.inputNeeded !== inputNeeded) {
+                inputNeededCountEl.textContent = inputNeeded;
+                prevStats.inputNeeded = inputNeeded;
+            }
+            if (prevStats.working !== working) {
+                workingCountEl.textContent = working;
+                prevStats.working = working;
+            }
+            if (prevStats.idle !== idle) {
+                idleCountEl.textContent = idle;
+                prevStats.idle = idle;
+            }
 
             // Update document title with input needed count for tab visibility
             if (inputNeeded > 0) {
@@ -1904,12 +1900,18 @@ HTML_TEMPLATE = '''
             }
         }
 
+        // Cache DOM element reference
+        const refreshIndicator = document.getElementById('refresh-indicator');
+        let indicatorTimeout = null;
+
         function updateRefreshIndicator() {
-            const indicator = document.getElementById('refresh-indicator');
             const now = new Date().toLocaleTimeString('en-US', { hour12: false });
-            indicator.textContent = `last_sync: ${now}`;
-            indicator.classList.add('active');
-            setTimeout(() => indicator.classList.remove('active'), 500);
+            refreshIndicator.textContent = `last_sync: ${now}`;
+            refreshIndicator.classList.add('active');
+
+            // Clear previous timeout to avoid stacking
+            if (indicatorTimeout) clearTimeout(indicatorTimeout);
+            indicatorTimeout = setTimeout(() => refreshIndicator.classList.remove('active'), 500);
         }
 
         // Health/README functions
