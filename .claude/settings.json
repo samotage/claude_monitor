@@ -7,7 +7,10 @@
       "Bash(pytest:*)",
       "Bash(git:*)",
       "Bash(./restart_server.sh:*)",
-      "Bash(./install.sh:*)"
+      "Bash(./install.sh:*)",
+      "Bash(curl:*)",
+      "Bash(gh pr create:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   }
