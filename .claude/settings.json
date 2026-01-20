@@ -1,6 +1,8 @@
 {
   "permissions": {
     "allow": [
+      "Edit(*)",
+      "Write(*)",
       "Bash(python:*)",
       "Bash(python3:*)",
       "Bash(pip:*)",
