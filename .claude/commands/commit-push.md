@@ -70,15 +70,13 @@ Run these automatically in parallel:
 **Determine auto-commit eligibility:**
 
 AUTO-COMMIT (skip approval) if:
-- Commit type is `docs:`, `style:`, or `chore:` AND not on protected branch
+- Commit type is `docs:`, `style:`, or `chore:`
 - Commit type is `refactor:` AND only affecting low-risk files (commands, tooling, docs)
 - Formatting-only changes
-- AND not on protected branch (`main`, `master`, `production`, `development`)
 
 REQUIRE APPROVAL if:
 - Commit type is `feat:`, `fix:`, `perf:`
 - Commit type is `refactor:` affecting application code (`app/`, `lib/`)
-- On protected branch
 - High-impact changes (database migrations, API changes)
 
 ---
