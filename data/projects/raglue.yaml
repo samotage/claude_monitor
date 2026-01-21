@@ -1,0 +1,14 @@
+name: Raglue
+path: /Users/samotage/dev/otagelabs/raglue/1_raglue
+goal: RAGlue is a Ruby on Rails 8.1 SaaS with workspace-based multitenancy, custom
+  onboarding flows, and OAuth integration. Uses Hotwire + Tailwind CSS.
+context:
+  tech_stack: Ruby 3.4.7, Rails 8.1.1, PostgreSQL, Hotwire (Turbo + Stimulus), Tailwind
+    CSS, HAML, ViewComponent, Sidekiq (Redis), Propshaft with Importmap, RSpec, FactoryBot,
+    Capybara, Selenium, Pundit, Devise with OAuth (Google, GitHub)
+  target_users: ''
+  refreshed_at: '2026-01-21T10:07:28.464757+00:00'
+roadmap: {}
+state: {}
+recent_sessions: []
+history: {}
