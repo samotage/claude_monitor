@@ -107,7 +107,7 @@ Capture what happened in each Claude Code session and maintain current state.
 I need to create a PRD for Epic 1 Sprint 4: History Compression.
 
 **Context Documents:**
-- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md (see "Sprint 4" section)
+- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md 
 
 **Sprint Goal:**
 Automatically compress old sessions into a summary to keep context manageable.
@@ -141,7 +141,7 @@ Automatically compress old sessions into a summary to keep context manageable.
 I need to create a PRD for Epic 1 Sprint 5: Brain Reboot View.
 
 **Context Documents:**
-- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md (see "Sprint 5" section)
+- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md 
 
 **Sprint Goal:**
 Users can quickly reload context on a project they haven't touched in a while.
@@ -176,7 +176,7 @@ Users can quickly reload context on a project they haven't touched in a while.
 I need to create a PRD for Epic 1 Sprint 6: Focus Strategy.
 
 **Context Documents:**
-- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md (see "Sprint 6" section)
+- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md 
 
 **Sprint Goal:**
 Users can set and adjust their current focus goal, visible at top of dashboard.
@@ -206,7 +206,7 @@ Users can set and adjust their current focus goal, visible at top of dashboard.
 I need to create a PRD for Epic 1 Sprint 7: AI Prioritisation.
 
 **Context Documents:**
-- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md (see "Sprint 7" section)
+- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md 
 
 **Sprint Goal:**
 AI ranks sessions based on focus strategy, roadmaps, and activity state.
@@ -242,7 +242,7 @@ AI ranks sessions based on focus strategy, roadmaps, and activity state.
 I need to create a PRD for Epic 1 Sprint 8: Focus-Aware Dashboard UI.
 
 **Context Documents:**
-- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md (see "Sprint 8" section)
+- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md 
 
 **Sprint Goal:**
 Surface AI prioritisation in the dashboard.

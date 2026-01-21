@@ -1,0 +1,9 @@
+---
+- prd_path: docs/prds/focus/yaml-data-foundation-prd.md
+  change_name: yaml-data-foundation
+  status: completed
+  added_at: '2026-01-21T18:29:08+11:00'
+  priority: 1
+  started_at: '2026-01-21T18:29:56+11:00'
+  proposal_summary_path: openspec/changes/yaml-data-foundation/proposal-summary.md
+  completed_at: '2026-01-21T19:11:24+11:00'

@@ -247,6 +247,89 @@ def list_project_data() -> list[dict]:
     return projects
 
 
+# =============================================================================
+# Roadmap Management
+# =============================================================================
+# Roadmap Schema:
+#   roadmap:
+#     next_up:
+#       title: "string"
+#       why: "string"
+#       definition_of_done: "string"
+#     upcoming:
+#       - "item 1"
+#       - "item 2"
+#     later:
+#       - "item 1"
+#     not_now:
+#       - "item 1"
+#
+# All fields are optional. Empty `roadmap: {}` is valid.
+# =============================================================================
+
+
+def validate_roadmap_data(roadmap: dict) -> tuple[bool, str]:
+    """Validate roadmap data structure.
+
+    Args:
+        roadmap: Roadmap dict to validate
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not isinstance(roadmap, dict):
+        return False, "Roadmap must be an object"
+
+    # Validate next_up if present
+    if "next_up" in roadmap:
+        next_up = roadmap["next_up"]
+        if next_up is not None and not isinstance(next_up, dict):
+            return False, "next_up must be an object or null"
+        if isinstance(next_up, dict):
+            for field in ["title", "why", "definition_of_done"]:
+                if field in next_up and not isinstance(next_up[field], (str, type(None))):
+                    return False, f"next_up.{field} must be a string or null"
+
+    # Validate list fields
+    for field in ["upcoming", "later", "not_now"]:
+        if field in roadmap:
+            value = roadmap[field]
+            if value is not None and not isinstance(value, list):
+                return False, f"{field} must be an array or null"
+            if isinstance(value, list):
+                for i, item in enumerate(value):
+                    if not isinstance(item, str):
+                        return False, f"{field}[{i}] must be a string"
+
+    return True, ""
+
+
+def normalize_roadmap(roadmap: Optional[dict]) -> dict:
+    """Normalize roadmap data, ensuring consistent structure.
+
+    Handles empty `{}` and missing fields by providing defaults.
+
+    Args:
+        roadmap: Raw roadmap dict (may be None or {})
+
+    Returns:
+        Normalized roadmap dict with all fields present
+    """
+    if roadmap is None:
+        roadmap = {}
+
+    return {
+        "next_up": roadmap.get("next_up") or {
+            "title": "",
+            "why": "",
+            "definition_of_done": ""
+        },
+        "upcoming": roadmap.get("upcoming") or [],
+        "later": roadmap.get("later") or [],
+        "not_now": roadmap.get("not_now") or [],
+    }
+
+
 def parse_claude_md(project_path: str) -> dict:
     """Parse a project's CLAUDE.md file to extract goal and tech stack.
 
@@ -1310,6 +1393,249 @@ HTML_TEMPLATE = '''
             content: '// ';
         }
 
+        /* Roadmap Panel Styles */
+        .roadmap-panel {
+            margin-top: 10px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg-surface);
+            overflow: hidden;
+        }
+
+        .roadmap-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: var(--bg-elevated);
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .roadmap-header:hover {
+            background: var(--bg-hover);
+        }
+
+        .roadmap-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .roadmap-toggle-icon {
+            color: var(--cyan);
+            transition: transform 0.2s ease;
+        }
+
+        .roadmap-panel.expanded .roadmap-toggle-icon {
+            transform: rotate(90deg);
+        }
+
+        .roadmap-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .roadmap-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 4px 10px;
+            border-radius: 3px;
+            font-size: 0.7rem;
+            font-family: var(--font-mono);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .roadmap-btn:hover {
+            background: var(--bg-hover);
+            border-color: var(--cyan);
+            color: var(--cyan);
+        }
+
+        .roadmap-btn.primary {
+            background: var(--cyan);
+            border-color: var(--cyan);
+            color: var(--bg-void);
+        }
+
+        .roadmap-btn.primary:hover {
+            background: var(--green);
+            border-color: var(--green);
+        }
+
+        .roadmap-content {
+            display: none;
+            padding: 12px;
+        }
+
+        .roadmap-panel.expanded .roadmap-content {
+            display: block;
+        }
+
+        .roadmap-section {
+            margin-bottom: 12px;
+        }
+
+        .roadmap-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .roadmap-section-title {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--cyan);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 6px;
+        }
+
+        .roadmap-next-up {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 10px;
+        }
+
+        .roadmap-next-up-title {
+            color: var(--text-primary);
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .roadmap-next-up-why {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            margin-bottom: 4px;
+        }
+
+        .roadmap-next-up-dod {
+            color: var(--green);
+            font-size: 0.75rem;
+        }
+
+        .roadmap-next-up-dod::before {
+            content: 'Done when: ';
+            color: var(--text-muted);
+        }
+
+        .roadmap-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .roadmap-list li {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            padding: 4px 0;
+            padding-left: 16px;
+            position: relative;
+        }
+
+        .roadmap-list li::before {
+            content: '-';
+            color: var(--text-muted);
+            position: absolute;
+            left: 4px;
+        }
+
+        .roadmap-empty {
+            color: var(--text-ghost);
+            font-size: 0.8rem;
+            font-style: italic;
+            padding: 20px;
+            text-align: center;
+        }
+
+        /* Roadmap Edit Mode */
+        .roadmap-edit-mode .roadmap-content {
+            display: block;
+        }
+
+        .roadmap-field {
+            margin-bottom: 10px;
+        }
+
+        .roadmap-field label {
+            display: block;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+        }
+
+        .roadmap-field input,
+        .roadmap-field textarea {
+            width: 100%;
+            background: var(--bg-void);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            padding: 8px 10px;
+        }
+
+        .roadmap-field input:focus,
+        .roadmap-field textarea:focus {
+            outline: none;
+            border-color: var(--cyan);
+        }
+
+        .roadmap-field textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .roadmap-edit-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        .roadmap-status {
+            font-size: 0.75rem;
+            padding: 6px 12px;
+            border-radius: 3px;
+            margin-top: 8px;
+            display: none;
+        }
+
+        .roadmap-status.success {
+            display: block;
+            background: rgba(115, 224, 160, 0.15);
+            border: 1px solid var(--green-dim);
+            color: var(--green);
+        }
+
+        .roadmap-status.error {
+            display: block;
+            background: rgba(224, 115, 115, 0.15);
+            border: 1px solid var(--red-dim);
+            color: var(--red);
+        }
+
+        .roadmap-loading {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        .roadmap-loading.active {
+            display: flex;
+        }
+
         /* Refresh indicator - terminal style */
         .refresh-indicator {
             position: fixed;
@@ -2122,6 +2448,28 @@ HTML_TEMPLATE = '''
                         `;
                 });
 
+                // Add roadmap panel for this project
+                const projectSlug = projectName.toLowerCase().replace(/\\s+/g, '-');
+                html += `
+                    <div class="roadmap-panel" id="roadmap-${projectSlug}" data-project="${escapeHtml(projectName)}">
+                        <div class="roadmap-header" onclick="toggleRoadmap('${projectSlug}')">
+                            <div class="roadmap-toggle">
+                                <span class="roadmap-toggle-icon">▶</span>
+                                <span>Roadmap</span>
+                            </div>
+                            <div class="roadmap-actions">
+                                <button class="roadmap-btn" onclick="event.stopPropagation(); editRoadmap('${projectSlug}')">Edit</button>
+                            </div>
+                        </div>
+                        <div class="roadmap-content" id="roadmap-content-${projectSlug}">
+                            <div class="roadmap-loading" id="roadmap-loading-${projectSlug}">Loading...</div>
+                            <div id="roadmap-display-${projectSlug}"></div>
+                            <div id="roadmap-edit-${projectSlug}" style="display: none;"></div>
+                            <div class="roadmap-status" id="roadmap-status-${projectSlug}"></div>
+                        </div>
+                    </div>
+                `;
+
                 html += '</div></div>';
             }
 
@@ -2158,6 +2506,271 @@ HTML_TEMPLATE = '''
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        // =============================================================================
+        // Roadmap Functions
+        // =============================================================================
+
+        // Cache for roadmap data by project slug
+        const roadmapCache = {};
+
+        // Track which roadmaps are in edit mode
+        const roadmapEditMode = {};
+
+        async function toggleRoadmap(projectSlug) {
+            const panel = document.getElementById(`roadmap-${projectSlug}`);
+            const isExpanded = panel.classList.contains('expanded');
+
+            if (isExpanded) {
+                panel.classList.remove('expanded');
+            } else {
+                panel.classList.add('expanded');
+                // Load roadmap data if not already loaded
+                if (!roadmapCache[projectSlug]) {
+                    await loadRoadmap(projectSlug);
+                }
+            }
+        }
+
+        async function loadRoadmap(projectSlug) {
+            const loadingEl = document.getElementById(`roadmap-loading-${projectSlug}`);
+            const displayEl = document.getElementById(`roadmap-display-${projectSlug}`);
+
+            loadingEl.classList.add('active');
+
+            try {
+                const response = await fetch(`/api/project/${projectSlug}/roadmap`);
+                const data = await response.json();
+
+                if (data.success) {
+                    roadmapCache[projectSlug] = data.data;
+                    renderRoadmapDisplay(projectSlug, data.data);
+                } else {
+                    displayEl.innerHTML = `<div class="roadmap-empty">Error: ${escapeHtml(data.error)}</div>`;
+                }
+            } catch (error) {
+                displayEl.innerHTML = `<div class="roadmap-empty">Failed to load roadmap</div>`;
+                console.error('Failed to load roadmap:', error);
+            } finally {
+                loadingEl.classList.remove('active');
+            }
+        }
+
+        function renderRoadmapDisplay(projectSlug, roadmap) {
+            const displayEl = document.getElementById(`roadmap-display-${projectSlug}`);
+
+            const isEmpty = isRoadmapEmpty(roadmap);
+
+            if (isEmpty) {
+                displayEl.innerHTML = `
+                    <div class="roadmap-empty">
+                        No roadmap defined yet.<br>
+                        Click Edit to set project direction.
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '';
+
+            // Next Up section
+            if (roadmap.next_up && (roadmap.next_up.title || roadmap.next_up.why || roadmap.next_up.definition_of_done)) {
+                html += `
+                    <div class="roadmap-section">
+                        <div class="roadmap-section-title">Next Up</div>
+                        <div class="roadmap-next-up">
+                            ${roadmap.next_up.title ? `<div class="roadmap-next-up-title">${escapeHtml(roadmap.next_up.title)}</div>` : ''}
+                            ${roadmap.next_up.why ? `<div class="roadmap-next-up-why">${escapeHtml(roadmap.next_up.why)}</div>` : ''}
+                            ${roadmap.next_up.definition_of_done ? `<div class="roadmap-next-up-dod">${escapeHtml(roadmap.next_up.definition_of_done)}</div>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // List sections
+            const listSections = [
+                { key: 'upcoming', title: 'Upcoming' },
+                { key: 'later', title: 'Later' },
+                { key: 'not_now', title: 'Not Now' }
+            ];
+
+            for (const section of listSections) {
+                const items = roadmap[section.key] || [];
+                if (items.length > 0) {
+                    html += `
+                        <div class="roadmap-section">
+                            <div class="roadmap-section-title">${section.title}</div>
+                            <ul class="roadmap-list">
+                                ${items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }
+            }
+
+            displayEl.innerHTML = html || '<div class="roadmap-empty">No roadmap content</div>';
+        }
+
+        function isRoadmapEmpty(roadmap) {
+            const nextUp = roadmap.next_up || {};
+            const hasNextUp = nextUp.title || nextUp.why || nextUp.definition_of_done;
+            const hasUpcoming = (roadmap.upcoming || []).length > 0;
+            const hasLater = (roadmap.later || []).length > 0;
+            const hasNotNow = (roadmap.not_now || []).length > 0;
+
+            return !hasNextUp && !hasUpcoming && !hasLater && !hasNotNow;
+        }
+
+        function editRoadmap(projectSlug) {
+            const panel = document.getElementById(`roadmap-${projectSlug}`);
+            const displayEl = document.getElementById(`roadmap-display-${projectSlug}`);
+            const editEl = document.getElementById(`roadmap-edit-${projectSlug}`);
+
+            // Ensure panel is expanded
+            if (!panel.classList.contains('expanded')) {
+                panel.classList.add('expanded');
+            }
+
+            // Get current roadmap data
+            const roadmap = roadmapCache[projectSlug] || {
+                next_up: { title: '', why: '', definition_of_done: '' },
+                upcoming: [],
+                later: [],
+                not_now: []
+            };
+
+            roadmapEditMode[projectSlug] = true;
+            displayEl.style.display = 'none';
+            editEl.style.display = 'block';
+
+            editEl.innerHTML = `
+                <div class="roadmap-section">
+                    <div class="roadmap-section-title">Next Up</div>
+                    <div class="roadmap-field">
+                        <label>Title</label>
+                        <input type="text" id="roadmap-edit-title-${projectSlug}"
+                               value="${escapeHtml(roadmap.next_up?.title || '')}"
+                               placeholder="What's the immediate focus?">
+                    </div>
+                    <div class="roadmap-field">
+                        <label>Why</label>
+                        <input type="text" id="roadmap-edit-why-${projectSlug}"
+                               value="${escapeHtml(roadmap.next_up?.why || '')}"
+                               placeholder="Why is this important?">
+                    </div>
+                    <div class="roadmap-field">
+                        <label>Definition of Done</label>
+                        <input type="text" id="roadmap-edit-dod-${projectSlug}"
+                               value="${escapeHtml(roadmap.next_up?.definition_of_done || '')}"
+                               placeholder="When is this complete?">
+                    </div>
+                </div>
+
+                <div class="roadmap-section">
+                    <div class="roadmap-section-title">Upcoming (one per line)</div>
+                    <div class="roadmap-field">
+                        <textarea id="roadmap-edit-upcoming-${projectSlug}"
+                                  placeholder="Near-term items...">${escapeHtml((roadmap.upcoming || []).join('\\n'))}</textarea>
+                    </div>
+                </div>
+
+                <div class="roadmap-section">
+                    <div class="roadmap-section-title">Later (one per line)</div>
+                    <div class="roadmap-field">
+                        <textarea id="roadmap-edit-later-${projectSlug}"
+                                  placeholder="Backlog items...">${escapeHtml((roadmap.later || []).join('\\n'))}</textarea>
+                    </div>
+                </div>
+
+                <div class="roadmap-section">
+                    <div class="roadmap-section-title">Not Now (one per line)</div>
+                    <div class="roadmap-field">
+                        <textarea id="roadmap-edit-notnow-${projectSlug}"
+                                  placeholder="Explicitly deferred...">${escapeHtml((roadmap.not_now || []).join('\\n'))}</textarea>
+                    </div>
+                </div>
+
+                <div class="roadmap-edit-actions">
+                    <button class="roadmap-btn" onclick="cancelRoadmapEdit('${projectSlug}')">Cancel</button>
+                    <button class="roadmap-btn primary" onclick="saveRoadmap('${projectSlug}')">Save</button>
+                </div>
+            `;
+        }
+
+        function cancelRoadmapEdit(projectSlug) {
+            const displayEl = document.getElementById(`roadmap-display-${projectSlug}`);
+            const editEl = document.getElementById(`roadmap-edit-${projectSlug}`);
+            const statusEl = document.getElementById(`roadmap-status-${projectSlug}`);
+
+            roadmapEditMode[projectSlug] = false;
+            editEl.style.display = 'none';
+            displayEl.style.display = 'block';
+            statusEl.className = 'roadmap-status';
+            statusEl.textContent = '';
+        }
+
+        async function saveRoadmap(projectSlug) {
+            const statusEl = document.getElementById(`roadmap-status-${projectSlug}`);
+
+            // Gather form data
+            const title = document.getElementById(`roadmap-edit-title-${projectSlug}`).value.trim();
+            const why = document.getElementById(`roadmap-edit-why-${projectSlug}`).value.trim();
+            const dod = document.getElementById(`roadmap-edit-dod-${projectSlug}`).value.trim();
+            const upcomingText = document.getElementById(`roadmap-edit-upcoming-${projectSlug}`).value;
+            const laterText = document.getElementById(`roadmap-edit-later-${projectSlug}`).value;
+            const notNowText = document.getElementById(`roadmap-edit-notnow-${projectSlug}`).value;
+
+            // Parse list fields (split by newline, filter empty)
+            const parseList = (text) => text.split('\\n').map(s => s.trim()).filter(s => s.length > 0);
+
+            const roadmapData = {
+                next_up: {
+                    title: title,
+                    why: why,
+                    definition_of_done: dod
+                },
+                upcoming: parseList(upcomingText),
+                later: parseList(laterText),
+                not_now: parseList(notNowText)
+            };
+
+            // Show loading state
+            statusEl.className = 'roadmap-status';
+            statusEl.textContent = 'Saving...';
+            statusEl.style.display = 'block';
+
+            try {
+                const response = await fetch(`/api/project/${projectSlug}/roadmap`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(roadmapData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Update cache
+                    roadmapCache[projectSlug] = data.data;
+
+                    // Show success
+                    statusEl.className = 'roadmap-status success';
+                    statusEl.textContent = 'Roadmap saved';
+
+                    // Exit edit mode and render display
+                    setTimeout(() => {
+                        cancelRoadmapEdit(projectSlug);
+                        renderRoadmapDisplay(projectSlug, data.data);
+                    }, 1000);
+                } else {
+                    statusEl.className = 'roadmap-status error';
+                    statusEl.textContent = `Error: ${data.error}`;
+                }
+            } catch (error) {
+                statusEl.className = 'roadmap-status error';
+                statusEl.textContent = 'Failed to save roadmap';
+                console.error('Failed to save roadmap:', error);
+            }
         }
 
         async function focusWindow(pid) {
@@ -2398,6 +3011,99 @@ def api_readme():
         extensions=["tables", "fenced_code", "codehilite"]
     )
     return jsonify({"html": html})
+
+
+# =============================================================================
+# Roadmap API Endpoints
+# =============================================================================
+
+
+@app.route("/api/project/<name>/roadmap", methods=["GET"])
+def api_project_roadmap_get(name: str):
+    """Get a project's roadmap data.
+
+    Args:
+        name: Project name (will be slugified to match YAML filename)
+
+    Returns:
+        JSON with roadmap data or error
+    """
+    project_data = load_project_data(name)
+    if project_data is None:
+        return jsonify({
+            "success": False,
+            "error": f"Project '{name}' not found"
+        }), 404
+
+    roadmap = project_data.get("roadmap", {})
+    normalized = normalize_roadmap(roadmap)
+
+    return jsonify({
+        "success": True,
+        "data": normalized,
+        "project_name": project_data.get("name", name)
+    })
+
+
+@app.route("/api/project/<name>/roadmap", methods=["POST"])
+def api_project_roadmap_post(name: str):
+    """Update a project's roadmap data.
+
+    Args:
+        name: Project name (will be slugified to match YAML filename)
+
+    Request body:
+        JSON object with roadmap data (next_up, upcoming, later, not_now)
+
+    Returns:
+        JSON with updated roadmap data or error
+    """
+    # Load existing project data
+    project_data = load_project_data(name)
+    if project_data is None:
+        return jsonify({
+            "success": False,
+            "error": f"Project '{name}' not found"
+        }), 404
+
+    # Parse request body
+    try:
+        roadmap_data = request.get_json()
+        if roadmap_data is None:
+            return jsonify({
+                "success": False,
+                "error": "No data provided"
+            }), 400
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Invalid JSON: {str(e)}"
+        }), 400
+
+    # Validate roadmap structure
+    is_valid, error_msg = validate_roadmap_data(roadmap_data)
+    if not is_valid:
+        return jsonify({
+            "success": False,
+            "error": error_msg
+        }), 400
+
+    # Update only the roadmap section, preserving other data
+    project_data["roadmap"] = roadmap_data
+
+    # Save the updated project data
+    if save_project_data(name, project_data):
+        normalized = normalize_roadmap(roadmap_data)
+        return jsonify({
+            "success": True,
+            "data": normalized,
+            "project_name": project_data.get("name", name)
+        })
+    else:
+        return jsonify({
+            "success": False,
+            "error": "Failed to save roadmap data"
+        }), 500
 
 
 @app.route("/api/config", methods=["GET"])
