@@ -20,7 +20,11 @@ This command suite provides queue-based PRD (Product Requirements Document) proc
 - **Default Mode**: Stops at all checkpoints for human review and approval
 - **Bulk Mode**: Auto-approves review checkpoints, stops only for critical errors (PRD gaps, git issues, validation failures)
 
-**Ruby Implementation:** For technical details about the Ruby backend, see [`orch/README.md`](../../../orch/README.md).
+**Ruby Implementation:** The Ruby backend is in `orch/` at the project root. Key files:
+- `orchestrator.rb` - Main dispatcher
+- `state_manager.rb` - State persistence
+- `queue_manager.rb` - Queue operations
+- `prd_validator.rb` - PRD validation
 
 ---
 
@@ -783,8 +787,8 @@ When all PRDs in the queue have been processed (queue is empty), Command 60 auto
 **Problem: Queue shows PRD as "in progress" but nothing is running**
 
 - State may be stale from previous interrupted run
-- Check Ruby implementation docs for state reset commands
-- See [`orch/README.md`](../../../orch/README.md) for troubleshooting
+- Reset state: `ruby orch/orchestrator.rb state reset`
+- Check status: `ruby orch/orchestrator.rb status`
 
 **Problem: Tests keep failing in Ralph loop**
 
@@ -800,22 +804,21 @@ When all PRDs in the queue have been processed (queue is empty), Command 60 auto
 
 ### Related Documentation
 
-- **Ruby Implementation:** [`orch/README.md`](../../../orch/README.md)
-
-  - Technical details about orchestrator.rb, state management, queue operations
-  - Troubleshooting commands for state/queue manipulation
-  - Notifier configuration and testing
+- **Ruby Implementation:** `orch/` directory at project root
+  - `orchestrator.rb` - Main dispatcher and CLI
+  - `state_manager.rb` - State persistence (`orch/working/state.yaml`)
+  - `queue_manager.rb` - Queue operations (`orch/working/queue.yaml`)
+  - `prd_validator.rb` - PRD validation with frontmatter updates
 
 - **OpenSpec Documentation:** `openspec/AGENTS.md`
-
   - OpenSpec proposal format and conventions
   - Change management workflow
   - Validation and archival procedures
 
-- **Build Commands (Alternative):** `.cursor/commands/otl/build/README.md`
-  - Single-PRD builds without queue management
-  - Cursor-native alternatives for ad-hoc work
-  - Use when you want direct control vs. automation
+- **PRD Commands:** `prds/README.md`
+  - PRD creation with `10: prd-workshop`
+  - PRD validation with `30: prd-validate`
+  - PRD sequencing with `40: prd-sequence`
 
 ---
 
@@ -851,6 +854,6 @@ The following old files should be deleted manually:
 For issues with:
 
 - **Command behavior:** Review this documentation and flowchart
-- **Ruby scripts:** See [`orch/README.md`](../../../orch/README.md)
+- **Ruby scripts:** Check `orch/orchestrator.rb --help` for CLI options
 - **OpenSpec operations:** See `openspec/AGENTS.md`
-- **Queue state issues:** Use `ruby orch/orchestrator.rb state reset` (see Ruby docs)
+- **Queue state issues:** Use `ruby orch/orchestrator.rb state reset`
