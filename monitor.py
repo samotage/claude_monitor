@@ -2048,6 +2048,510 @@ def get_headspace_history() -> list:
         return []
 
 
+# =============================================================================
+# AI Session Prioritisation
+# =============================================================================
+# Combines headspace, project roadmaps, session states, and activity to rank
+# which session deserves attention. Uses OpenRouter for AI-powered ranking.
+
+# Defaults for priority configuration
+DEFAULT_PRIORITIES_POLLING_INTERVAL = 60  # seconds
+DEFAULT_PRIORITIES_MODEL = DEFAULT_OPENROUTER_MODEL
+
+# In-memory cache for priorities
+_priorities_cache: dict = {
+    "priorities": None,
+    "timestamp": None,
+    "pending_priorities": None,  # For soft transitions
+    "error": None
+}
+
+
+def is_priorities_enabled() -> bool:
+    """Check if the priorities feature is enabled in config.
+
+    Returns:
+        True if priorities feature is enabled (default: True)
+    """
+    config = load_config()
+    priorities_config = config.get("priorities", {})
+    return priorities_config.get("enabled", True)
+
+
+def get_priorities_config() -> dict:
+    """Get priorities configuration from config.yaml.
+
+    Returns:
+        Dict with 'enabled', 'polling_interval', 'model'
+    """
+    config = load_config()
+    priorities = config.get("priorities", {})
+
+    return {
+        "enabled": priorities.get("enabled", True),
+        "polling_interval": priorities.get("polling_interval", DEFAULT_PRIORITIES_POLLING_INTERVAL),
+        "model": priorities.get("model", DEFAULT_PRIORITIES_MODEL)
+    }
+
+
+def get_all_project_roadmaps() -> dict:
+    """Gather roadmap data for all registered projects.
+
+    Returns:
+        Dict mapping project_name to roadmap data (next_up, upcoming)
+    """
+    roadmaps = {}
+    projects = list_project_data()
+
+    for project in projects:
+        name = project.get("name", "unknown")
+        roadmap = project.get("roadmap", {})
+        if roadmap:
+            roadmaps[name] = {
+                "next_up": roadmap.get("next_up"),
+                "upcoming": roadmap.get("upcoming", [])
+            }
+
+    return roadmaps
+
+
+def get_all_project_states() -> dict:
+    """Gather current state summary for all registered projects.
+
+    Returns:
+        Dict mapping project_name to state data (summary, recent context)
+    """
+    states = {}
+    projects = list_project_data()
+
+    for project in projects:
+        name = project.get("name", "unknown")
+        state = project.get("state", {})
+        recent_sessions = project.get("recent_sessions", [])
+
+        states[name] = {
+            "summary": state.get("summary"),
+            "recent_sessions": recent_sessions[:3] if recent_sessions else []  # Last 3 sessions
+        }
+
+    return states
+
+
+def get_sessions_with_activity() -> list[dict]:
+    """Get active sessions with their activity states.
+
+    Returns:
+        List of session dicts with project_name, session_id, activity_state
+    """
+    config = load_config()
+    sessions = scan_sessions(config)
+
+    # Filter to only active (visible) sessions
+    active_sessions = [s for s in sessions if s.get("visible", False)]
+
+    return [{
+        "project_name": s.get("project", "unknown"),
+        "session_id": str(s.get("pid", "")),
+        "activity_state": s.get("activity_state", "unknown"),
+        "task_summary": s.get("task_summary", "")
+    } for s in active_sessions]
+
+
+def aggregate_priority_context() -> dict:
+    """Combine headspace, roadmaps, states, and sessions for prioritisation.
+
+    Returns:
+        Dict with all context needed for AI prioritisation
+    """
+    headspace = load_headspace()
+    roadmaps = get_all_project_roadmaps()
+    states = get_all_project_states()
+    sessions = get_sessions_with_activity()
+
+    return {
+        "headspace": headspace,
+        "roadmaps": roadmaps,
+        "states": states,
+        "sessions": sessions
+    }
+
+
+def is_any_session_processing(sessions: list[dict] = None) -> bool:
+    """Check if any session is actively processing.
+
+    Args:
+        sessions: Optional list of session dicts. If not provided, fetches fresh.
+
+    Returns:
+        True if any session has activity_state == 'processing'
+    """
+    if sessions is None:
+        sessions = get_sessions_with_activity()
+
+    return any(s.get("activity_state") == "processing" for s in sessions)
+
+
+def build_prioritisation_prompt(context: dict) -> list[dict]:
+    """Build a token-efficient prompt for AI session prioritisation.
+
+    Args:
+        context: Dict from aggregate_priority_context()
+
+    Returns:
+        List of message dicts for OpenRouter API
+    """
+    headspace = context.get("headspace")
+    roadmaps = context.get("roadmaps", {})
+    states = context.get("states", {})
+    sessions = context.get("sessions", [])
+
+    # System prompt
+    system_prompt = """You are a focus assistant helping a developer prioritise their Claude Code sessions.
+Rank sessions by relevance to the user's goals. Return JSON only.
+
+Ranking factors (in order):
+1. Relevance to headspace/current focus (if set)
+2. Activity state: input_needed > idle > processing (sessions needing attention first)
+3. Roadmap urgency: sessions related to next_up items rank higher
+4. Recent work context
+
+Output format (JSON only, no markdown):
+{
+  "priorities": [
+    {"project_name": "...", "session_id": "...", "priority_score": 0-100, "rationale": "brief reason"}
+  ]
+}"""
+
+    # Build user prompt with context
+    user_parts = []
+
+    # Headspace context
+    if headspace:
+        user_parts.append(f"HEADSPACE (user's current focus):\nFocus: {headspace.get('current_focus', 'Not set')}")
+        if headspace.get("constraints"):
+            user_parts.append(f"Constraints: {headspace['constraints']}")
+    else:
+        user_parts.append("HEADSPACE: Not set. Prioritise by roadmap urgency and activity state.")
+
+    # Sessions to rank
+    user_parts.append("\nSESSIONS TO RANK:")
+    for session in sessions:
+        proj = session["project_name"]
+        sid = session["session_id"]
+        state = session["activity_state"]
+        task = session.get("task_summary", "")
+
+        # Add roadmap context for this project
+        roadmap = roadmaps.get(proj, {})
+        next_up = roadmap.get("next_up", {})
+        next_up_title = next_up.get("title", "") if isinstance(next_up, dict) else ""
+
+        # Add state context
+        proj_state = states.get(proj, {})
+        summary = proj_state.get("summary", "")
+
+        session_line = f"- {proj} (id:{sid}, state:{state})"
+        if task:
+            session_line += f" - {task}"
+        if next_up_title:
+            session_line += f" [next_up: {next_up_title}]"
+        if summary:
+            session_line += f" [project: {summary[:100]}]"
+
+        user_parts.append(session_line)
+
+    user_prompt = "\n".join(user_parts)
+
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt}
+    ]
+
+
+def parse_priority_response(response_text: str, sessions: list[dict]) -> list[dict]:
+    """Parse AI response to extract structured priority data.
+
+    Args:
+        response_text: Raw response from AI
+        sessions: Original session list for fallback
+
+    Returns:
+        List of priority dicts with project_name, session_id, priority_score, rationale
+    """
+    if not response_text:
+        return _default_priority_order(sessions)
+
+    try:
+        # Try to parse JSON from response
+        # Handle potential markdown code blocks
+        text = response_text.strip()
+        if text.startswith("```"):
+            # Extract JSON from code block
+            lines = text.split("\n")
+            json_lines = []
+            in_block = False
+            for line in lines:
+                if line.startswith("```"):
+                    in_block = not in_block
+                    continue
+                if in_block:
+                    json_lines.append(line)
+            text = "\n".join(json_lines)
+
+        data = json.loads(text)
+        priorities = data.get("priorities", [])
+
+        if not priorities:
+            return _default_priority_order(sessions)
+
+        # Validate and normalize
+        result = []
+        for p in priorities:
+            if not isinstance(p, dict):
+                continue
+            result.append({
+                "project_name": p.get("project_name", ""),
+                "session_id": str(p.get("session_id", "")),
+                "priority_score": max(0, min(100, int(p.get("priority_score", 50)))),
+                "rationale": str(p.get("rationale", ""))[:200]  # Limit rationale length
+            })
+
+        if not result:
+            return _default_priority_order(sessions)
+
+        # Ensure all sessions are included (add missing ones at the end)
+        included_ids = {p["session_id"] for p in result}
+        for session in sessions:
+            if session["session_id"] not in included_ids:
+                result.append({
+                    "project_name": session["project_name"],
+                    "session_id": session["session_id"],
+                    "priority_score": 0,
+                    "rationale": "Not ranked by AI"
+                })
+
+        # Sort by priority_score descending
+        result.sort(key=lambda x: x["priority_score"], reverse=True)
+        return result
+
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        return _default_priority_order(sessions)
+
+
+def _default_priority_order(sessions: list[dict]) -> list[dict]:
+    """Create default priority order when AI fails.
+
+    Orders by: input_needed > idle > processing > unknown, then alphabetically.
+    """
+    state_order = {"input_needed": 0, "idle": 1, "processing": 2, "unknown": 3}
+
+    sorted_sessions = sorted(
+        sessions,
+        key=lambda s: (state_order.get(s.get("activity_state", "unknown"), 3), s.get("project_name", ""))
+    )
+
+    return [{
+        "project_name": s["project_name"],
+        "session_id": s["session_id"],
+        "priority_score": 50 - (i * 5),  # Descending scores
+        "rationale": f"Default ordering by activity state ({s.get('activity_state', 'unknown')})"
+    } for i, s in enumerate(sorted_sessions)]
+
+
+def is_cache_valid() -> bool:
+    """Check if cached priorities are still valid.
+
+    Returns:
+        True if cache exists and is within polling interval
+    """
+    global _priorities_cache
+
+    if _priorities_cache["priorities"] is None:
+        return False
+
+    if _priorities_cache["timestamp"] is None:
+        return False
+
+    config = get_priorities_config()
+    polling_interval = config["polling_interval"]
+
+    cache_age = (datetime.now(timezone.utc) - _priorities_cache["timestamp"]).total_seconds()
+    return cache_age < polling_interval
+
+
+def get_cached_priorities() -> Optional[dict]:
+    """Get cached priorities if valid.
+
+    Returns:
+        Cached priority data or None if cache invalid
+    """
+    global _priorities_cache
+
+    if is_cache_valid():
+        return {
+            "priorities": _priorities_cache["priorities"],
+            "timestamp": _priorities_cache["timestamp"].isoformat() if _priorities_cache["timestamp"] else None,
+            "cache_hit": True,
+            "soft_transition_pending": _priorities_cache["pending_priorities"] is not None
+        }
+    return None
+
+
+def update_priorities_cache(priorities: list[dict], error: str = None) -> None:
+    """Update the priorities cache.
+
+    Args:
+        priorities: List of priority dicts
+        error: Error message if prioritisation failed
+    """
+    global _priorities_cache
+    _priorities_cache["priorities"] = priorities
+    _priorities_cache["timestamp"] = datetime.now(timezone.utc)
+    _priorities_cache["error"] = error
+
+
+def apply_soft_transition(new_priorities: list[dict], sessions: list[dict]) -> tuple[list[dict], bool]:
+    """Apply soft transition logic for priority updates.
+
+    If any session is processing, store new priorities as pending and return cached.
+
+    Args:
+        new_priorities: Newly computed priorities
+        sessions: Current sessions with activity states
+
+    Returns:
+        Tuple of (priorities_to_return, soft_transition_pending)
+    """
+    global _priorities_cache
+
+    if is_any_session_processing(sessions):
+        # Store as pending, return cached (if available) or new
+        _priorities_cache["pending_priorities"] = new_priorities
+        if _priorities_cache["priorities"]:
+            return _priorities_cache["priorities"], True
+        return new_priorities, True
+
+    # No session processing - apply any pending priorities
+    if _priorities_cache["pending_priorities"]:
+        priorities_to_apply = _priorities_cache["pending_priorities"]
+        _priorities_cache["pending_priorities"] = None
+        return priorities_to_apply, False
+
+    return new_priorities, False
+
+
+def compute_priorities(force_refresh: bool = False) -> dict:
+    """Compute session priorities using AI.
+
+    Args:
+        force_refresh: If True, bypass cache
+
+    Returns:
+        Dict with priorities, metadata, and any errors
+    """
+    global _priorities_cache
+
+    # Check feature enabled
+    if not is_priorities_enabled():
+        return {
+            "success": False,
+            "error": "Priorities feature is disabled",
+            "priorities": []
+        }
+
+    # Check cache unless forced refresh
+    if not force_refresh:
+        cached = get_cached_priorities()
+        if cached:
+            # Add activity_state to cached priorities
+            sessions = get_sessions_with_activity()
+            session_states = {s["session_id"]: s["activity_state"] for s in sessions}
+            for p in cached["priorities"]:
+                p["activity_state"] = session_states.get(p["session_id"], "unknown")
+            return {
+                "success": True,
+                "priorities": cached["priorities"],
+                "metadata": {
+                    "timestamp": cached["timestamp"],
+                    "headspace_summary": None,  # Not fetched for cache hit
+                    "cache_hit": True,
+                    "soft_transition_pending": cached["soft_transition_pending"]
+                }
+            }
+
+    # Aggregate context
+    context = aggregate_priority_context()
+    sessions = context["sessions"]
+
+    if not sessions:
+        return {
+            "success": True,
+            "priorities": [],
+            "metadata": {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "headspace_summary": context.get("headspace", {}).get("current_focus") if context.get("headspace") else None,
+                "cache_hit": False,
+                "soft_transition_pending": False
+            }
+        }
+
+    # Build prompt and call AI
+    messages = build_prioritisation_prompt(context)
+    config = get_priorities_config()
+
+    response_text, error = call_openrouter(messages, model=config["model"])
+
+    if error:
+        # Fallback to default ordering
+        priorities = _default_priority_order(sessions)
+        update_priorities_cache(priorities, error=error)
+
+        # Add activity_state
+        session_states = {s["session_id"]: s["activity_state"] for s in sessions}
+        for p in priorities:
+            p["activity_state"] = session_states.get(p["session_id"], "unknown")
+
+        return {
+            "success": True,
+            "priorities": priorities,
+            "metadata": {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "headspace_summary": context.get("headspace", {}).get("current_focus") if context.get("headspace") else None,
+                "cache_hit": False,
+                "soft_transition_pending": False,
+                "error": f"AI unavailable ({error}), using default ordering"
+            }
+        }
+
+    # Parse response
+    priorities = parse_priority_response(response_text, sessions)
+
+    # Apply soft transitions
+    priorities, soft_pending = apply_soft_transition(priorities, sessions)
+
+    # Update cache
+    update_priorities_cache(priorities)
+
+    # Add activity_state to each priority
+    session_states = {s["session_id"]: s["activity_state"] for s in sessions}
+    for p in priorities:
+        p["activity_state"] = session_states.get(p["session_id"], "unknown")
+
+    headspace = context.get("headspace")
+    headspace_summary = headspace.get("current_focus") if headspace else None
+
+    return {
+        "success": True,
+        "priorities": priorities,
+        "metadata": {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "headspace_summary": headspace_summary,
+            "cache_hit": False,
+            "soft_transition_pending": soft_pending
+        }
+    }
+
+
 # HTML Template with embedded CSS and JavaScript
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -5215,6 +5719,40 @@ def api_headspace_history():
         "success": True,
         "data": history
     })
+
+
+@app.route("/api/priorities", methods=["GET"])
+def api_priorities():
+    """Get AI-ranked session priorities.
+
+    Query params:
+        refresh: Set to 'true' to bypass cache and force fresh prioritisation
+
+    Returns:
+        JSON with ranked sessions, each including:
+        - project_name: Name of the project
+        - session_id: PID of the session
+        - priority_score: 0-100 score (higher = more important)
+        - rationale: Human-readable reason for the ranking
+        - activity_state: Current activity state (processing/idle/input_needed)
+
+        Metadata includes:
+        - timestamp: When priorities were computed
+        - headspace_summary: Current user focus (if set)
+        - cache_hit: Whether result came from cache
+        - soft_transition_pending: Whether priority reorder is delayed
+    """
+    if not is_priorities_enabled():
+        return jsonify({
+            "success": False,
+            "error": "Priorities feature is disabled"
+        }), 404
+
+    # Check for refresh parameter
+    force_refresh = request.args.get("refresh", "").lower() == "true"
+
+    result = compute_priorities(force_refresh=force_refresh)
+    return jsonify(result)
 
 
 @app.route("/api/session/<session_id>/summarise", methods=["POST"])
