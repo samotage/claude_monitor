@@ -68,8 +68,10 @@ async function fetchPrioritiesAPI(forceRefresh = false) {
     return response;
 }
 
-async function fetchRebootBriefingAPI(projectName) {
-    const response = await fetch(`/api/project/${encodeURIComponent(projectName)}/reboot`);
+async function fetchBrainRefreshAPI(projectName) {
+    // Convert project name to permalink (slug)
+    const permalink = projectName.toLowerCase().replace(/\s+/g, '-');
+    const response = await fetch(`/api/project/${permalink}/brain-refresh`);
     return await response.json();
 }
 

@@ -18,7 +18,7 @@ async function openContextPanel(projectName, sessionPid) {
     overlay.classList.add('active');
 
     try {
-        const rebootData = await fetchRebootBriefingAPI(projectName);
+        const rebootData = await fetchBrainRefreshAPI(projectName);
         const priorityInfo = getSessionPriority(sessionPid);
 
         let html = '';
@@ -166,7 +166,7 @@ async function openRebootPanel(projectName) {
     overlay.classList.add('active');
 
     try {
-        const data = await fetchRebootBriefingAPI(projectName);
+        const data = await fetchBrainRefreshAPI(projectName);
 
         if (!data.success) {
             content.innerHTML = '<div class="reboot-empty-state">Failed to load briefing: ' + escapeHtml(data.error) + '</div>';

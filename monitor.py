@@ -288,23 +288,23 @@ def api_project_roadmap_post(name: str):
 
 
 # =============================================================================
-# Routes - Brain Reboot API
+# Routes - Brain Refresh API
 # =============================================================================
 
 
-@app.route("/api/project/<name>/reboot", methods=["GET"])
-def api_project_reboot(name: str):
-    """Get a project's brain reboot briefing for quick context reload."""
-    # Generate the briefing
-    briefing = generate_reboot_briefing(name)
+@app.route("/api/project/<permalink>/brain-refresh", methods=["GET"])
+def api_project_brain_refresh(permalink: str):
+    """Get a project's brain refresh briefing for quick context reload."""
+    # Generate the briefing (permalink is the slugified project name)
+    briefing = generate_reboot_briefing(permalink)
     if briefing is None:
         return jsonify({
             "success": False,
-            "error": f"Project '{name}' not found"
+            "error": f"Project '{permalink}' not found"
         }), 404
 
     # Calculate staleness information
-    staleness = calculate_staleness(name)
+    staleness = calculate_staleness(permalink)
 
     return jsonify({
         "success": True,
