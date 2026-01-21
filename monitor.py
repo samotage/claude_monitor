@@ -1885,6 +1885,169 @@ def generate_reboot_briefing(project_name: str) -> Optional[dict]:
     }
 
 
+# =============================================================================
+# Headspace Data Management
+# =============================================================================
+# Headspace stores the user's current focus goal at the top of the dashboard.
+# Data is stored in data/headspace.yaml, separate from per-project data.
+# =============================================================================
+
+HEADSPACE_DATA_PATH = Path(__file__).parent / "data" / "headspace.yaml"
+
+
+def is_headspace_enabled() -> bool:
+    """Check if the headspace feature is enabled in config.
+
+    Returns:
+        True if enabled (default), False if explicitly disabled
+    """
+    config = load_config()
+    headspace_config = config.get("headspace", {})
+    return headspace_config.get("enabled", True)
+
+
+def is_headspace_history_enabled() -> bool:
+    """Check if headspace history tracking is enabled in config.
+
+    Returns:
+        True if enabled, False if disabled (default)
+    """
+    config = load_config()
+    headspace_config = config.get("headspace", {})
+    return headspace_config.get("history_enabled", False)
+
+
+def load_headspace() -> Optional[dict]:
+    """Load the current headspace from data/headspace.yaml.
+
+    Returns:
+        Dict with current_focus, constraints, updated_at or None if not set
+    """
+    if not HEADSPACE_DATA_PATH.exists():
+        return None
+
+    try:
+        data = yaml.safe_load(HEADSPACE_DATA_PATH.read_text())
+        if data and "current_focus" in data:
+            return {
+                "current_focus": data.get("current_focus"),
+                "constraints": data.get("constraints"),
+                "updated_at": data.get("updated_at")
+            }
+        return None
+    except Exception:
+        return None
+
+
+def save_headspace(current_focus: str, constraints: Optional[str] = None) -> dict:
+    """Save headspace data to data/headspace.yaml.
+
+    Appends previous value to history if history tracking is enabled.
+
+    Args:
+        current_focus: The user's current focus statement (required)
+        constraints: Optional constraints string
+
+    Returns:
+        The saved headspace data dict
+    """
+    # Ensure data directory exists
+    HEADSPACE_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    # Load existing data for history
+    existing_data = {}
+    if HEADSPACE_DATA_PATH.exists():
+        try:
+            existing_data = yaml.safe_load(HEADSPACE_DATA_PATH.read_text()) or {}
+        except Exception:
+            existing_data = {}
+
+    # Append to history if enabled and there's existing data
+    if is_headspace_history_enabled() and existing_data.get("current_focus"):
+        append_headspace_history(existing_data)
+
+    # Create new headspace data
+    updated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    new_data = {
+        "current_focus": current_focus,
+        "constraints": constraints,
+        "updated_at": updated_at
+    }
+
+    # Preserve history in the file
+    if "history" in existing_data:
+        new_data["history"] = existing_data["history"]
+
+    # Write to file
+    HEADSPACE_DATA_PATH.write_text(
+        yaml.dump(new_data, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    )
+
+    return {
+        "current_focus": current_focus,
+        "constraints": constraints,
+        "updated_at": updated_at
+    }
+
+
+def append_headspace_history(headspace_data: dict) -> None:
+    """Append a headspace entry to history.
+
+    Args:
+        headspace_data: The headspace data to archive to history
+    """
+    if not headspace_data.get("current_focus"):
+        return
+
+    # Load existing file to preserve history
+    existing = {}
+    if HEADSPACE_DATA_PATH.exists():
+        try:
+            existing = yaml.safe_load(HEADSPACE_DATA_PATH.read_text()) or {}
+        except Exception:
+            existing = {}
+
+    # Initialize history list if needed
+    history = existing.get("history", [])
+
+    # Create history entry
+    history_entry = {
+        "current_focus": headspace_data.get("current_focus"),
+        "constraints": headspace_data.get("constraints"),
+        "updated_at": headspace_data.get("updated_at")
+    }
+
+    # Prepend to history (most recent first)
+    history.insert(0, history_entry)
+
+    # Keep only last 50 entries
+    history = history[:50]
+
+    # Update the existing data with new history
+    existing["history"] = history
+
+    # Write back
+    HEADSPACE_DATA_PATH.write_text(
+        yaml.dump(existing, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    )
+
+
+def get_headspace_history() -> list:
+    """Get the list of previous headspace values.
+
+    Returns:
+        List of headspace history entries, or empty list if none
+    """
+    if not HEADSPACE_DATA_PATH.exists():
+        return []
+
+    try:
+        data = yaml.safe_load(HEADSPACE_DATA_PATH.read_text())
+        return data.get("history", []) if data else []
+    except Exception:
+        return []
+
+
 # HTML Template with embedded CSS and JavaScript
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -2672,6 +2835,183 @@ HTML_TEMPLATE = '''
             color: var(--text-muted);
         }
 
+        /* Headspace Panel Styles */
+        .headspace-panel {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            margin-bottom: 24px;
+            padding: 16px 20px;
+            position: relative;
+        }
+
+        .headspace-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .headspace-label {
+            color: var(--text-muted);
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .headspace-edit-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            padding: 4px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .headspace-edit-btn:hover {
+            border-color: var(--cyan);
+            color: var(--cyan);
+        }
+
+        .headspace-focus {
+            color: var(--text-primary);
+            font-size: 1.1rem;
+            font-weight: 500;
+            line-height: 1.4;
+            margin-bottom: 8px;
+        }
+
+        .headspace-focus::before {
+            content: '"';
+            color: var(--cyan);
+        }
+
+        .headspace-focus::after {
+            content: '"';
+            color: var(--cyan);
+        }
+
+        .headspace-constraints {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+        }
+
+        .headspace-constraints-label {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .headspace-timestamp {
+            color: var(--text-disabled);
+            font-size: 0.75rem;
+        }
+
+        /* Headspace Edit Mode */
+        .headspace-edit-form {
+            display: none;
+        }
+
+        .headspace-panel.editing .headspace-view {
+            display: none;
+        }
+
+        .headspace-panel.editing .headspace-edit-form {
+            display: block;
+        }
+
+        .headspace-input-group {
+            margin-bottom: 12px;
+        }
+
+        .headspace-input-label {
+            display: block;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            margin-bottom: 4px;
+        }
+
+        .headspace-input {
+            width: 100%;
+            background: var(--bg-deep);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 10px 12px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            font-family: inherit;
+            box-sizing: border-box;
+            transition: border-color 0.15s ease;
+        }
+
+        .headspace-input:focus {
+            outline: none;
+            border-color: var(--cyan);
+        }
+
+        .headspace-input::placeholder {
+            color: var(--text-disabled);
+        }
+
+        .headspace-edit-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            margin-top: 16px;
+        }
+
+        .headspace-save-btn {
+            background: var(--cyan);
+            border: none;
+            color: var(--bg-void);
+            font-size: 0.8rem;
+            font-weight: 500;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .headspace-save-btn:hover {
+            background: #7de6ed;
+        }
+
+        .headspace-cancel-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .headspace-cancel-btn:hover {
+            border-color: var(--text-muted);
+            color: var(--text-primary);
+        }
+
+        /* Headspace Empty State */
+        .headspace-empty {
+            text-align: center;
+            padding: 8px 0;
+        }
+
+        .headspace-empty-prompt {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            margin-bottom: 4px;
+        }
+
+        .headspace-empty-hint {
+            color: var(--text-disabled);
+            font-size: 0.85rem;
+        }
+
         /* Roadmap Panel Styles */
         .roadmap-panel {
             margin-top: 10px;
@@ -3356,7 +3696,7 @@ HTML_TEMPLATE = '''
     <div id="reboot-panel-overlay" class="reboot-panel-overlay"></div>
     <div id="reboot-panel" class="reboot-panel">
         <div class="reboot-panel-header">
-            <span class="reboot-panel-title">Brain Reboot: <span id="reboot-panel-project-name"></span></span>
+            <span class="reboot-panel-title">Headspace: <span id="reboot-panel-project-name"></span></span>
             <button class="reboot-panel-close" onclick="closeRebootPanel()">&times;</button>
         </div>
         <div id="reboot-panel-content" class="reboot-panel-content">
@@ -3397,6 +3737,47 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
         </header>
+
+        <!-- Headspace Panel -->
+        <div id="headspace-panel" class="headspace-panel" style="display: none;">
+            <div class="headspace-header">
+                <span class="headspace-label">HEADSPACE</span>
+                <button class="headspace-edit-btn" onclick="enterHeadspaceEditMode()">Edit</button>
+            </div>
+
+            <!-- View Mode -->
+            <div class="headspace-view">
+                <div class="headspace-focus" id="headspace-focus"></div>
+                <div class="headspace-constraints" id="headspace-constraints" style="display: none;">
+                    <span class="headspace-constraints-label">Constraints:</span>
+                    <span id="headspace-constraints-text"></span>
+                </div>
+                <div class="headspace-timestamp" id="headspace-timestamp"></div>
+            </div>
+
+            <!-- Edit Mode -->
+            <div class="headspace-edit-form">
+                <div class="headspace-input-group">
+                    <label class="headspace-input-label">Focus</label>
+                    <input type="text" class="headspace-input" id="headspace-focus-input" placeholder="What's your focus right now?">
+                </div>
+                <div class="headspace-input-group">
+                    <label class="headspace-input-label">Constraints (optional)</label>
+                    <input type="text" class="headspace-input" id="headspace-constraints-input" placeholder="Any limitations or boundaries?">
+                </div>
+                <div class="headspace-edit-actions">
+                    <button class="headspace-cancel-btn" onclick="exitHeadspaceEditMode()">Cancel</button>
+                    <button class="headspace-save-btn" onclick="saveHeadspace()">Save</button>
+                </div>
+            </div>
+
+            <!-- Empty State -->
+            <div class="headspace-empty" id="headspace-empty" style="display: none;">
+                <div class="headspace-empty-prompt">What's your focus right now?</div>
+                <div class="headspace-empty-hint">Setting a headspace helps you stay intentional.</div>
+            </div>
+        </div>
+
         <div id="kanban" class="kanban">
             <div class="no-sessions">initializing...</div>
         </div>
@@ -3730,7 +4111,7 @@ HTML_TEMPLATE = '''
                                     <div class="card-header">
                                         <span class="uuid">${session.uuid_short}</span>
                                         <span class="status ${session.status}">${session.status}</span>
-                                        <button class="reboot-btn" onclick="event.stopPropagation(); openRebootPanel('${escapeHtml(projectName)}')">Reboot</button>
+                                        <button class="reboot-btn" onclick="event.stopPropagation(); openRebootPanel('${escapeHtml(projectName)}')">Headspace</button>
                                     </div>
                                     <div class="activity-state ${session.activity_state}">
                                         <span class="activity-icon">${activityInfo.icon}</span>
@@ -3970,6 +4351,159 @@ HTML_TEMPLATE = '''
                     closeRebootPanel();
                 }
             });
+        });
+
+        // =============================================================================
+        // Headspace Functions
+        // =============================================================================
+
+        // Store current headspace data
+        let currentHeadspace = null;
+
+        // Format timestamp to human-friendly "X ago" format
+        function formatHeadspaceTimestamp(isoTimestamp) {
+            if (!isoTimestamp) return '';
+            try {
+                const date = new Date(isoTimestamp);
+                const now = new Date();
+                const diffMs = now - date;
+                const diffMins = Math.floor(diffMs / (1000 * 60));
+                const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+                if (diffMins < 1) return 'Updated just now';
+                if (diffMins < 60) return 'Updated ' + diffMins + ' minute' + (diffMins !== 1 ? 's' : '') + ' ago';
+                if (diffHours < 24) return 'Updated ' + diffHours + ' hour' + (diffHours !== 1 ? 's' : '') + ' ago';
+                if (diffDays < 7) return 'Updated ' + diffDays + ' day' + (diffDays !== 1 ? 's' : '') + ' ago';
+                return 'Updated on ' + date.toLocaleDateString();
+            } catch (e) {
+                return '';
+            }
+        }
+
+        // Load headspace from API and update display
+        async function loadHeadspace() {
+            const panel = document.getElementById('headspace-panel');
+            if (!panel) return;
+
+            try {
+                const response = await fetch('/api/headspace');
+                const data = await response.json();
+
+                if (data.success) {
+                    currentHeadspace = data.data;
+                    renderHeadspace();
+                }
+            } catch (error) {
+                console.error('Failed to load headspace:', error);
+            }
+        }
+
+        // Render headspace panel based on current data
+        function renderHeadspace() {
+            const panel = document.getElementById('headspace-panel');
+            const focusEl = document.getElementById('headspace-focus');
+            const constraintsEl = document.getElementById('headspace-constraints');
+            const constraintsTextEl = document.getElementById('headspace-constraints-text');
+            const timestampEl = document.getElementById('headspace-timestamp');
+            const emptyEl = document.getElementById('headspace-empty');
+            const viewEl = panel.querySelector('.headspace-view');
+            const editBtn = panel.querySelector('.headspace-edit-btn');
+
+            // Show the panel
+            panel.style.display = 'block';
+
+            if (currentHeadspace && currentHeadspace.current_focus) {
+                // Has headspace - show view mode
+                viewEl.style.display = 'block';
+                emptyEl.style.display = 'none';
+                editBtn.textContent = 'Edit';
+
+                focusEl.textContent = currentHeadspace.current_focus;
+
+                if (currentHeadspace.constraints) {
+                    constraintsEl.style.display = 'block';
+                    constraintsTextEl.textContent = currentHeadspace.constraints;
+                } else {
+                    constraintsEl.style.display = 'none';
+                }
+
+                timestampEl.textContent = formatHeadspaceTimestamp(currentHeadspace.updated_at);
+            } else {
+                // No headspace - show empty state
+                viewEl.style.display = 'none';
+                emptyEl.style.display = 'block';
+                editBtn.textContent = 'Set';
+            }
+        }
+
+        // Enter edit mode
+        function enterHeadspaceEditMode() {
+            const panel = document.getElementById('headspace-panel');
+            const focusInput = document.getElementById('headspace-focus-input');
+            const constraintsInput = document.getElementById('headspace-constraints-input');
+
+            // Populate inputs with current values
+            if (currentHeadspace) {
+                focusInput.value = currentHeadspace.current_focus || '';
+                constraintsInput.value = currentHeadspace.constraints || '';
+            } else {
+                focusInput.value = '';
+                constraintsInput.value = '';
+            }
+
+            panel.classList.add('editing');
+            focusInput.focus();
+        }
+
+        // Exit edit mode without saving
+        function exitHeadspaceEditMode() {
+            const panel = document.getElementById('headspace-panel');
+            panel.classList.remove('editing');
+        }
+
+        // Save headspace via API
+        async function saveHeadspace() {
+            const focusInput = document.getElementById('headspace-focus-input');
+            const constraintsInput = document.getElementById('headspace-constraints-input');
+
+            const currentFocus = focusInput.value.trim();
+            const constraints = constraintsInput.value.trim() || null;
+
+            if (!currentFocus) {
+                focusInput.focus();
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/headspace', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        current_focus: currentFocus,
+                        constraints: constraints
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentHeadspace = data.data;
+                    exitHeadspaceEditMode();
+                    renderHeadspace();
+                } else {
+                    console.error('Failed to save headspace:', data.error);
+                }
+            } catch (error) {
+                console.error('Failed to save headspace:', error);
+            }
+        }
+
+        // Load headspace on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadHeadspace();
         });
 
         // =============================================================================
@@ -4603,6 +5137,86 @@ def api_project_reboot(name: str):
     })
 
 
+# =============================================================================
+# Headspace API Endpoints
+# =============================================================================
+
+
+@app.route("/api/headspace", methods=["GET"])
+def api_headspace_get():
+    """Get the current headspace data.
+
+    Returns:
+        JSON with headspace data or null if not set
+    """
+    if not is_headspace_enabled():
+        return jsonify({
+            "success": False,
+            "error": "Headspace feature is disabled"
+        }), 404
+
+    headspace = load_headspace()
+    return jsonify({
+        "success": True,
+        "data": headspace
+    })
+
+
+@app.route("/api/headspace", methods=["POST"])
+def api_headspace_post():
+    """Update the headspace.
+
+    Expects JSON body with current_focus (required) and constraints (optional).
+
+    Returns:
+        JSON with updated headspace data
+    """
+    if not is_headspace_enabled():
+        return jsonify({
+            "success": False,
+            "error": "Headspace feature is disabled"
+        }), 404
+
+    data = request.get_json() or {}
+    current_focus = data.get("current_focus", "").strip()
+
+    if not current_focus:
+        return jsonify({
+            "success": False,
+            "error": "current_focus is required"
+        }), 400
+
+    constraints = data.get("constraints")
+    if constraints:
+        constraints = constraints.strip() or None
+
+    saved = save_headspace(current_focus, constraints)
+    return jsonify({
+        "success": True,
+        "data": saved
+    })
+
+
+@app.route("/api/headspace/history", methods=["GET"])
+def api_headspace_history():
+    """Get the headspace history.
+
+    Returns:
+        JSON with list of previous headspace values
+    """
+    if not is_headspace_enabled():
+        return jsonify({
+            "success": False,
+            "error": "Headspace feature is disabled"
+        }), 404
+
+    history = get_headspace_history()
+    return jsonify({
+        "success": True,
+        "data": history
+    })
+
+
 @app.route("/api/session/<session_id>/summarise", methods=["POST"])
 def api_session_summarise(session_id: str):
     """Manually trigger summarisation for a specific session.
@@ -4699,7 +5313,7 @@ def main():
     print(f"\nOpen http://localhost:5050 in your browser")
     print("Press Ctrl+C to stop\n")
 
-    app.run(host="127.0.0.1", port=5050, debug=False)
+    app.run(host="0.0.0.0", port=5050, debug=False)
 
 
 if __name__ == "__main__":
