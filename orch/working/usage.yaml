@@ -4,9 +4,9 @@ prd_title: project-roadmap-management-prd
 started_at: '2026-01-21T19:16:57+11:00'
 completed_at:
 phases:
-  openspec_generation: 1
-  branch_setup: 1
-  implementation: 1
-  testing: 2
-  pr_creation: 1
+  openspec_generation: 2
+  branch_setup: 2
+  implementation: 2
+  testing: 4
+  pr_creation: 2
   cleanup_merge: 0
