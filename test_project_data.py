@@ -11,8 +11,8 @@ import pytest
 import yaml
 import requests
 
-# Import the functions we're testing
-from monitor import (
+# Import from new modular structure
+from lib.projects import (
     slugify_name,
     get_project_data_path,
     load_project_data,
@@ -22,7 +22,12 @@ from monitor import (
     register_project,
     register_all_projects,
     PROJECT_DATA_DIR,
-    # History Compression functions
+    get_all_project_roadmaps,
+    get_all_project_states,
+)
+
+# History Compression functions
+from lib.compression import (
     add_to_compression_queue,
     get_pending_compressions,
     remove_from_compression_queue,
@@ -33,8 +38,13 @@ from monitor import (
     build_compression_prompt,
     compress_session,
     process_compression_queue,
-    add_recent_session,
-    # Headspace functions
+)
+
+# Session summarization functions
+from lib.summarization import add_recent_session
+
+# Headspace functions
+from lib.headspace import (
     HEADSPACE_DATA_PATH,
     load_headspace,
     save_headspace,
@@ -44,19 +54,19 @@ from monitor import (
     # Priorities functions
     is_priorities_enabled,
     get_priorities_config,
-    get_all_project_roadmaps,
-    get_all_project_states,
     aggregate_priority_context,
     build_prioritisation_prompt,
     parse_priority_response,
     is_cache_valid,
     is_any_session_processing,
-    _default_priority_order,
-    compute_priorities,
+    default_priority_order as _default_priority_order,
     _priorities_cache,
     update_priorities_cache,
     apply_soft_transition,
 )
+
+# Main app functions
+from monitor import compute_priorities
 
 
 @pytest.fixture
@@ -64,7 +74,7 @@ def temp_data_dir(tmp_path, monkeypatch):
     """Create a temporary data directory for testing."""
     temp_projects_dir = tmp_path / "data" / "projects"
     temp_projects_dir.mkdir(parents=True)
-    monkeypatch.setattr("monitor.PROJECT_DATA_DIR", temp_projects_dir)
+    monkeypatch.setattr("lib.projects.PROJECT_DATA_DIR", temp_projects_dir)
     return temp_projects_dir
 
 
@@ -340,7 +350,7 @@ class TestRegisterAllProjects:
                 {"name": "Project B", "path": str(proj_b)},
             ]
         }
-        monkeypatch.setattr("monitor.load_config", lambda: mock_config)
+        monkeypatch.setattr("lib.projects.load_config", lambda: mock_config)
 
         register_all_projects()
 
@@ -491,7 +501,7 @@ class TestOpenRouterClient:
 
     def test_get_openrouter_config_defaults(self, monkeypatch):
         """Test default config values when not configured."""
-        monkeypatch.setattr("monitor.load_config", lambda: {})
+        monkeypatch.setattr("lib.compression.load_config", lambda: {})
 
         result = get_openrouter_config()
         assert result["api_key"] == ""
@@ -507,7 +517,7 @@ class TestOpenRouterClient:
                 "compression_interval": 600
             }
         }
-        monkeypatch.setattr("monitor.load_config", lambda: mock_config)
+        monkeypatch.setattr("lib.compression.load_config", lambda: mock_config)
 
         result = get_openrouter_config()
         assert result["api_key"] == "test-key"
@@ -516,17 +526,17 @@ class TestOpenRouterClient:
 
     def test_call_openrouter_no_api_key(self, monkeypatch):
         """Test that missing API key returns error."""
-        monkeypatch.setattr("monitor.load_config", lambda: {})
+        monkeypatch.setattr("lib.compression.load_config", lambda: {})
 
         result, error = call_openrouter([{"role": "user", "content": "test"}])
         assert result is None
         assert error == "OpenRouter API key not configured"
 
-    @patch("monitor.requests.post")
+    @patch("lib.compression.requests.post")
     def test_call_openrouter_success(self, mock_post, monkeypatch):
         """Test successful API call."""
         mock_config = {"openrouter": {"api_key": "test-key"}}
-        monkeypatch.setattr("monitor.load_config", lambda: mock_config)
+        monkeypatch.setattr("lib.compression.load_config", lambda: mock_config)
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -539,11 +549,11 @@ class TestOpenRouterClient:
         assert result == "Test response"
         assert error is None
 
-    @patch("monitor.requests.post")
+    @patch("lib.compression.requests.post")
     def test_call_openrouter_rate_limited(self, mock_post, monkeypatch):
         """Test rate limiting (429) handling."""
         mock_config = {"openrouter": {"api_key": "test-key"}}
-        monkeypatch.setattr("monitor.load_config", lambda: mock_config)
+        monkeypatch.setattr("lib.compression.load_config", lambda: mock_config)
 
         mock_response = MagicMock()
         mock_response.status_code = 429
@@ -553,11 +563,11 @@ class TestOpenRouterClient:
         assert result is None
         assert error == "rate_limited"
 
-    @patch("monitor.requests.post")
+    @patch("lib.compression.requests.post")
     def test_call_openrouter_auth_error(self, mock_post, monkeypatch):
         """Test authentication error (401) handling."""
         mock_config = {"openrouter": {"api_key": "bad-key"}}
-        monkeypatch.setattr("monitor.load_config", lambda: mock_config)
+        monkeypatch.setattr("lib.compression.load_config", lambda: mock_config)
 
         mock_response = MagicMock()
         mock_response.status_code = 401
@@ -567,11 +577,11 @@ class TestOpenRouterClient:
         assert result is None
         assert error == "authentication_failed"
 
-    @patch("monitor.requests.post")
+    @patch("lib.compression.requests.post")
     def test_call_openrouter_timeout(self, mock_post, monkeypatch):
         """Test timeout handling."""
         mock_config = {"openrouter": {"api_key": "test-key"}}
-        monkeypatch.setattr("monitor.load_config", lambda: mock_config)
+        monkeypatch.setattr("lib.compression.load_config", lambda: mock_config)
 
         mock_post.side_effect = requests.Timeout()
 
@@ -613,7 +623,7 @@ class TestCompressionPrompt:
 class TestRetryLogic:
     """Tests for retry logic with exponential backoff."""
 
-    @patch("monitor.call_openrouter")
+    @patch("lib.compression.call_openrouter")
     def test_process_compression_queue_success(self, mock_call, temp_data_dir):
         """Test successful queue processing."""
         test_data = {
@@ -636,7 +646,7 @@ class TestRetryLogic:
         data = yaml.safe_load(test_file.read_text())
         assert len(data["pending_compressions"]) == 0
 
-    @patch("monitor.call_openrouter")
+    @patch("lib.compression.call_openrouter")
     def test_process_compression_queue_retry_on_timeout(self, mock_call, temp_data_dir):
         """Test that timeout triggers retry."""
         test_data = {
@@ -723,7 +733,7 @@ def temp_headspace_path(tmp_path, monkeypatch):
     """Create a temporary headspace file path for testing."""
     headspace_file = tmp_path / "data" / "headspace.yaml"
     headspace_file.parent.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr("monitor.HEADSPACE_DATA_PATH", headspace_file)
+    monkeypatch.setattr("lib.headspace.HEADSPACE_DATA_PATH", headspace_file)
     return headspace_file
 
 
@@ -872,27 +882,27 @@ class TestHeadspaceConfiguration:
 
     def test_is_headspace_enabled_default(self, monkeypatch):
         """Test headspace enabled by default."""
-        monkeypatch.setattr("monitor.load_config", lambda: {})
+        monkeypatch.setattr("lib.headspace.load_config", lambda: {})
         assert is_headspace_enabled() is True
 
     def test_is_headspace_enabled_true(self, monkeypatch):
         """Test headspace explicitly enabled."""
-        monkeypatch.setattr("monitor.load_config", lambda: {"headspace": {"enabled": True}})
+        monkeypatch.setattr("lib.headspace.load_config", lambda: {"headspace": {"enabled": True}})
         assert is_headspace_enabled() is True
 
     def test_is_headspace_enabled_false(self, monkeypatch):
         """Test headspace explicitly disabled."""
-        monkeypatch.setattr("monitor.load_config", lambda: {"headspace": {"enabled": False}})
+        monkeypatch.setattr("lib.headspace.load_config", lambda: {"headspace": {"enabled": False}})
         assert is_headspace_enabled() is False
 
     def test_is_history_enabled_default(self, monkeypatch):
         """Test history disabled by default."""
-        monkeypatch.setattr("monitor.load_config", lambda: {})
+        monkeypatch.setattr("lib.headspace.load_config", lambda: {})
         assert is_headspace_history_enabled() is False
 
     def test_is_history_enabled_true(self, monkeypatch):
         """Test history explicitly enabled."""
-        monkeypatch.setattr("monitor.load_config", lambda: {"headspace": {"history_enabled": True}})
+        monkeypatch.setattr("lib.headspace.load_config", lambda: {"headspace": {"history_enabled": True}})
         assert is_headspace_history_enabled() is True
 
 
@@ -905,22 +915,22 @@ class TestPrioritiesConfiguration:
 
     def test_is_priorities_enabled_default(self, monkeypatch):
         """Test priorities enabled by default."""
-        monkeypatch.setattr("monitor.load_config", lambda: {})
+        monkeypatch.setattr("lib.headspace.load_config", lambda: {})
         assert is_priorities_enabled() is True
 
     def test_is_priorities_enabled_true(self, monkeypatch):
         """Test priorities explicitly enabled."""
-        monkeypatch.setattr("monitor.load_config", lambda: {"priorities": {"enabled": True}})
+        monkeypatch.setattr("lib.headspace.load_config", lambda: {"priorities": {"enabled": True}})
         assert is_priorities_enabled() is True
 
     def test_is_priorities_enabled_false(self, monkeypatch):
         """Test priorities explicitly disabled."""
-        monkeypatch.setattr("monitor.load_config", lambda: {"priorities": {"enabled": False}})
+        monkeypatch.setattr("lib.headspace.load_config", lambda: {"priorities": {"enabled": False}})
         assert is_priorities_enabled() is False
 
     def test_get_priorities_config_defaults(self, monkeypatch):
         """Test default priorities config values."""
-        monkeypatch.setattr("monitor.load_config", lambda: {})
+        monkeypatch.setattr("lib.headspace.load_config", lambda: {})
         config = get_priorities_config()
         assert config["enabled"] is True
         assert config["polling_interval"] == 60
@@ -928,7 +938,7 @@ class TestPrioritiesConfiguration:
 
     def test_get_priorities_config_custom(self, monkeypatch):
         """Test custom priorities config values."""
-        monkeypatch.setattr("monitor.load_config", lambda: {
+        monkeypatch.setattr("lib.headspace.load_config", lambda: {
             "priorities": {
                 "enabled": False,
                 "polling_interval": 120,
@@ -951,7 +961,7 @@ class TestContextAggregation:
             {"name": "project-b", "roadmap": {"next_up": {"title": "Feature Y"}}},
             {"name": "project-c"}  # No roadmap
         ]
-        monkeypatch.setattr("monitor.list_project_data", lambda: mock_projects)
+        monkeypatch.setattr("lib.projects.list_project_data", lambda: mock_projects)
 
         roadmaps = get_all_project_roadmaps()
         assert "project-a" in roadmaps
@@ -965,7 +975,7 @@ class TestContextAggregation:
             {"name": "project-a", "state": {"summary": "Working on tests"}, "recent_sessions": [1, 2, 3, 4, 5]},
             {"name": "project-b", "state": {"summary": "Bug fixes"}},
         ]
-        monkeypatch.setattr("monitor.list_project_data", lambda: mock_projects)
+        monkeypatch.setattr("lib.projects.list_project_data", lambda: mock_projects)
 
         states = get_all_project_states()
         assert states["project-a"]["summary"] == "Working on tests"
@@ -973,10 +983,11 @@ class TestContextAggregation:
 
     def test_aggregate_priority_context(self, monkeypatch):
         """Test aggregating all priority context."""
-        monkeypatch.setattr("monitor.load_headspace", lambda: {"current_focus": "Testing"})
-        monkeypatch.setattr("monitor.list_project_data", lambda: [])
-        monkeypatch.setattr("monitor.load_config", lambda: {"projects": []})
-        monkeypatch.setattr("monitor.scan_sessions", lambda c: [])
+        monkeypatch.setattr("lib.headspace.load_headspace", lambda: {"current_focus": "Testing"})
+        monkeypatch.setattr("lib.headspace.get_all_project_roadmaps", lambda: {})
+        monkeypatch.setattr("lib.headspace.get_all_project_states", lambda: {})
+        monkeypatch.setattr("lib.headspace.load_config", lambda: {"projects": []})
+        monkeypatch.setattr("lib.sessions.scan_sessions", lambda c: [])
 
         context = aggregate_priority_context()
         assert "headspace" in context
@@ -1120,8 +1131,8 @@ class TestCacheValidity:
 
     def test_cache_invalid_when_empty(self, monkeypatch):
         """Test cache is invalid when no priorities cached."""
-        import monitor
-        monkeypatch.setattr("monitor._priorities_cache", {
+        import lib.headspace
+        monkeypatch.setattr("lib.headspace._priorities_cache", {
             "priorities": None,
             "timestamp": None,
             "pending_priorities": None,
@@ -1131,15 +1142,15 @@ class TestCacheValidity:
 
     def test_cache_valid_within_interval(self, monkeypatch):
         """Test cache is valid within polling interval."""
-        import monitor
+        import lib.headspace
         now = datetime.now(timezone.utc)
-        monkeypatch.setattr("monitor._priorities_cache", {
+        monkeypatch.setattr("lib.headspace._priorities_cache", {
             "priorities": [{"test": "data"}],
             "timestamp": now,
             "pending_priorities": None,
             "error": None
         })
-        monkeypatch.setattr("monitor.get_priorities_config", lambda: {"polling_interval": 60})
+        monkeypatch.setattr("lib.headspace.get_priorities_config", lambda: {"polling_interval": 60})
         assert is_cache_valid() is True
 
 
@@ -1164,8 +1175,8 @@ class TestSoftTransitions:
 
     def test_apply_soft_transition_with_processing(self, monkeypatch):
         """Test soft transition stores pending when processing."""
-        import monitor
-        monkeypatch.setattr("monitor._priorities_cache", {
+        import lib.headspace
+        monkeypatch.setattr("lib.headspace._priorities_cache", {
             "priorities": [{"old": "data"}],
             "timestamp": datetime.now(timezone.utc),
             "pending_priorities": None,
@@ -1181,8 +1192,8 @@ class TestSoftTransitions:
 
     def test_apply_soft_transition_no_processing(self, monkeypatch):
         """Test soft transition applies immediately when not processing."""
-        import monitor
-        monkeypatch.setattr("monitor._priorities_cache", {
+        import lib.headspace
+        monkeypatch.setattr("lib.headspace._priorities_cache", {
             "priorities": None,
             "timestamp": None,
             "pending_priorities": None,
@@ -1202,6 +1213,7 @@ class TestComputePriorities:
 
     def test_compute_when_disabled(self, monkeypatch):
         """Test compute returns error when disabled."""
+        # Must patch at the monitor module level since that's where compute_priorities imports from
         monkeypatch.setattr("monitor.is_priorities_enabled", lambda: False)
 
         result = compute_priorities()
@@ -1210,8 +1222,9 @@ class TestComputePriorities:
 
     def test_compute_with_no_sessions(self, monkeypatch):
         """Test compute handles no active sessions."""
+        # Must patch at the monitor module level since that's where compute_priorities imports from
         monkeypatch.setattr("monitor.is_priorities_enabled", lambda: True)
-        monkeypatch.setattr("monitor.is_cache_valid", lambda: False)
+        monkeypatch.setattr("monitor.get_cached_priorities", lambda: None)
         monkeypatch.setattr("monitor.aggregate_priority_context", lambda: {
             "headspace": None,
             "roadmaps": {},
@@ -1225,10 +1238,11 @@ class TestComputePriorities:
 
     def test_compute_with_openrouter_error(self, monkeypatch):
         """Test graceful degradation when OpenRouter fails."""
-        import monitor
+        import lib.headspace
+        # Must patch at the monitor module level since that's where compute_priorities imports from
         monkeypatch.setattr("monitor.is_priorities_enabled", lambda: True)
-        monkeypatch.setattr("monitor.is_cache_valid", lambda: False)
-        monkeypatch.setattr("monitor._priorities_cache", {
+        monkeypatch.setattr("monitor.get_cached_priorities", lambda: None)
+        monkeypatch.setattr("lib.headspace._priorities_cache", {
             "priorities": None,
             "timestamp": None,
             "pending_priorities": None,
@@ -1262,6 +1276,7 @@ class TestApiPrioritiesEndpoint:
 
     def test_priorities_endpoint_disabled(self, client, monkeypatch):
         """Test endpoint returns 404 when disabled."""
+        # Must patch at the monitor module level since that's where api_priorities imports from
         monkeypatch.setattr("monitor.is_priorities_enabled", lambda: False)
 
         response = client.get("/api/priorities")
@@ -1272,7 +1287,7 @@ class TestApiPrioritiesEndpoint:
     def test_priorities_endpoint_success(self, client, monkeypatch):
         """Test endpoint returns priorities."""
         import monitor
-        monkeypatch.setattr("monitor.is_priorities_enabled", lambda: True)
+        monkeypatch.setattr("lib.headspace.is_priorities_enabled", lambda: True)
         monkeypatch.setattr("monitor.compute_priorities", lambda force_refresh=False: {
             "success": True,
             "priorities": [
@@ -1300,7 +1315,7 @@ class TestApiPrioritiesEndpoint:
             calls.append(force_refresh)
             return {"success": True, "priorities": [], "metadata": {}}
 
-        monkeypatch.setattr("monitor.is_priorities_enabled", lambda: True)
+        monkeypatch.setattr("lib.headspace.is_priorities_enabled", lambda: True)
         monkeypatch.setattr("monitor.compute_priorities", mock_compute)
 
         client.get("/api/priorities?refresh=true")
