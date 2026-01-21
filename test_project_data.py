@@ -41,6 +41,21 @@ from monitor import (
     get_headspace_history,
     is_headspace_enabled,
     is_headspace_history_enabled,
+    # Priorities functions
+    is_priorities_enabled,
+    get_priorities_config,
+    get_all_project_roadmaps,
+    get_all_project_states,
+    aggregate_priority_context,
+    build_prioritisation_prompt,
+    parse_priority_response,
+    is_cache_valid,
+    is_any_session_processing,
+    _default_priority_order,
+    compute_priorities,
+    _priorities_cache,
+    update_priorities_cache,
+    apply_soft_transition,
 )
 
 
@@ -879,3 +894,414 @@ class TestHeadspaceConfiguration:
         """Test history explicitly enabled."""
         monkeypatch.setattr("monitor.load_config", lambda: {"headspace": {"history_enabled": True}})
         assert is_headspace_history_enabled() is True
+
+
+# =============================================================================
+# Priorities Tests
+# =============================================================================
+
+class TestPrioritiesConfiguration:
+    """Tests for priorities configuration helpers."""
+
+    def test_is_priorities_enabled_default(self, monkeypatch):
+        """Test priorities enabled by default."""
+        monkeypatch.setattr("monitor.load_config", lambda: {})
+        assert is_priorities_enabled() is True
+
+    def test_is_priorities_enabled_true(self, monkeypatch):
+        """Test priorities explicitly enabled."""
+        monkeypatch.setattr("monitor.load_config", lambda: {"priorities": {"enabled": True}})
+        assert is_priorities_enabled() is True
+
+    def test_is_priorities_enabled_false(self, monkeypatch):
+        """Test priorities explicitly disabled."""
+        monkeypatch.setattr("monitor.load_config", lambda: {"priorities": {"enabled": False}})
+        assert is_priorities_enabled() is False
+
+    def test_get_priorities_config_defaults(self, monkeypatch):
+        """Test default priorities config values."""
+        monkeypatch.setattr("monitor.load_config", lambda: {})
+        config = get_priorities_config()
+        assert config["enabled"] is True
+        assert config["polling_interval"] == 60
+        assert "model" in config
+
+    def test_get_priorities_config_custom(self, monkeypatch):
+        """Test custom priorities config values."""
+        monkeypatch.setattr("monitor.load_config", lambda: {
+            "priorities": {
+                "enabled": False,
+                "polling_interval": 120,
+                "model": "custom-model"
+            }
+        })
+        config = get_priorities_config()
+        assert config["enabled"] is False
+        assert config["polling_interval"] == 120
+        assert config["model"] == "custom-model"
+
+
+class TestContextAggregation:
+    """Tests for priority context aggregation functions."""
+
+    def test_get_all_project_roadmaps(self, monkeypatch):
+        """Test gathering roadmap data from projects."""
+        mock_projects = [
+            {"name": "project-a", "roadmap": {"next_up": {"title": "Feature X"}, "upcoming": ["Y", "Z"]}},
+            {"name": "project-b", "roadmap": {"next_up": {"title": "Feature Y"}}},
+            {"name": "project-c"}  # No roadmap
+        ]
+        monkeypatch.setattr("monitor.list_project_data", lambda: mock_projects)
+
+        roadmaps = get_all_project_roadmaps()
+        assert "project-a" in roadmaps
+        assert "project-b" in roadmaps
+        assert "project-c" not in roadmaps
+        assert roadmaps["project-a"]["next_up"]["title"] == "Feature X"
+
+    def test_get_all_project_states(self, monkeypatch):
+        """Test gathering state data from projects."""
+        mock_projects = [
+            {"name": "project-a", "state": {"summary": "Working on tests"}, "recent_sessions": [1, 2, 3, 4, 5]},
+            {"name": "project-b", "state": {"summary": "Bug fixes"}},
+        ]
+        monkeypatch.setattr("monitor.list_project_data", lambda: mock_projects)
+
+        states = get_all_project_states()
+        assert states["project-a"]["summary"] == "Working on tests"
+        assert len(states["project-a"]["recent_sessions"]) == 3  # Limited to 3
+
+    def test_aggregate_priority_context(self, monkeypatch):
+        """Test aggregating all priority context."""
+        monkeypatch.setattr("monitor.load_headspace", lambda: {"current_focus": "Testing"})
+        monkeypatch.setattr("monitor.list_project_data", lambda: [])
+        monkeypatch.setattr("monitor.load_config", lambda: {"projects": []})
+        monkeypatch.setattr("monitor.scan_sessions", lambda c: [])
+
+        context = aggregate_priority_context()
+        assert "headspace" in context
+        assert "roadmaps" in context
+        assert "states" in context
+        assert "sessions" in context
+        assert context["headspace"]["current_focus"] == "Testing"
+
+
+class TestBuildPrioritisationPrompt:
+    """Tests for prompt construction."""
+
+    def test_prompt_with_headspace(self):
+        """Test prompt includes headspace when set."""
+        context = {
+            "headspace": {"current_focus": "Ship billing feature", "constraints": "By Friday"},
+            "roadmaps": {},
+            "states": {},
+            "sessions": [
+                {"project_name": "billing", "session_id": "123", "activity_state": "idle", "task_summary": ""}
+            ]
+        }
+        messages = build_prioritisation_prompt(context)
+        assert len(messages) == 2
+        assert "system" in messages[0]["role"]
+        assert "Ship billing feature" in messages[1]["content"]
+        assert "By Friday" in messages[1]["content"]
+
+    def test_prompt_without_headspace(self):
+        """Test prompt handles missing headspace."""
+        context = {
+            "headspace": None,
+            "roadmaps": {},
+            "states": {},
+            "sessions": [
+                {"project_name": "api", "session_id": "456", "activity_state": "processing", "task_summary": ""}
+            ]
+        }
+        messages = build_prioritisation_prompt(context)
+        assert "Not set" in messages[1]["content"]
+        assert "roadmap urgency" in messages[1]["content"].lower()
+
+    def test_prompt_includes_activity_state(self):
+        """Test prompt includes activity state for each session."""
+        context = {
+            "headspace": None,
+            "roadmaps": {},
+            "states": {},
+            "sessions": [
+                {"project_name": "frontend", "session_id": "789", "activity_state": "input_needed", "task_summary": "Waiting for approval"}
+            ]
+        }
+        messages = build_prioritisation_prompt(context)
+        assert "input_needed" in messages[1]["content"]
+
+
+class TestParsePriorityResponse:
+    """Tests for parsing AI responses."""
+
+    def test_parse_valid_json(self):
+        """Test parsing valid JSON response."""
+        sessions = [
+            {"project_name": "api", "session_id": "123", "activity_state": "idle"},
+            {"project_name": "web", "session_id": "456", "activity_state": "processing"}
+        ]
+        response = '{"priorities": [{"project_name": "api", "session_id": "123", "priority_score": 90, "rationale": "High priority"}]}'
+
+        result = parse_priority_response(response, sessions)
+        assert len(result) == 2  # All sessions included
+        assert result[0]["priority_score"] == 90
+        assert result[0]["rationale"] == "High priority"
+
+    def test_parse_json_in_code_block(self):
+        """Test parsing JSON wrapped in markdown code block."""
+        sessions = [{"project_name": "test", "session_id": "1", "activity_state": "idle"}]
+        response = '```json\n{"priorities": [{"project_name": "test", "session_id": "1", "priority_score": 75, "rationale": "Test"}]}\n```'
+
+        result = parse_priority_response(response, sessions)
+        assert result[0]["priority_score"] == 75
+
+    def test_parse_malformed_response(self):
+        """Test fallback on malformed response."""
+        sessions = [
+            {"project_name": "a", "session_id": "1", "activity_state": "input_needed"},
+            {"project_name": "b", "session_id": "2", "activity_state": "idle"}
+        ]
+        response = "This is not JSON"
+
+        result = parse_priority_response(response, sessions)
+        assert len(result) == 2
+        # input_needed should be first in default ordering
+        assert result[0]["project_name"] == "a"
+
+    def test_parse_empty_response(self):
+        """Test fallback on empty response."""
+        sessions = [{"project_name": "x", "session_id": "1", "activity_state": "idle"}]
+
+        result = parse_priority_response("", sessions)
+        assert len(result) == 1
+        assert "Default ordering" in result[0]["rationale"]
+
+    def test_parse_clamps_priority_score(self):
+        """Test priority score is clamped to 0-100."""
+        sessions = [{"project_name": "test", "session_id": "1", "activity_state": "idle"}]
+        response = '{"priorities": [{"project_name": "test", "session_id": "1", "priority_score": 150, "rationale": "Over"}]}'
+
+        result = parse_priority_response(response, sessions)
+        assert result[0]["priority_score"] == 100  # Clamped
+
+
+class TestDefaultPriorityOrder:
+    """Tests for default priority ordering."""
+
+    def test_order_by_activity_state(self):
+        """Test sessions ordered by activity state."""
+        sessions = [
+            {"project_name": "a", "session_id": "1", "activity_state": "idle"},
+            {"project_name": "b", "session_id": "2", "activity_state": "input_needed"},
+            {"project_name": "c", "session_id": "3", "activity_state": "processing"},
+        ]
+
+        result = _default_priority_order(sessions)
+        assert result[0]["project_name"] == "b"  # input_needed first
+        assert result[1]["project_name"] == "a"  # idle second
+        assert result[2]["project_name"] == "c"  # processing last
+
+    def test_alphabetical_within_state(self):
+        """Test alphabetical order within same state."""
+        sessions = [
+            {"project_name": "zebra", "session_id": "1", "activity_state": "idle"},
+            {"project_name": "apple", "session_id": "2", "activity_state": "idle"},
+        ]
+
+        result = _default_priority_order(sessions)
+        assert result[0]["project_name"] == "apple"
+        assert result[1]["project_name"] == "zebra"
+
+
+class TestCacheValidity:
+    """Tests for cache validity logic."""
+
+    def test_cache_invalid_when_empty(self, monkeypatch):
+        """Test cache is invalid when no priorities cached."""
+        import monitor
+        monkeypatch.setattr("monitor._priorities_cache", {
+            "priorities": None,
+            "timestamp": None,
+            "pending_priorities": None,
+            "error": None
+        })
+        assert is_cache_valid() is False
+
+    def test_cache_valid_within_interval(self, monkeypatch):
+        """Test cache is valid within polling interval."""
+        import monitor
+        now = datetime.now(timezone.utc)
+        monkeypatch.setattr("monitor._priorities_cache", {
+            "priorities": [{"test": "data"}],
+            "timestamp": now,
+            "pending_priorities": None,
+            "error": None
+        })
+        monkeypatch.setattr("monitor.get_priorities_config", lambda: {"polling_interval": 60})
+        assert is_cache_valid() is True
+
+
+class TestSoftTransitions:
+    """Tests for soft transition detection and handling."""
+
+    def test_is_any_session_processing_true(self):
+        """Test detecting processing session."""
+        sessions = [
+            {"activity_state": "idle"},
+            {"activity_state": "processing"},
+        ]
+        assert is_any_session_processing(sessions) is True
+
+    def test_is_any_session_processing_false(self):
+        """Test no processing sessions."""
+        sessions = [
+            {"activity_state": "idle"},
+            {"activity_state": "input_needed"},
+        ]
+        assert is_any_session_processing(sessions) is False
+
+    def test_apply_soft_transition_with_processing(self, monkeypatch):
+        """Test soft transition stores pending when processing."""
+        import monitor
+        monkeypatch.setattr("monitor._priorities_cache", {
+            "priorities": [{"old": "data"}],
+            "timestamp": datetime.now(timezone.utc),
+            "pending_priorities": None,
+            "error": None
+        })
+
+        new_priorities = [{"new": "data"}]
+        sessions = [{"activity_state": "processing"}]
+
+        result, pending = apply_soft_transition(new_priorities, sessions)
+        assert pending is True
+        assert result[0]["old"] == "data"  # Returns old
+
+    def test_apply_soft_transition_no_processing(self, monkeypatch):
+        """Test soft transition applies immediately when not processing."""
+        import monitor
+        monkeypatch.setattr("monitor._priorities_cache", {
+            "priorities": None,
+            "timestamp": None,
+            "pending_priorities": None,
+            "error": None
+        })
+
+        new_priorities = [{"new": "data"}]
+        sessions = [{"activity_state": "idle"}]
+
+        result, pending = apply_soft_transition(new_priorities, sessions)
+        assert pending is False
+        assert result[0]["new"] == "data"
+
+
+class TestComputePriorities:
+    """Tests for compute_priorities integration."""
+
+    def test_compute_when_disabled(self, monkeypatch):
+        """Test compute returns error when disabled."""
+        monkeypatch.setattr("monitor.is_priorities_enabled", lambda: False)
+
+        result = compute_priorities()
+        assert result["success"] is False
+        assert "disabled" in result["error"]
+
+    def test_compute_with_no_sessions(self, monkeypatch):
+        """Test compute handles no active sessions."""
+        monkeypatch.setattr("monitor.is_priorities_enabled", lambda: True)
+        monkeypatch.setattr("monitor.is_cache_valid", lambda: False)
+        monkeypatch.setattr("monitor.aggregate_priority_context", lambda: {
+            "headspace": None,
+            "roadmaps": {},
+            "states": {},
+            "sessions": []
+        })
+
+        result = compute_priorities(force_refresh=True)
+        assert result["success"] is True
+        assert result["priorities"] == []
+
+    def test_compute_with_openrouter_error(self, monkeypatch):
+        """Test graceful degradation when OpenRouter fails."""
+        import monitor
+        monkeypatch.setattr("monitor.is_priorities_enabled", lambda: True)
+        monkeypatch.setattr("monitor.is_cache_valid", lambda: False)
+        monkeypatch.setattr("monitor._priorities_cache", {
+            "priorities": None,
+            "timestamp": None,
+            "pending_priorities": None,
+            "error": None
+        })
+        monkeypatch.setattr("monitor.aggregate_priority_context", lambda: {
+            "headspace": {"current_focus": "Testing"},
+            "roadmaps": {},
+            "states": {},
+            "sessions": [{"project_name": "test", "session_id": "1", "activity_state": "idle", "task_summary": ""}]
+        })
+        monkeypatch.setattr("monitor.get_priorities_config", lambda: {"model": "test"})
+        monkeypatch.setattr("monitor.call_openrouter", lambda m, model: (None, "API error"))
+
+        result = compute_priorities(force_refresh=True)
+        assert result["success"] is True  # Still succeeds with fallback
+        assert len(result["priorities"]) == 1
+        assert "error" in result["metadata"]
+
+
+class TestApiPrioritiesEndpoint:
+    """Tests for the /api/priorities endpoint."""
+
+    @pytest.fixture
+    def client(self):
+        """Create Flask test client."""
+        from monitor import app
+        app.config["TESTING"] = True
+        with app.test_client() as client:
+            yield client
+
+    def test_priorities_endpoint_disabled(self, client, monkeypatch):
+        """Test endpoint returns 404 when disabled."""
+        monkeypatch.setattr("monitor.is_priorities_enabled", lambda: False)
+
+        response = client.get("/api/priorities")
+        assert response.status_code == 404
+        data = response.get_json()
+        assert data["success"] is False
+
+    def test_priorities_endpoint_success(self, client, monkeypatch):
+        """Test endpoint returns priorities."""
+        import monitor
+        monkeypatch.setattr("monitor.is_priorities_enabled", lambda: True)
+        monkeypatch.setattr("monitor.compute_priorities", lambda force_refresh=False: {
+            "success": True,
+            "priorities": [
+                {"project_name": "test", "session_id": "1", "priority_score": 80, "rationale": "High", "activity_state": "idle"}
+            ],
+            "metadata": {
+                "timestamp": "2024-01-01T00:00:00Z",
+                "headspace_summary": "Focus",
+                "cache_hit": False,
+                "soft_transition_pending": False
+            }
+        })
+
+        response = client.get("/api/priorities")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        assert len(data["priorities"]) == 1
+
+    def test_priorities_refresh_param(self, client, monkeypatch):
+        """Test refresh parameter triggers cache bypass."""
+        calls = []
+
+        def mock_compute(force_refresh=False):
+            calls.append(force_refresh)
+            return {"success": True, "priorities": [], "metadata": {}}
+
+        monkeypatch.setattr("monitor.is_priorities_enabled", lambda: True)
+        monkeypatch.setattr("monitor.compute_priorities", mock_compute)
+
+        client.get("/api/priorities?refresh=true")
+        assert calls[-1] is True
