@@ -150,6 +150,224 @@ def save_config(config: dict) -> bool:
         return False
 
 
+# =============================================================================
+# Project Data Management
+# =============================================================================
+
+PROJECT_DATA_DIR = Path(__file__).parent / "data" / "projects"
+
+
+def slugify_name(name: str) -> str:
+    """Convert a project name to a slug for filename use.
+
+    Converts to lowercase and replaces spaces with hyphens.
+    Example: "My Project" -> "my-project"
+    """
+    return name.lower().replace(" ", "-")
+
+
+def get_project_data_path(name: str) -> Path:
+    """Get the path to a project's YAML data file.
+
+    Args:
+        name: Project name (will be slugified)
+
+    Returns:
+        Path to data/projects/<slug>.yaml
+    """
+    slug = slugify_name(name)
+    return PROJECT_DATA_DIR / f"{slug}.yaml"
+
+
+def load_project_data(name_or_path: str) -> Optional[dict]:
+    """Load a project's YAML data.
+
+    Args:
+        name_or_path: Project name or direct path to YAML file
+
+    Returns:
+        Project data dict or None if not found
+    """
+    # If it looks like a path, use directly
+    if name_or_path.endswith(".yaml") or "/" in name_or_path:
+        path = Path(name_or_path)
+    else:
+        path = get_project_data_path(name_or_path)
+
+    if path.exists():
+        try:
+            return yaml.safe_load(path.read_text())
+        except Exception:
+            return None
+    return None
+
+
+def save_project_data(name: str, data: dict) -> bool:
+    """Save a project's YAML data.
+
+    Updates the refreshed_at timestamp automatically.
+
+    Args:
+        name: Project name (will be slugified)
+        data: Project data dict
+
+    Returns:
+        True if saved successfully
+    """
+    path = get_project_data_path(name)
+
+    # Ensure directory exists
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Update refreshed_at timestamp
+    if "context" not in data:
+        data["context"] = {}
+    data["context"]["refreshed_at"] = datetime.now(timezone.utc).isoformat()
+
+    try:
+        path.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False, allow_unicode=True))
+        return True
+    except Exception as e:
+        print(f"Warning: Failed to save project data for {name}: {e}")
+        return False
+
+
+def list_project_data() -> list[dict]:
+    """List all registered projects with their data.
+
+    Returns:
+        List of project data dicts
+    """
+    projects = []
+    if PROJECT_DATA_DIR.exists():
+        for yaml_file in PROJECT_DATA_DIR.glob("*.yaml"):
+            data = load_project_data(str(yaml_file))
+            if data:
+                projects.append(data)
+    return projects
+
+
+def parse_claude_md(project_path: str) -> dict:
+    """Parse a project's CLAUDE.md file to extract goal and tech stack.
+
+    Args:
+        project_path: Path to the project directory
+
+    Returns:
+        Dict with 'goal' and 'tech_stack' keys (empty strings if not found)
+    """
+    result = {"goal": "", "tech_stack": ""}
+
+    claude_md_path = Path(project_path) / "CLAUDE.md"
+    if not claude_md_path.exists():
+        print(f"Info: No CLAUDE.md found at {project_path}")
+        return result
+
+    try:
+        content = claude_md_path.read_text()
+    except Exception as e:
+        print(f"Warning: Could not read CLAUDE.md at {project_path}: {e}")
+        return result
+
+    # Extract Project Overview section for goal
+    goal_match = re.search(
+        r'##\s*Project\s*Overview\s*\n+(.*?)(?=\n##|\n---|\Z)',
+        content,
+        re.IGNORECASE | re.DOTALL
+    )
+    if goal_match:
+        # Get first paragraph/meaningful content
+        goal_text = goal_match.group(1).strip()
+        # Take first non-empty line or first paragraph
+        lines = [l.strip() for l in goal_text.split('\n') if l.strip()]
+        if lines:
+            result["goal"] = lines[0]
+
+    # Extract Tech Stack section
+    tech_match = re.search(
+        r'##\s*Tech\s*Stack\s*\n+(.*?)(?=\n##|\n---|\Z)',
+        content,
+        re.IGNORECASE | re.DOTALL
+    )
+    if tech_match:
+        tech_text = tech_match.group(1).strip()
+        # Take first line or consolidate bullet points
+        lines = [l.strip().lstrip('- ').lstrip('* ') for l in tech_text.split('\n') if l.strip()]
+        if lines:
+            # If multiple lines, join with commas
+            result["tech_stack"] = ", ".join(lines[:5])  # Limit to first 5 items
+
+    return result
+
+
+def register_project(name: str, path: str) -> bool:
+    """Register a project by creating its YAML data file.
+
+    Idempotent: Will not overwrite existing data.
+    Seeds new projects with goal and tech_stack from CLAUDE.md.
+
+    Args:
+        name: Project display name
+        path: Absolute path to project directory
+
+    Returns:
+        True if registration succeeded (new or existing)
+    """
+    data_path = get_project_data_path(name)
+
+    # Idempotent: skip if already exists
+    if data_path.exists():
+        print(f"Info: Project '{name}' already registered at {data_path}")
+        return True
+
+    # Parse CLAUDE.md for goal and tech_stack
+    claude_info = parse_claude_md(path)
+
+    # Create project data structure
+    data = {
+        "name": name,
+        "path": path,
+        "goal": claude_info["goal"],
+        "context": {
+            "tech_stack": claude_info["tech_stack"],
+            "target_users": "",
+            "refreshed_at": datetime.now(timezone.utc).isoformat(),
+        },
+        "roadmap": {},
+        "state": {},
+        "recent_sessions": [],
+        "history": {},
+    }
+
+    if save_project_data(name, data):
+        print(f"Info: Registered project '{name}' at {data_path}")
+        return True
+    return False
+
+
+def register_all_projects() -> None:
+    """Register all projects from config.yaml that don't have data files.
+
+    Called on monitor startup to ensure all configured projects have data files.
+    """
+    config = load_config()
+    registered_count = 0
+
+    for project in config.get("projects", []):
+        name = project.get("name")
+        path = project.get("path")
+
+        if not name or not path:
+            print(f"Warning: Skipping project with missing name or path: {project}")
+            continue
+
+        if register_project(name, path):
+            registered_count += 1
+
+    if registered_count > 0:
+        print(f"Info: Project registration complete ({registered_count} projects)")
+
+
 def get_readme_content() -> str:
     """Get README.md content."""
     readme_path = Path(__file__).parent / "README.md"
@@ -2212,6 +2430,10 @@ def main():
     print(f"Claude Monitor starting...")
     print(f"Monitoring {len(config.get('projects', []))} projects")
     print(f"Refresh interval: {config.get('scan_interval', 2)}s")
+
+    # Register all projects from config (creates YAML data files if missing)
+    register_all_projects()
+
     print(f"\nOpen http://localhost:5050 in your browser")
     print("Press Ctrl+C to stop\n")
 

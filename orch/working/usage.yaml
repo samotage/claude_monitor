@@ -1,0 +1,12 @@
+---
+prd_path: docs/prds/focus/yaml-data-foundation-prd.md
+prd_title: yaml-data-foundation-prd
+started_at: '2026-01-21T18:29:43+11:00'
+completed_at:
+phases:
+  openspec_generation: 1
+  branch_setup: 1
+  implementation: 1
+  testing: 2
+  pr_creation: 1
+  cleanup_merge: 0

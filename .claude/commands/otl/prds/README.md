@@ -1,13 +1,37 @@
 # PRD Workflow Commands
 
-This directory contains commands for managing the PRD (Product Requirements Document) workflow.
+This directory contains commands for managing the PRD (Product Requirements Document) workflow. These commands prepare PRDs for the automated orchestration pipeline.
 
 ## Commands Overview
 
-- **10: prd-workshop** - Interactive workshop for creating or remediating PRDs
-- **20: prd-list** - List all PRDs with validation status
-- **30: prd-validate** - Validate a PRD before adding to orchestration queue
-- **40: prd-sequence** - Create a sequence of related PRDs
+| Command | Name | Purpose |
+|---------|------|---------|
+| 10 | `prd-workshop` | Interactive workshop for creating or remediating PRDs |
+| 20 | `prd-list` | List all PRDs with validation status |
+| 30 | `prd-validate` | Validate a PRD before adding to orchestration queue |
+| 40 | `prd-sequence` | Create a sequence of related PRDs |
+
+## Quick Start
+
+**Create a new PRD:**
+```
+10: prd-workshop
+```
+
+**Remediate an existing PRD:**
+```
+10: prd-workshop docs/prds/my-subsystem/my-feature-prd.md
+```
+
+**Validate a PRD:**
+```
+30: prd-validate docs/prds/my-subsystem/my-feature-prd.md
+```
+
+**List all PRDs:**
+```
+20: prd-list
+```
 
 ## Git History Integration
 
@@ -97,3 +121,51 @@ For very large repositories (>10K commits), consider reducing timeframe:
 ```bash
 ruby orch/git_history_analyzer.rb --subsystem campaigns --months-back 6
 ```
+
+## PRD Location Convention
+
+PRDs must be organized in subsystem folders:
+
+```
+docs/prds/
+├── walking-skeleton-prd.md      # Root-level: IGNORED by orchestration
+├── dashboard/
+│   ├── feature-prd.md           # Pending (to build)
+│   └── done/
+│       └── completed-prd.md     # Completed
+├── notifications/
+│   └── slack-integration-prd.md
+```
+
+- **Pending PRDs**: `docs/prds/{subsystem}/{prd-name}.md`
+- **Completed PRDs**: `docs/prds/{subsystem}/done/{prd-name}.md`
+- **Root-level PRDs**: Ignored by orchestration
+
+## Validation States
+
+PRDs carry validation metadata in their YAML frontmatter:
+
+```yaml
+---
+validation:
+  status: valid | invalid | unvalidated
+  validated_at: "2026-01-03T10:30:00Z"
+  validation_errors:  # Only present when invalid
+    - "Missing Success Criteria section"
+    - "TODO marker found on line 45"
+---
+```
+
+**Status Badges in `20: prd-list`:**
+
+- `[✓ Valid - Jan 2]` - Ready for orchestration queue
+- `[✗ Invalid - 3 errors]` - Needs remediation via `10: prd-workshop`
+- `[⊗ Unvalidated]` - Needs validation via `30: prd-validate`
+
+**Validation Gate:** Only PRDs with `status: valid` can be added to the orchestration queue.
+
+## Related Documentation
+
+- **Orchestration Commands:** See `orch/README.md` for the automated build pipeline
+- **Main OTL README:** See `../README.md` for overall workflow
+- **Ruby Backend:** `orch/prd_validator.rb` for validation implementation
