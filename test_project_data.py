@@ -34,6 +34,13 @@ from monitor import (
     compress_session,
     process_compression_queue,
     add_recent_session,
+    # Headspace functions
+    HEADSPACE_DATA_PATH,
+    load_headspace,
+    save_headspace,
+    get_headspace_history,
+    is_headspace_enabled,
+    is_headspace_history_enabled,
 )
 
 
@@ -689,3 +696,186 @@ class TestAddRecentSessionWithCompression:
 
         data = yaml.safe_load(test_file.read_text())
         assert len(data["recent_sessions"]) == 2
+
+
+# =============================================================================
+# Headspace Tests
+# =============================================================================
+
+
+@pytest.fixture
+def temp_headspace_path(tmp_path, monkeypatch):
+    """Create a temporary headspace file path for testing."""
+    headspace_file = tmp_path / "data" / "headspace.yaml"
+    headspace_file.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr("monitor.HEADSPACE_DATA_PATH", headspace_file)
+    return headspace_file
+
+
+class TestLoadHeadspace:
+    """Tests for load_headspace() function."""
+
+    def test_load_nonexistent_file(self, temp_headspace_path):
+        """Test loading when no headspace file exists."""
+        result = load_headspace()
+        assert result is None
+
+    def test_load_existing_headspace(self, temp_headspace_path):
+        """Test loading existing headspace data."""
+        test_data = {
+            "current_focus": "Ship auth feature",
+            "constraints": "No new features until CI green",
+            "updated_at": "2026-01-21T10:00:00Z"
+        }
+        temp_headspace_path.write_text(yaml.dump(test_data))
+
+        result = load_headspace()
+        assert result is not None
+        assert result["current_focus"] == "Ship auth feature"
+        assert result["constraints"] == "No new features until CI green"
+        assert result["updated_at"] == "2026-01-21T10:00:00Z"
+
+    def test_load_headspace_without_constraints(self, temp_headspace_path):
+        """Test loading headspace without optional constraints."""
+        test_data = {
+            "current_focus": "Fix critical bug",
+            "updated_at": "2026-01-21T10:00:00Z"
+        }
+        temp_headspace_path.write_text(yaml.dump(test_data))
+
+        result = load_headspace()
+        assert result is not None
+        assert result["current_focus"] == "Fix critical bug"
+        assert result["constraints"] is None
+
+    def test_load_empty_file(self, temp_headspace_path):
+        """Test loading an empty file returns None."""
+        temp_headspace_path.write_text("")
+        result = load_headspace()
+        assert result is None
+
+
+class TestSaveHeadspace:
+    """Tests for save_headspace() function."""
+
+    def test_save_new_headspace(self, temp_headspace_path):
+        """Test saving headspace when no file exists."""
+        result = save_headspace("Build new dashboard", "Must be responsive")
+
+        assert result["current_focus"] == "Build new dashboard"
+        assert result["constraints"] == "Must be responsive"
+        assert "updated_at" in result
+
+        # Verify file was created
+        assert temp_headspace_path.exists()
+        data = yaml.safe_load(temp_headspace_path.read_text())
+        assert data["current_focus"] == "Build new dashboard"
+
+    def test_save_headspace_without_constraints(self, temp_headspace_path):
+        """Test saving headspace without constraints."""
+        result = save_headspace("Simple task")
+
+        assert result["current_focus"] == "Simple task"
+        assert result["constraints"] is None
+
+    def test_save_overwrites_existing(self, temp_headspace_path):
+        """Test that saving overwrites existing headspace."""
+        # Create initial headspace
+        save_headspace("First focus", "First constraint")
+
+        # Overwrite with new headspace
+        result = save_headspace("Second focus", "Second constraint")
+
+        assert result["current_focus"] == "Second focus"
+        assert result["constraints"] == "Second constraint"
+
+        # Verify file has new data
+        data = yaml.safe_load(temp_headspace_path.read_text())
+        assert data["current_focus"] == "Second focus"
+
+    def test_save_updates_timestamp(self, temp_headspace_path):
+        """Test that saving updates the timestamp."""
+        result1 = save_headspace("First focus")
+        timestamp1 = result1["updated_at"]
+
+        # Small delay to ensure different timestamp
+        import time
+        time.sleep(0.01)
+
+        result2 = save_headspace("Second focus")
+        timestamp2 = result2["updated_at"]
+
+        assert timestamp1 != timestamp2
+
+
+class TestHeadspaceHistory:
+    """Tests for headspace history functions."""
+
+    def test_get_history_empty(self, temp_headspace_path):
+        """Test getting history when no history exists."""
+        result = get_headspace_history()
+        assert result == []
+
+    def test_get_history_from_file(self, temp_headspace_path):
+        """Test getting history from file."""
+        test_data = {
+            "current_focus": "Current task",
+            "history": [
+                {"current_focus": "Old task 1", "updated_at": "2026-01-20T10:00:00Z"},
+                {"current_focus": "Old task 2", "updated_at": "2026-01-19T10:00:00Z"}
+            ]
+        }
+        temp_headspace_path.write_text(yaml.dump(test_data))
+
+        result = get_headspace_history()
+        assert len(result) == 2
+        assert result[0]["current_focus"] == "Old task 1"
+
+    def test_history_preserved_on_save(self, temp_headspace_path):
+        """Test that history is preserved when saving new headspace."""
+        # Create initial data with history
+        initial_data = {
+            "current_focus": "Current task",
+            "updated_at": "2026-01-20T10:00:00Z",
+            "history": [
+                {"current_focus": "Old task", "updated_at": "2026-01-19T10:00:00Z"}
+            ]
+        }
+        temp_headspace_path.write_text(yaml.dump(initial_data))
+
+        # Save new headspace (without history enabled)
+        save_headspace("New task")
+
+        # Verify history is preserved
+        data = yaml.safe_load(temp_headspace_path.read_text())
+        assert "history" in data
+        assert len(data["history"]) == 1
+
+
+class TestHeadspaceConfiguration:
+    """Tests for headspace configuration helpers."""
+
+    def test_is_headspace_enabled_default(self, monkeypatch):
+        """Test headspace enabled by default."""
+        monkeypatch.setattr("monitor.load_config", lambda: {})
+        assert is_headspace_enabled() is True
+
+    def test_is_headspace_enabled_true(self, monkeypatch):
+        """Test headspace explicitly enabled."""
+        monkeypatch.setattr("monitor.load_config", lambda: {"headspace": {"enabled": True}})
+        assert is_headspace_enabled() is True
+
+    def test_is_headspace_enabled_false(self, monkeypatch):
+        """Test headspace explicitly disabled."""
+        monkeypatch.setattr("monitor.load_config", lambda: {"headspace": {"enabled": False}})
+        assert is_headspace_enabled() is False
+
+    def test_is_history_enabled_default(self, monkeypatch):
+        """Test history disabled by default."""
+        monkeypatch.setattr("monitor.load_config", lambda: {})
+        assert is_headspace_history_enabled() is False
+
+    def test_is_history_enabled_true(self, monkeypatch):
+        """Test history explicitly enabled."""
+        monkeypatch.setattr("monitor.load_config", lambda: {"headspace": {"history_enabled": True}})
+        assert is_headspace_history_enabled() is True
