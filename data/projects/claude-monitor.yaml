@@ -1,0 +1,23 @@
+name: CLaude Monitor
+path: /Users/samotage/dev/otagelabs/monitors/claude_monitor
+goal: Claude Monitor is a Kanban-style web dashboard for tracking Claude Code sessions
+  across multiple projects. It monitors iTerm windows and displays real-time session
+  status with click-to-focus functionality and native macOS notifications.
+context:
+  tech_stack: Python:** 3.10+, Framework:** Flask, Config:** PyYAML, macOS Integration:**
+    AppleScript via osascript subprocess, Notifications:** terminal-notifier
+  target_users: ''
+  refreshed_at: '2026-01-21T10:50:03.219809+00:00'
+roadmap:
+  next_up:
+    title: Finish the current orchestration pipeline
+    why: Just put the platform in a position to start
+    definition_of_done: ''
+  upcoming:
+  - Bug where the input here gets nuked on update
+  later:
+  - Verify functionality and code review
+  not_now: []
+state: {}
+recent_sessions: []
+history: {}
