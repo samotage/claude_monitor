@@ -94,11 +94,28 @@ def send_macos_notification(title: str, message: str, sound: bool = True, pid: i
 
 
 def check_state_changes_and_notify(sessions: list[dict]) -> None:
-    """Check for state changes and send macOS notifications."""
+    """Check for state changes and send macOS notifications with priority info."""
     global previous_session_states
 
     if not notifications_enabled:
         return
+
+    # Get priority and headspace info for enhanced notifications
+    priority_map = {}
+    headspace_focus = None
+
+    # Build priority lookup map from cache
+    if _priorities_cache.get("priorities"):
+        for p in _priorities_cache["priorities"]:
+            priority_map[str(p.get("session_id"))] = p
+
+    # Get headspace focus
+    try:
+        headspace = load_headspace()
+        if headspace:
+            headspace_focus = headspace.get("current_focus")
+    except Exception:
+        pass
 
     for session in sessions:
         uuid = session.get("uuid", "")
@@ -112,22 +129,39 @@ def check_state_changes_and_notify(sessions: list[dict]) -> None:
 
         project = session.get("project_name", "Unknown")
         task = session.get("task_summary", "")[:50]
+        pid = session.get("pid")
+
+        # Get priority info for this session
+        priority_info = priority_map.get(str(pid)) if pid else None
+        is_high_priority = priority_info and priority_info.get("priority_score", 0) >= 70
 
         # Notify: became input_needed
         if current_state == "input_needed" and previous_state != "input_needed":
-            send_macos_notification(
-                "Input Needed",
-                f"{project}: {task}",
-                pid=session.get("pid")
-            )
+            # Build notification title and message
+            if is_high_priority:
+                title = "⚡ High Priority: Input Needed"
+                message = f"{project}: {task}"
+                # Add headspace relevance if available
+                if headspace_focus:
+                    message += f"\nRelated to: {headspace_focus[:40]}"
+            else:
+                title = "Input Needed"
+                message = f"{project}: {task}"
+
+            send_macos_notification(title, message, pid=pid)
 
         # Notify: processing finished (became idle)
         if current_state == "idle" and previous_state == "processing":
-            send_macos_notification(
-                "Task Complete",
-                f"{project}: {task}",
-                pid=session.get("pid")
-            )
+            if is_high_priority:
+                title = "⚡ High Priority: Task Complete"
+                message = f"{project}: {task}"
+                if headspace_focus:
+                    message += f"\nRelated to: {headspace_focus[:40]}"
+            else:
+                title = "Task Complete"
+                message = f"{project}: {task}"
+
+            send_macos_notification(title, message, pid=pid)
 
         previous_session_states[uuid] = current_state
 
@@ -3516,6 +3550,443 @@ HTML_TEMPLATE = '''
             font-size: 0.85rem;
         }
 
+        /* =============================================================================
+           Priority Dashboard UI Styles (Sprint 8)
+           ============================================================================= */
+
+        /* Recommended Next Panel */
+        .recommended-next-panel {
+            background: linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-elevated) 100%);
+            border: 1px solid var(--cyan-dim);
+            border-radius: 6px;
+            margin-bottom: 24px;
+            padding: 16px 20px;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .recommended-next-panel:hover {
+            border-color: var(--cyan);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(86, 212, 221, 0.15);
+        }
+
+        .recommended-next-panel::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: var(--cyan);
+            border-radius: 6px 0 0 6px;
+        }
+
+        .recommended-next-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .recommended-next-label {
+            color: var(--cyan);
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .recommended-next-label::before {
+            content: '★';
+        }
+
+        .recommended-next-score {
+            background: var(--cyan);
+            color: var(--bg-void);
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .recommended-next-content {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .recommended-next-project {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .recommended-next-name {
+            color: var(--text-primary);
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .recommended-next-state {
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-weight: 500;
+        }
+
+        .recommended-next-state.idle {
+            background: rgba(100, 180, 255, 0.15);
+            color: #64b4ff;
+        }
+
+        .recommended-next-state.input_needed {
+            background: rgba(255, 180, 100, 0.2);
+            color: #ffb464;
+        }
+
+        .recommended-next-state.processing {
+            background: rgba(0, 212, 170, 0.15);
+            color: var(--green);
+        }
+
+        .recommended-next-rationale {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            line-height: 1.5;
+            font-style: italic;
+        }
+
+        .recommended-next-rationale::before {
+            content: '"';
+            color: var(--cyan-dim);
+        }
+
+        .recommended-next-rationale::after {
+            content: '"';
+            color: var(--cyan-dim);
+        }
+
+        .recommended-next-action {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            margin-top: 4px;
+        }
+
+        .recommended-next-empty {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            text-align: center;
+            padding: 12px;
+        }
+
+        /* Priority Badges on Session Cards */
+        .priority-badge {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            z-index: 1;
+        }
+
+        .priority-badge.high {
+            background: var(--cyan);
+            color: var(--bg-void);
+        }
+
+        .priority-badge.medium {
+            background: var(--text-ghost);
+            color: var(--text-secondary);
+        }
+
+        .priority-badge.low {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        /* Sort Toggle */
+        .sort-toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+            padding: 8px 12px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+
+        .sort-toggle-label {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .sort-toggle {
+            display: flex;
+            gap: 0;
+            background: var(--bg-void);
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .sort-toggle-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 6px 14px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .sort-toggle-btn:hover {
+            color: var(--text-secondary);
+            background: var(--bg-hover);
+        }
+
+        .sort-toggle-btn.active {
+            background: var(--cyan);
+            color: var(--bg-void);
+        }
+
+        .soft-transition-indicator {
+            display: none;
+            align-items: center;
+            gap: 6px;
+            color: var(--amber);
+            font-size: 0.75rem;
+            margin-left: auto;
+            animation: pulse-soft 2s ease-in-out infinite;
+        }
+
+        .soft-transition-indicator.visible {
+            display: flex;
+        }
+
+        @keyframes pulse-soft {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+
+        /* Context Panel (extends reboot-panel pattern) */
+        .context-panel-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(8, 8, 10, 0.5);
+            z-index: 1000;
+        }
+
+        .context-panel-overlay.active {
+            display: block;
+        }
+
+        .context-panel {
+            position: fixed;
+            top: 0;
+            right: -450px;
+            width: 430px;
+            height: 100vh;
+            background: var(--bg-surface);
+            border-left: 1px solid var(--border-bright);
+            z-index: 1001;
+            transition: right 0.3s ease;
+            overflow-y: auto;
+            box-shadow: -4px 0 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .context-panel.active {
+            right: 0;
+        }
+
+        .context-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            background: var(--bg-elevated);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .context-panel-title {
+            color: var(--cyan);
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+
+        .context-panel-close {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 3px;
+            transition: all 0.15s ease;
+        }
+
+        .context-panel-close:hover {
+            color: var(--text-primary);
+            background: var(--bg-hover);
+        }
+
+        .context-panel-content {
+            padding: 20px;
+        }
+
+        .context-section {
+            margin-bottom: 24px;
+        }
+
+        .context-section-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .context-section-icon {
+            font-size: 1rem;
+        }
+
+        .context-section-content {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+
+        .context-priority-display {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: var(--bg-elevated);
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+
+        .context-priority-score {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--cyan);
+        }
+
+        .context-priority-level {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .context-rationale {
+            color: var(--text-secondary);
+            font-style: italic;
+            line-height: 1.5;
+        }
+
+        .context-roadmap-item {
+            padding: 8px 12px;
+            background: var(--bg-elevated);
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+
+        .context-roadmap-title {
+            color: var(--text-primary);
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .context-roadmap-why {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        .context-state-summary {
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .context-session-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .context-session-item {
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .context-session-item:last-child {
+            border-bottom: none;
+        }
+
+        .context-session-time {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+        }
+
+        .context-panel-actions {
+            display: flex;
+            gap: 12px;
+            padding: 20px;
+            border-top: 1px solid var(--border);
+            position: sticky;
+            bottom: 0;
+            background: var(--bg-surface);
+        }
+
+        .context-focus-btn {
+            flex: 1;
+            background: var(--cyan);
+            border: none;
+            color: var(--bg-void);
+            padding: 12px 20px;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            font-weight: 600;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .context-focus-btn:hover {
+            background: var(--green);
+        }
+
+        .context-empty-state {
+            color: var(--text-muted);
+            font-style: italic;
+            padding: 12px;
+            background: var(--bg-deep);
+            border-radius: 4px;
+            text-align: center;
+        }
+
         /* Roadmap Panel Styles */
         .roadmap-panel {
             margin-top: 10px;
@@ -3745,6 +4216,13 @@ HTML_TEMPLATE = '''
             background: rgba(224, 115, 115, 0.15);
             border: 1px solid var(--red-dim);
             color: var(--red);
+        }
+
+        .roadmap-status.saving {
+            display: block;
+            background: rgba(115, 180, 224, 0.15);
+            border: 1px solid var(--cyan-dim);
+            color: var(--cyan);
         }
 
         .roadmap-loading {
@@ -4208,6 +4686,21 @@ HTML_TEMPLATE = '''
         </div>
     </div>
 
+    <!-- Context Panel (Session Detail Side Panel) -->
+    <div id="context-panel-overlay" class="context-panel-overlay" onclick="closeContextPanel()"></div>
+    <div id="context-panel" class="context-panel">
+        <div class="context-panel-header">
+            <span class="context-panel-title" id="context-panel-project-name"></span>
+            <button class="context-panel-close" onclick="closeContextPanel()">&times;</button>
+        </div>
+        <div id="context-panel-content" class="context-panel-content">
+            <div class="reboot-loading">Loading context...</div>
+        </div>
+        <div class="context-panel-actions">
+            <button class="context-focus-btn" id="context-focus-btn" onclick="focusContextSession()">Focus iTerm Window</button>
+        </div>
+    </div>
+
     <!-- Tab Navigation -->
     <nav class="tab-nav">
         <button class="tab-btn active" data-tab="kanban">sessions</button>
@@ -4279,6 +4772,39 @@ HTML_TEMPLATE = '''
             <div class="headspace-empty" id="headspace-empty" style="display: none;">
                 <div class="headspace-empty-prompt">What's your focus right now?</div>
                 <div class="headspace-empty-hint">Setting a headspace helps you stay intentional.</div>
+            </div>
+        </div>
+
+        <!-- Recommended Next Panel -->
+        <div id="recommended-next-panel" class="recommended-next-panel" style="display: none;" onclick="focusRecommendedSession()">
+            <div class="recommended-next-header">
+                <span class="recommended-next-label">RECOMMENDED NEXT</span>
+                <span class="recommended-next-score" id="recommended-next-score"></span>
+            </div>
+            <div class="recommended-next-content">
+                <div class="recommended-next-project">
+                    <span class="recommended-next-name" id="recommended-next-name"></span>
+                    <span class="recommended-next-state" id="recommended-next-state"></span>
+                </div>
+                <div class="recommended-next-rationale" id="recommended-next-rationale"></div>
+                <div class="recommended-next-action">Click to focus iTerm window</div>
+            </div>
+            <!-- Empty state (shown when no sessions) -->
+            <div class="recommended-next-empty" id="recommended-next-empty" style="display: none;">
+                No active sessions
+            </div>
+        </div>
+
+        <!-- Sort Toggle -->
+        <div id="sort-toggle-container" class="sort-toggle-container" style="display: none;">
+            <span class="sort-toggle-label">Sort:</span>
+            <div class="sort-toggle">
+                <button class="sort-toggle-btn" id="sort-by-project" onclick="setSortMode('project')">By Project</button>
+                <button class="sort-toggle-btn active" id="sort-by-priority" onclick="setSortMode('priority')">By Priority</button>
+            </div>
+            <div class="soft-transition-indicator" id="soft-transition-indicator">
+                <span>&#8635;</span>
+                <span>Priorities updating...</span>
             </div>
         </div>
 
@@ -4375,6 +4901,365 @@ HTML_TEMPLATE = '''
         let pollingTimeoutId = null;
         let isPollingActive = true;
         let lastFetchTime = 0;
+
+        // =============================================================================
+        // Priority Dashboard State (Sprint 8)
+        // =============================================================================
+        let prioritiesData = null;
+        let prioritiesAvailable = false;
+        let softTransitionPending = false;
+        let sortMode = localStorage.getItem('sortMode') || 'priority';
+        let contextPanelSessionPid = null;
+
+        // Priority polling interval (separate from session polling)
+        const PRIORITY_POLL_INTERVAL = 60000; // 60 seconds
+        let priorityPollTimeoutId = null;
+
+        // Initialize priority features
+        async function initializePriorities() {
+            await fetchPriorities();
+            schedulePriorityPoll();
+            updateSortToggleState();
+        }
+
+        function schedulePriorityPoll() {
+            if (priorityPollTimeoutId) {
+                clearTimeout(priorityPollTimeoutId);
+            }
+            priorityPollTimeoutId = setTimeout(async () => {
+                if (!document.hidden) {
+                    await fetchPriorities();
+                    schedulePriorityPoll();
+                }
+            }, PRIORITY_POLL_INTERVAL);
+        }
+
+        async function fetchPriorities(forceRefresh = false) {
+            try {
+                const url = forceRefresh ? '/api/priorities?refresh=true' : '/api/priorities';
+                const response = await fetch(url);
+
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        // Priorities disabled
+                        prioritiesAvailable = false;
+                        hidePriorityUI();
+                        return;
+                    }
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data.success === false) {
+                    prioritiesAvailable = false;
+                    hidePriorityUI();
+                    console.log('Priorities unavailable:', data.error);
+                    return;
+                }
+
+                prioritiesData = data;
+                prioritiesAvailable = true;
+                softTransitionPending = data.metadata?.soft_transition_pending || false;
+
+                // Update UI
+                showPriorityUI();
+                updateRecommendedNextPanel();
+                updateSoftTransitionIndicator();
+
+                // Re-render kanban if in priority mode to update badges
+                if (sortMode === 'priority' && currentSessions) {
+                    renderKanban(currentSessions, currentProjects);
+                }
+            } catch (error) {
+                console.error('Failed to fetch priorities:', error);
+                prioritiesAvailable = false;
+                // Silently degrade - don't show error to user
+            }
+        }
+
+        function showPriorityUI() {
+            document.getElementById('recommended-next-panel').style.display = 'block';
+            document.getElementById('sort-toggle-container').style.display = 'flex';
+        }
+
+        function hidePriorityUI() {
+            document.getElementById('recommended-next-panel').style.display = 'none';
+            document.getElementById('sort-toggle-container').style.display = 'none';
+        }
+
+        function updateRecommendedNextPanel() {
+            const panel = document.getElementById('recommended-next-panel');
+            const content = panel.querySelector('.recommended-next-content');
+            const emptyState = document.getElementById('recommended-next-empty');
+            const scoreEl = document.getElementById('recommended-next-score');
+            const nameEl = document.getElementById('recommended-next-name');
+            const stateEl = document.getElementById('recommended-next-state');
+            const rationaleEl = document.getElementById('recommended-next-rationale');
+
+            if (!prioritiesData || !prioritiesData.priorities || prioritiesData.priorities.length === 0) {
+                content.style.display = 'none';
+                emptyState.style.display = 'block';
+                scoreEl.style.display = 'none';
+                return;
+            }
+
+            const topSession = prioritiesData.priorities[0];
+
+            content.style.display = 'flex';
+            emptyState.style.display = 'none';
+            scoreEl.style.display = 'inline';
+
+            scoreEl.textContent = topSession.priority_score;
+            nameEl.textContent = topSession.project_name;
+            stateEl.textContent = formatActivityState(topSession.activity_state);
+            stateEl.className = 'recommended-next-state ' + topSession.activity_state;
+            rationaleEl.textContent = topSession.rationale || 'Top priority session';
+        }
+
+        function formatActivityState(state) {
+            const states = {
+                'processing': 'processing',
+                'input_needed': 'input needed',
+                'idle': 'idle',
+                'completed': 'completed'
+            };
+            return states[state] || state;
+        }
+
+        function focusRecommendedSession() {
+            if (!prioritiesData || !prioritiesData.priorities || prioritiesData.priorities.length === 0) {
+                return;
+            }
+            const topSession = prioritiesData.priorities[0];
+            if (topSession.session_id) {
+                focusWindow(parseInt(topSession.session_id));
+            }
+        }
+
+        function updateSoftTransitionIndicator() {
+            const indicator = document.getElementById('soft-transition-indicator');
+            if (softTransitionPending) {
+                indicator.classList.add('visible');
+            } else {
+                indicator.classList.remove('visible');
+            }
+        }
+
+        // Sort toggle functions
+        function setSortMode(mode) {
+            sortMode = mode;
+            localStorage.setItem('sortMode', mode);
+            updateSortToggleState();
+
+            // Re-render with new sort mode
+            if (currentSessions) {
+                renderKanban(currentSessions, currentProjects);
+            }
+        }
+
+        function updateSortToggleState() {
+            const projectBtn = document.getElementById('sort-by-project');
+            const priorityBtn = document.getElementById('sort-by-priority');
+
+            if (sortMode === 'project') {
+                projectBtn.classList.add('active');
+                priorityBtn.classList.remove('active');
+            } else {
+                projectBtn.classList.remove('active');
+                priorityBtn.classList.add('active');
+            }
+        }
+
+        // Get priority info for a session
+        function getSessionPriority(sessionPid) {
+            if (!prioritiesData || !prioritiesData.priorities) return null;
+            return prioritiesData.priorities.find(p =>
+                String(p.session_id) === String(sessionPid)
+            );
+        }
+
+        // Get priority badge class
+        function getPriorityBadgeClass(score) {
+            if (score >= 70) return 'high';
+            if (score >= 40) return 'medium';
+            return 'low';
+        }
+
+        // =============================================================================
+        // Context Panel Functions
+        // =============================================================================
+
+        let currentSessions = null;
+
+        async function openContextPanel(projectName, sessionPid) {
+            const panel = document.getElementById('context-panel');
+            const overlay = document.getElementById('context-panel-overlay');
+            const content = document.getElementById('context-panel-content');
+            const title = document.getElementById('context-panel-project-name');
+
+            contextPanelSessionPid = sessionPid;
+            title.textContent = projectName;
+            content.innerHTML = '<div class="reboot-loading">Loading context...</div>';
+
+            panel.classList.add('active');
+            overlay.classList.add('active');
+
+            try {
+                // Fetch project reboot data for roadmap and state
+                const rebootResponse = await fetch(`/api/project/${encodeURIComponent(projectName)}/reboot`);
+                const rebootData = await rebootResponse.json();
+
+                // Get priority info for this session
+                const priorityInfo = getSessionPriority(sessionPid);
+
+                // Build context panel content
+                let html = '';
+
+                // Priority section
+                if (priorityInfo) {
+                    const level = priorityInfo.priority_score >= 70 ? 'High' :
+                                  priorityInfo.priority_score >= 40 ? 'Medium' : 'Low';
+                    html += `
+                        <div class="context-section">
+                            <div class="context-section-header">
+                                <span class="context-section-icon">★</span>
+                                <span>WHY RECOMMENDED</span>
+                            </div>
+                            <div class="context-section-content">
+                                <div class="context-priority-display">
+                                    <span class="context-priority-score">${priorityInfo.priority_score}</span>
+                                    <span class="context-priority-level">${level} Priority</span>
+                                </div>
+                                <p class="context-rationale">${escapeHtml(priorityInfo.rationale || 'No rationale available')}</p>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Roadmap section
+                if (rebootData.success && rebootData.briefing) {
+                    const briefing = rebootData.briefing;
+
+                    // Roadmap
+                    if (briefing.roadmap) {
+                        html += `
+                            <div class="context-section">
+                                <div class="context-section-header">
+                                    <span class="context-section-icon">🗺</span>
+                                    <span>ROADMAP</span>
+                                </div>
+                                <div class="context-section-content">
+                        `;
+
+                        if (briefing.roadmap.next_up) {
+                            html += `
+                                <div class="context-roadmap-item">
+                                    <div class="context-roadmap-title">Next: ${escapeHtml(briefing.roadmap.next_up.title || 'Untitled')}</div>
+                                    ${briefing.roadmap.next_up.why ? `<div class="context-roadmap-why">${escapeHtml(briefing.roadmap.next_up.why)}</div>` : ''}
+                                </div>
+                            `;
+                        }
+
+                        if (briefing.roadmap.upcoming && briefing.roadmap.upcoming.length > 0) {
+                            html += '<div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 8px;">Then:</div>';
+                            briefing.roadmap.upcoming.slice(0, 2).forEach(item => {
+                                html += `<div class="context-roadmap-item"><div class="context-roadmap-title">${escapeHtml(item.title || item)}</div></div>`;
+                            });
+                        }
+
+                        html += '</div></div>';
+                    }
+
+                    // Current state
+                    if (briefing.current_state && briefing.current_state.summary) {
+                        html += `
+                            <div class="context-section">
+                                <div class="context-section-header">
+                                    <span class="context-section-icon">📊</span>
+                                    <span>CURRENT STATE</span>
+                                </div>
+                                <div class="context-section-content">
+                                    <p class="context-state-summary">${escapeHtml(briefing.current_state.summary)}</p>
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                    // Recent sessions
+                    if (briefing.recent_sessions && briefing.recent_sessions.length > 0) {
+                        html += `
+                            <div class="context-section">
+                                <div class="context-section-header">
+                                    <span class="context-section-icon">📝</span>
+                                    <span>RECENT SESSIONS</span>
+                                </div>
+                                <div class="context-section-content">
+                                    <ul class="context-session-list">
+                        `;
+
+                        briefing.recent_sessions.slice(0, 5).forEach(session => {
+                            const summary = session.summary || session.task || 'No summary';
+                            const time = session.ended_at ? formatRelativeTime(session.ended_at) : '';
+                            html += `
+                                <li class="context-session-item">
+                                    ${time ? `<span class="context-session-time">${time}</span> ` : ''}
+                                    ${escapeHtml(summary)}
+                                </li>
+                            `;
+                        });
+
+                        html += '</ul></div></div>';
+                    }
+                } else {
+                    html += `
+                        <div class="context-section">
+                            <div class="context-empty-state">
+                                No project data available.
+                                <a href="#" onclick="event.stopPropagation(); openRebootPanel('${escapeHtml(projectName)}'); closeContextPanel();">View Headspace</a>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                content.innerHTML = html || '<div class="context-empty-state">No context available</div>';
+            } catch (error) {
+                console.error('Failed to load context:', error);
+                content.innerHTML = '<div class="context-empty-state">Failed to load context</div>';
+            }
+        }
+
+        function closeContextPanel() {
+            const panel = document.getElementById('context-panel');
+            const overlay = document.getElementById('context-panel-overlay');
+            panel.classList.remove('active');
+            overlay.classList.remove('active');
+            contextPanelSessionPid = null;
+        }
+
+        function focusContextSession() {
+            if (contextPanelSessionPid) {
+                focusWindow(contextPanelSessionPid);
+            }
+        }
+
+        function formatRelativeTime(dateString) {
+            try {
+                const date = new Date(dateString);
+                const now = new Date();
+                const diffMs = now - date;
+                const diffMins = Math.floor(diffMs / 60000);
+                const diffHours = Math.floor(diffMs / 3600000);
+                const diffDays = Math.floor(diffMs / 86400000);
+
+                if (diffMins < 60) return `${diffMins}m ago`;
+                if (diffHours < 24) return `${diffHours}h ago`;
+                if (diffDays < 7) return `${diffDays}d ago`;
+                return date.toLocaleDateString();
+            } catch (e) {
+                return '';
+            }
+        }
 
         // Page Visibility API - pause polling when tab is hidden
         document.addEventListener('visibilitychange', () => {
@@ -4557,30 +5442,75 @@ HTML_TEMPLATE = '''
         function renderKanban(sessions, projects) {
             const kanban = document.getElementById('kanban');
 
-            const byProject = {};
-            projects.forEach(p => {
-                byProject[p.name] = [];
-            });
+            // Store sessions globally for context panel
+            currentSessions = sessions;
 
-            sessions.forEach(session => {
-                const projectName = session.project_name;
-                if (!byProject[projectName]) {
-                    byProject[projectName] = [];
+            // Helper to render a single session card
+            function renderSessionCard(session, projectName) {
+                const statusClass = session.status === 'active' ? 'active-session' : 'completed-session';
+                const inputNeededClass = session.activity_state === 'input_needed' ? 'input-needed-card' : '';
+                const lineNums = ['01', '02', '03', '04', '05'].join('<br>');
+
+                const activityInfo = getActivityInfo(session.activity_state);
+
+                // Calculate staleness from session data
+                const lastActivity = session.started_at;
+                const stalenessHours = calculateStalenessHours(lastActivity);
+                const isStale = session.status !== 'active' && isProjectStale(lastActivity);
+                const staleClass = isStale ? 'stale' : '';
+
+                // Get priority badge
+                const priorityInfo = getSessionPriority(session.pid);
+                let priorityBadgeHtml = '';
+                if (priorityInfo && prioritiesAvailable) {
+                    const badgeClass = getPriorityBadgeClass(priorityInfo.priority_score);
+                    priorityBadgeHtml = `<span class="priority-badge ${badgeClass}">${priorityInfo.priority_score}</span>`;
                 }
-                byProject[projectName].push(session);
-            });
+
+                return `
+                    <div class="card ${statusClass} ${inputNeededClass} ${staleClass}" onclick="openContextPanel('${escapeHtml(projectName)}', ${session.pid || 0})" title="Click for details">
+                        ${priorityBadgeHtml}
+                        <div class="card-line-numbers">${lineNums}</div>
+                        <div class="card-content">
+                            <div class="card-header">
+                                <span class="uuid">${session.uuid_short}</span>
+                                <span class="status ${session.status}">${session.status}</span>
+                                <button class="reboot-btn" onclick="event.stopPropagation(); openRebootPanel('${escapeHtml(projectName)}')">Headspace</button>
+                            </div>
+                            <div class="activity-state ${session.activity_state}">
+                                <span class="activity-icon">${activityInfo.icon}</span>
+                                <span class="activity-label">${activityInfo.label}</span>
+                            </div>
+                            ${isStale ? `<div class="stale-indicator"><span class="stale-icon">&#128347;</span> Stale - ${formatStaleness(stalenessHours)}</div>` : ''}
+                            <div class="task-summary">${escapeHtml(session.task_summary)}</div>
+                            <div class="card-footer">
+                                <span class="elapsed">${session.elapsed}</span>
+                                ${session.pid ? `<span class="pid-info">${session.pid}</span>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
 
             let html = '';
-            for (const [projectName, projectSessions] of Object.entries(byProject)) {
-                // Skip projects with no sessions
-                if (projectSessions.length === 0) {
-                    continue;
-                }
 
-                const count = projectSessions.length;
+            // Sort by priority mode: single column with all sessions sorted by priority
+            if (sortMode === 'priority' && prioritiesAvailable && prioritiesData && prioritiesData.priorities) {
+                // Create a map of session PIDs to their priority order
+                const priorityOrder = {};
+                prioritiesData.priorities.forEach((p, idx) => {
+                    priorityOrder[String(p.session_id)] = idx;
+                });
+
+                // Sort sessions by priority (sessions not in priorities list go to end)
+                const sortedSessions = [...sessions].sort((a, b) => {
+                    const aIdx = priorityOrder[String(a.pid)] ?? 999;
+                    const bIdx = priorityOrder[String(b.pid)] ?? 999;
+                    return aIdx - bIdx;
+                });
 
                 html += `
-                    <div class="column">
+                    <div class="column" style="flex: 2; min-width: 400px;">
                         <div class="column-header">
                             <div class="column-title">
                                 <div class="window-dots">
@@ -4588,73 +5518,84 @@ HTML_TEMPLATE = '''
                                     <span class="window-dot yellow"></span>
                                     <span class="window-dot green"></span>
                                 </div>
-                                <span class="column-name">${escapeHtml(projectName)}</span>
+                                <span class="column-name">All Sessions (By Priority)</span>
                             </div>
-                            <span class="column-count">${count} active</span>
+                            <span class="column-count">${sortedSessions.length} active</span>
                         </div>
                         <div class="column-body">
                 `;
 
-                projectSessions.forEach((session, idx) => {
-                        const statusClass = session.status === 'active' ? 'active-session' : 'completed-session';
-                        const inputNeededClass = session.activity_state === 'input_needed' ? 'input-needed-card' : '';
-                        const lineNums = ['01', '02', '03', '04', '05'].join('<br>');
-
-                        const activityInfo = getActivityInfo(session.activity_state);
-
-                        // Calculate staleness from session data
-                        const lastActivity = session.started_at; // Use session start as activity marker
-                        const stalenessHours = calculateStalenessHours(lastActivity);
-                        const isStale = session.status !== 'active' && isProjectStale(lastActivity);
-                        const staleClass = isStale ? 'stale' : '';
-
-                        html += `
-                            <div class="card ${statusClass} ${inputNeededClass} ${staleClass}" onclick="focusWindow(${session.pid || 0})" title="Click to focus iTerm window">
-                                <div class="card-line-numbers">${lineNums}</div>
-                                <div class="card-content">
-                                    <div class="card-header">
-                                        <span class="uuid">${session.uuid_short}</span>
-                                        <span class="status ${session.status}">${session.status}</span>
-                                        <button class="reboot-btn" onclick="event.stopPropagation(); openRebootPanel('${escapeHtml(projectName)}')">Headspace</button>
-                                    </div>
-                                    <div class="activity-state ${session.activity_state}">
-                                        <span class="activity-icon">${activityInfo.icon}</span>
-                                        <span class="activity-label">${activityInfo.label}</span>
-                                    </div>
-                                    ${isStale ? `<div class="stale-indicator"><span class="stale-icon">&#128347;</span> Stale - ${formatStaleness(stalenessHours)}</div>` : ''}
-                                    <div class="task-summary">${escapeHtml(session.task_summary)}</div>
-                                    <div class="card-footer">
-                                        <span class="elapsed">${session.elapsed}</span>
-                                        ${session.pid ? `<span class="pid-info">${session.pid}</span>` : ''}
-                                    </div>
-                                </div>
-                            </div>
-                        `;
+                sortedSessions.forEach(session => {
+                    html += renderSessionCard(session, session.project_name);
                 });
 
-                // Add roadmap panel for this project
-                const projectSlug = projectName.toLowerCase().replace(/\\s+/g, '-');
-                html += `
-                    <div class="roadmap-panel" id="roadmap-${projectSlug}" data-project="${escapeHtml(projectName)}">
-                        <div class="roadmap-header" onclick="toggleRoadmap('${projectSlug}')">
-                            <div class="roadmap-toggle">
-                                <span class="roadmap-toggle-icon">▶</span>
-                                <span>Roadmap</span>
-                            </div>
-                            <div class="roadmap-actions">
-                                <button class="roadmap-btn" onclick="event.stopPropagation(); editRoadmap('${projectSlug}')">Edit</button>
-                            </div>
-                        </div>
-                        <div class="roadmap-content" id="roadmap-content-${projectSlug}">
-                            <div class="roadmap-loading" id="roadmap-loading-${projectSlug}">Loading...</div>
-                            <div id="roadmap-display-${projectSlug}"></div>
-                            <div id="roadmap-edit-${projectSlug}" style="display: none;"></div>
-                            <div class="roadmap-status" id="roadmap-status-${projectSlug}"></div>
-                        </div>
-                    </div>
-                `;
-
                 html += '</div></div>';
+            } else {
+                // Default: group by project
+                const byProject = {};
+                projects.forEach(p => {
+                    byProject[p.name] = [];
+                });
+
+                sessions.forEach(session => {
+                    const projectName = session.project_name;
+                    if (!byProject[projectName]) {
+                        byProject[projectName] = [];
+                    }
+                    byProject[projectName].push(session);
+                });
+
+                for (const [projectName, projectSessions] of Object.entries(byProject)) {
+                    if (projectSessions.length === 0) {
+                        continue;
+                    }
+
+                    const count = projectSessions.length;
+
+                    html += `
+                        <div class="column">
+                            <div class="column-header">
+                                <div class="column-title">
+                                    <div class="window-dots">
+                                        <span class="window-dot red"></span>
+                                        <span class="window-dot yellow"></span>
+                                        <span class="window-dot green"></span>
+                                    </div>
+                                    <span class="column-name">${escapeHtml(projectName)}</span>
+                                </div>
+                                <span class="column-count">${count} active</span>
+                            </div>
+                            <div class="column-body">
+                    `;
+
+                    projectSessions.forEach(session => {
+                        html += renderSessionCard(session, projectName);
+                    });
+
+                    // Add roadmap panel for this project
+                    const projectSlug = projectName.toLowerCase().replace(/\\s+/g, '-');
+                    html += `
+                        <div class="roadmap-panel" id="roadmap-${projectSlug}" data-project="${escapeHtml(projectName)}">
+                            <div class="roadmap-header" onclick="toggleRoadmap('${projectSlug}')">
+                                <div class="roadmap-toggle">
+                                    <span class="roadmap-toggle-icon">▶</span>
+                                    <span>Roadmap</span>
+                                </div>
+                                <div class="roadmap-actions">
+                                    <button class="roadmap-btn" onclick="event.stopPropagation(); editRoadmap('${projectSlug}')">Edit</button>
+                                </div>
+                            </div>
+                            <div class="roadmap-content" id="roadmap-content-${projectSlug}">
+                                <div class="roadmap-loading" id="roadmap-loading-${projectSlug}">Loading...</div>
+                                <div id="roadmap-display-${projectSlug}"></div>
+                                <div id="roadmap-edit-${projectSlug}" style="display: none;"></div>
+                                <div class="roadmap-status" id="roadmap-status-${projectSlug}"></div>
+                            </div>
+                        </div>
+                    `;
+
+                    html += '</div></div>';
+                }
             }
 
             kanban.innerHTML = html || '<div class="no-sessions">no active sessions</div>';
@@ -4849,10 +5790,11 @@ HTML_TEMPLATE = '''
                 overlay.addEventListener('click', closeRebootPanel);
             }
 
-            // Escape key to close
+            // Escape key to close panels
             document.addEventListener('keydown', function(e) {
                 if (e.key === 'Escape') {
                     closeRebootPanel();
+                    closeContextPanel();
                 }
             });
         });
@@ -5008,6 +5950,7 @@ HTML_TEMPLATE = '''
         // Load headspace on page load
         document.addEventListener('DOMContentLoaded', function() {
             loadHeadspace();
+            initializePriorities();
         });
 
         // =============================================================================
@@ -5019,6 +5962,92 @@ HTML_TEMPLATE = '''
 
         // Track which roadmaps are in edit mode
         const roadmapEditMode = {};
+
+        // Debounce timers for auto-save
+        const roadmapSaveTimers = {};
+
+        // Auto-save roadmap on field blur (debounced)
+        function scheduleRoadmapAutoSave(projectSlug) {
+            // Clear any pending save
+            if (roadmapSaveTimers[projectSlug]) {
+                clearTimeout(roadmapSaveTimers[projectSlug]);
+            }
+            // Schedule save after 300ms (debounce)
+            roadmapSaveTimers[projectSlug] = setTimeout(() => {
+                saveRoadmapQuietly(projectSlug);
+            }, 300);
+        }
+
+        // Save roadmap without exiting edit mode (for auto-save)
+        async function saveRoadmapQuietly(projectSlug) {
+            const statusEl = document.getElementById(`roadmap-status-${projectSlug}`);
+
+            // Check if edit elements still exist (might have been removed by refresh)
+            const titleEl = document.getElementById(`roadmap-edit-title-${projectSlug}`);
+            if (!titleEl) return; // Edit mode was closed
+
+            // Gather form data
+            const title = titleEl.value.trim();
+            const why = document.getElementById(`roadmap-edit-why-${projectSlug}`)?.value.trim() || '';
+            const dod = document.getElementById(`roadmap-edit-dod-${projectSlug}`)?.value.trim() || '';
+            const upcomingText = document.getElementById(`roadmap-edit-upcoming-${projectSlug}`)?.value || '';
+            const laterText = document.getElementById(`roadmap-edit-later-${projectSlug}`)?.value || '';
+            const notNowText = document.getElementById(`roadmap-edit-notnow-${projectSlug}`)?.value || '';
+
+            // Parse list fields
+            const parseList = (text) => text.split('\\n').map(s => s.trim()).filter(s => s.length > 0);
+
+            const roadmapData = {
+                next_up: { title, why, definition_of_done: dod },
+                upcoming: parseList(upcomingText),
+                later: parseList(laterText),
+                not_now: parseList(notNowText)
+            };
+
+            // Show subtle saving indicator
+            if (statusEl) {
+                statusEl.className = 'roadmap-status saving';
+                statusEl.textContent = 'Auto-saving...';
+                statusEl.style.display = 'block';
+            }
+
+            try {
+                const response = await fetch(`/api/project/${projectSlug}/roadmap`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(roadmapData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Update cache
+                    roadmapCache[projectSlug] = data.data;
+
+                    if (statusEl) {
+                        statusEl.className = 'roadmap-status success';
+                        statusEl.textContent = 'Saved';
+                        // Fade out after 1.5s
+                        setTimeout(() => {
+                            if (statusEl.textContent === 'Saved') {
+                                statusEl.style.display = 'none';
+                            }
+                        }, 1500);
+                    }
+                } else {
+                    if (statusEl) {
+                        statusEl.className = 'roadmap-status error';
+                        statusEl.textContent = `Error: ${data.error}`;
+                    }
+                }
+            } catch (error) {
+                console.error('Auto-save failed:', error);
+                if (statusEl) {
+                    statusEl.className = 'roadmap-status error';
+                    statusEl.textContent = 'Auto-save failed';
+                }
+            }
+        }
 
         async function toggleRoadmap(projectSlug) {
             const panel = document.getElementById(`roadmap-${projectSlug}`);
@@ -5153,19 +6182,22 @@ HTML_TEMPLATE = '''
                         <label>Title</label>
                         <input type="text" id="roadmap-edit-title-${projectSlug}"
                                value="${escapeHtml(roadmap.next_up?.title || '')}"
-                               placeholder="What's the immediate focus?">
+                               placeholder="What's the immediate focus?"
+                               onblur="scheduleRoadmapAutoSave('${projectSlug}')">
                     </div>
                     <div class="roadmap-field">
                         <label>Why</label>
                         <input type="text" id="roadmap-edit-why-${projectSlug}"
                                value="${escapeHtml(roadmap.next_up?.why || '')}"
-                               placeholder="Why is this important?">
+                               placeholder="Why is this important?"
+                               onblur="scheduleRoadmapAutoSave('${projectSlug}')">
                     </div>
                     <div class="roadmap-field">
                         <label>Definition of Done</label>
                         <input type="text" id="roadmap-edit-dod-${projectSlug}"
                                value="${escapeHtml(roadmap.next_up?.definition_of_done || '')}"
-                               placeholder="When is this complete?">
+                               placeholder="When is this complete?"
+                               onblur="scheduleRoadmapAutoSave('${projectSlug}')">
                     </div>
                 </div>
 
@@ -5173,7 +6205,8 @@ HTML_TEMPLATE = '''
                     <div class="roadmap-section-title">Upcoming (one per line)</div>
                     <div class="roadmap-field">
                         <textarea id="roadmap-edit-upcoming-${projectSlug}"
-                                  placeholder="Near-term items...">${escapeHtml((roadmap.upcoming || []).join('\\n'))}</textarea>
+                                  placeholder="Near-term items..."
+                                  onblur="scheduleRoadmapAutoSave('${projectSlug}')">${escapeHtml((roadmap.upcoming || []).join('\\n'))}</textarea>
                     </div>
                 </div>
 
@@ -5181,7 +6214,8 @@ HTML_TEMPLATE = '''
                     <div class="roadmap-section-title">Later (one per line)</div>
                     <div class="roadmap-field">
                         <textarea id="roadmap-edit-later-${projectSlug}"
-                                  placeholder="Backlog items...">${escapeHtml((roadmap.later || []).join('\\n'))}</textarea>
+                                  placeholder="Backlog items..."
+                                  onblur="scheduleRoadmapAutoSave('${projectSlug}')">${escapeHtml((roadmap.later || []).join('\\n'))}</textarea>
                     </div>
                 </div>
 
@@ -5189,13 +6223,13 @@ HTML_TEMPLATE = '''
                     <div class="roadmap-section-title">Not Now (one per line)</div>
                     <div class="roadmap-field">
                         <textarea id="roadmap-edit-notnow-${projectSlug}"
-                                  placeholder="Explicitly deferred...">${escapeHtml((roadmap.not_now || []).join('\\n'))}</textarea>
+                                  placeholder="Explicitly deferred..."
+                                  onblur="scheduleRoadmapAutoSave('${projectSlug}')">${escapeHtml((roadmap.not_now || []).join('\\n'))}</textarea>
                     </div>
                 </div>
 
                 <div class="roadmap-edit-actions">
-                    <button class="roadmap-btn" onclick="cancelRoadmapEdit('${projectSlug}')">Cancel</button>
-                    <button class="roadmap-btn primary" onclick="saveRoadmap('${projectSlug}')">Save</button>
+                    <button class="roadmap-btn" onclick="cancelRoadmapEdit('${projectSlug}')">Done</button>
                 </div>
             `;
         }
