@@ -7,8 +7,17 @@ context:
   tech_stack: Python:** 3.10+, Framework:** Flask, Config:** PyYAML, macOS Integration:**
     AppleScript via osascript subprocess, Notifications:** terminal-notifier
   target_users: ''
-  refreshed_at: '2026-01-21T10:07:28.466126+00:00'
-roadmap: {}
+  refreshed_at: '2026-01-21T10:50:03.219809+00:00'
+roadmap:
+  next_up:
+    title: Finish the current orchestration pipeline
+    why: Just put the platform in a position to start
+    definition_of_done: ''
+  upcoming:
+  - Bug where the input here gets nuked on update
+  later:
+  - Verify functionality and code review
+  not_now: []
 state: {}
 recent_sessions: []
 history: {}
