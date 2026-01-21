@@ -241,6 +241,9 @@ AI ranks sessions based on headspace strategy, roadmaps, and activity state.
 ```
 I need to create a PRD for Epic 1 Sprint 8: Headspace-Aware Dashboard UI.
 
+**IMPORTANT
+Ensure this file is prefixed with e1_s8_
+
 **Context Documents:**
 - Roadmap: @docs/roadmap/roadmap_e1_ai_powered_headspace.md 
 
