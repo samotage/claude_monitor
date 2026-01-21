@@ -1,10 +1,10 @@
-# Epic 1: AI-Powered Focus System - PRD Workshop Prompts
+# Epic 1: AI-Powered Headspace System - PRD Workshop Prompts
 
-These prompts are designed to be used sequentially with the `/10: prd-workshop` command to create PRDs for each sprint in the AI-Powered Focus System epic.
+These prompts are designed to be used sequentially with the `/10: prd-workshop` command to create PRDs for each sprint in the AI-Powered Headspace System epic.
 
 **Usage:** Copy each sprint prompt and run `/10: prd-workshop` to start the interactive PRD creation process.
 
-**Roadmap Reference:** `@docs/roadmap/roadmap_e1_ai_powered_focus.md`
+**Roadmap Reference:** `@docs/roadmap/roadmap_e1_ai_powered_headspace.md`
 
 ---
 
@@ -14,7 +14,7 @@ These prompts are designed to be used sequentially with the `/10: prd-workshop` 
 I need to create a PRD for Epic 1 Sprint 1: YAML Data Foundation.
 
 **Context Documents:**
-- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md (see "Sprint 1" section)
+- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_headspace.md (see "Sprint 1" section)
 
 **Sprint Goal:**
 Establish the persistent data layer for project state storage.
@@ -33,7 +33,7 @@ Establish the persistent data layer for project state storage.
 
 **Dependencies:** None (foundation sprint)
 
-**PRD Output Location:** docs/prds/focus/
+**PRD Output Location:** docs/prds/headspace/
 ```
 
 ---
@@ -44,7 +44,7 @@ Establish the persistent data layer for project state storage.
 I need to create a PRD for Epic 1 Sprint 2: Project Roadmap Management.
 
 **Context Documents:**
-- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md (see "Sprint 2" section)
+- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_headspace.md (see "Sprint 2" section)
 
 **Sprint Goal:**
 Users can define and edit where each project is heading.
@@ -61,7 +61,7 @@ Users can define and edit where each project is heading.
 
 **Dependencies:** Sprint 1 (YAML Data Foundation)
 
-**PRD Output Location:** docs/prds/focus/
+**PRD Output Location:** docs/prds/headspace/
 ```
 
 ---
@@ -72,7 +72,7 @@ Users can define and edit where each project is heading.
 I need to create a PRD for Epic 1 Sprint 3: Session Summarisation & State Tracking.
 
 **Context Documents:**
-- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md (see "Sprint 3" section)
+- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_headspace.md (see "Sprint 3" section)
 
 **Sprint Goal:**
 Capture what happened in each Claude Code session and maintain current state.
@@ -96,7 +96,7 @@ Capture what happened in each Claude Code session and maintain current state.
 
 **Dependencies:** Sprint 1 (YAML Data Foundation)
 
-**PRD Output Location:** docs/prds/focus/
+**PRD Output Location:** docs/prds/headspace/
 ```
 
 ---
@@ -107,7 +107,7 @@ Capture what happened in each Claude Code session and maintain current state.
 I need to create a PRD for Epic 1 Sprint 4: History Compression.
 
 **Context Documents:**
-- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md 
+- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_headspace.md 
 
 **Sprint Goal:**
 Automatically compress old sessions into a summary to keep context manageable.
@@ -130,7 +130,7 @@ Automatically compress old sessions into a summary to keep context manageable.
 
 **Dependencies:** Sprint 3 (Session Summarisation)
 
-**PRD Output Location:** docs/prds/focus/
+**PRD Output Location:** docs/prds/headspace/
 ```
 
 ---
@@ -141,7 +141,7 @@ Automatically compress old sessions into a summary to keep context manageable.
 I need to create a PRD for Epic 1 Sprint 5: Brain Reboot View.
 
 **Context Documents:**
-- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md 
+- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_headspace.md 
 
 **Sprint Goal:**
 Users can quickly reload context on a project they haven't touched in a while.
@@ -165,21 +165,21 @@ Users can quickly reload context on a project they haven't touched in a while.
 - Sprint 2 (Roadmap Management)
 - Sprint 4 (History Compression) - for compressed history in briefing
 
-**PRD Output Location:** docs/prds/focus/
+**PRD Output Location:** docs/prds/headspace/
 ```
 
 ---
 
-## Sprint 6: Focus Strategy
+## Sprint 6: Headspace Strategy
 
 ```
-I need to create a PRD for Epic 1 Sprint 6: Focus Strategy.
+I need to create a PRD for Epic 1 Sprint 6: Headspace Strategy.
 
 **Context Documents:**
-- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md 
+- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_headspace.md 
 
 **Sprint Goal:**
-Users can set and adjust their current focus goal, visible at top of dashboard.
+Users can set and adjust their current headspace goal, visible at top of dashboard.
 
 **Deliverables:**
 1. Create `data/strategy.yaml` schema
@@ -195,7 +195,7 @@ Users can set and adjust their current focus goal, visible at top of dashboard.
 
 **Dependencies:** Sprint 1 (YAML Data Foundation)
 
-**PRD Output Location:** docs/prds/focus/
+**PRD Output Location:** docs/prds/headspace/
 ```
 
 ---
@@ -206,10 +206,10 @@ Users can set and adjust their current focus goal, visible at top of dashboard.
 I need to create a PRD for Epic 1 Sprint 7: AI Prioritisation.
 
 **Context Documents:**
-- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md 
+- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_headspace.md 
 
 **Sprint Goal:**
-AI ranks sessions based on focus strategy, roadmaps, and activity state.
+AI ranks sessions based on headspace strategy, roadmaps, and activity state.
 
 **Deliverables:**
 1. API endpoint: `GET /api/priorities`
@@ -229,20 +229,20 @@ AI ranks sessions based on focus strategy, roadmaps, and activity state.
 
 **Dependencies:**
 - Sprint 4 (History Compression) - for OpenRouter integration
-- Sprint 6 (Focus Strategy) - for strategy input to ranking
+- Sprint 6 (Headspace Strategy) - for strategy input to ranking
 
-**PRD Output Location:** docs/prds/focus/
+**PRD Output Location:** docs/prds/headspace/
 ```
 
 ---
 
-## Sprint 8: Focus-Aware Dashboard UI
+## Sprint 8: Headspace-Aware Dashboard UI
 
 ```
-I need to create a PRD for Epic 1 Sprint 8: Focus-Aware Dashboard UI.
+I need to create a PRD for Epic 1 Sprint 8: Headspace-Aware Dashboard UI.
 
 **Context Documents:**
-- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_focus.md 
+- Roadmap: @docs/roadmap/roadmap_e1_ai_powered_headspace.md 
 
 **Sprint Goal:**
 Surface AI prioritisation in the dashboard.
@@ -256,7 +256,7 @@ Surface AI prioritisation in the dashboard.
 
 **Success Criteria:**
 - Users know at a glance which session needs attention
-- Complete focus-aware dashboard
+- Complete headspace-aware dashboard
 - End-to-end epic goal achieved
 
 **What This Sprint Does NOT Include:**
@@ -270,7 +270,7 @@ Surface AI prioritisation in the dashboard.
 
 **Dependencies:** Sprint 7 (AI Prioritisation)
 
-**PRD Output Location:** docs/prds/focus/
+**PRD Output Location:** docs/prds/headspace/
 ```
 
 ---
@@ -284,17 +284,17 @@ Based on the dependency graph in the roadmap, execute sprints in this order:
 | 1 | Sprint 1: YAML Foundation | None |
 | 2 | Sprint 2: Roadmap Management | Sprint 1 |
 | 3 | Sprint 3: Session Summarisation | Sprint 1 |
-| 4 | Sprint 6: Focus Strategy | Sprint 1 |
+| 4 | Sprint 6: Headspace Strategy | Sprint 1 |
 | 5 | Sprint 4: History Compression | Sprint 3 |
 | 6 | Sprint 5: Brain Reboot View | Sprints 2, 4 |
 | 7 | Sprint 7: AI Prioritisation | Sprints 4, 6 |
-| 8 | Sprint 8: Focus-Aware Dashboard UI | Sprint 7 |
+| 8 | Sprint 8: Headspace-Aware Dashboard UI | Sprint 7 |
 
 ---
 
 ## Notes
 
 - Each prompt references the roadmap explicitly for context
-- PRDs should be saved to `docs/prds/focus/` subsystem directory
+- PRDs should be saved to `docs/prds/headspace/` subsystem directory
 - Sprint numbers in the prompt match the roadmap, but execution order follows dependencies
 - The PRD workshop process will guide through requirements elicitation, scope definition, and validation
