@@ -1732,6 +1732,159 @@ def focus_iterm_window_by_pid(pid: int) -> bool:
         return False
 
 
+# =============================================================================
+# Brain Reboot - Context Reload Feature
+# =============================================================================
+# Provides quick context briefings for projects to help developers reload
+# mental context when switching between projects.
+# =============================================================================
+
+DEFAULT_STALE_THRESHOLD_HOURS = 4
+
+
+def get_stale_threshold_hours() -> float:
+    """Get the configured stale threshold in hours.
+
+    Returns:
+        Stale threshold hours from config, or default of 4
+    """
+    config = load_config()
+    return config.get("stale_threshold_hours", DEFAULT_STALE_THRESHOLD_HOURS)
+
+
+def calculate_staleness(project_name: str) -> dict:
+    """Calculate staleness information for a project.
+
+    Args:
+        project_name: Name of the project
+
+    Returns:
+        Dict with:
+            - is_stale: bool - whether project exceeds stale threshold
+            - last_activity: str or None - ISO timestamp of last activity
+            - staleness_hours: float or None - hours since last activity
+    """
+    project_data = load_project_data(project_name)
+    if project_data is None:
+        return {
+            "is_stale": False,
+            "last_activity": None,
+            "staleness_hours": None
+        }
+
+    # Try to get last activity from state.last_session_ended
+    state = project_data.get("state", {})
+    last_session_ended = state.get("last_session_ended")
+
+    # Fallback to most recent session if state doesn't have timestamp
+    if not last_session_ended:
+        recent_sessions = project_data.get("recent_sessions", [])
+        if recent_sessions:
+            # Get the most recent session's ended_at
+            last_session_ended = recent_sessions[0].get("ended_at")
+
+    if not last_session_ended:
+        return {
+            "is_stale": False,
+            "last_activity": None,
+            "staleness_hours": None
+        }
+
+    # Parse the timestamp and calculate staleness
+    try:
+        if isinstance(last_session_ended, str):
+            last_activity = datetime.fromisoformat(last_session_ended.replace("Z", "+00:00"))
+        else:
+            last_activity = last_session_ended
+
+        now = datetime.now(timezone.utc)
+        delta = now - last_activity
+        staleness_hours = delta.total_seconds() / 3600
+
+        threshold = get_stale_threshold_hours()
+        is_stale = staleness_hours >= threshold
+
+        return {
+            "is_stale": is_stale,
+            "last_activity": last_activity.isoformat(),
+            "staleness_hours": round(staleness_hours, 1)
+        }
+    except Exception:
+        return {
+            "is_stale": False,
+            "last_activity": None,
+            "staleness_hours": None
+        }
+
+
+def generate_reboot_briefing(project_name: str) -> Optional[dict]:
+    """Generate a structured briefing for quick context reload.
+
+    Args:
+        project_name: Name of the project
+
+    Returns:
+        Dict with briefing sections, or None if project not found
+    """
+    project_data = load_project_data(project_name)
+    if project_data is None:
+        return None
+
+    # Extract roadmap section
+    roadmap = project_data.get("roadmap", {})
+    next_up = roadmap.get("next_up", {}) or {}
+    upcoming = roadmap.get("upcoming", []) or []
+
+    roadmap_briefing = {
+        "focus": next_up.get("title") if next_up else None,
+        "why": next_up.get("why") if next_up else None,
+        "next_steps": upcoming[:3] if upcoming else []  # First 3 upcoming items
+    }
+
+    # Extract state section
+    state = project_data.get("state", {})
+    state_briefing = {
+        "status": state.get("status"),
+        "last_action": state.get("last_session_summary"),
+        "last_session_time": state.get("last_session_ended")
+    }
+
+    # Extract recent sessions (condensed)
+    recent_sessions = project_data.get("recent_sessions", [])
+    recent_briefing = []
+    for session in recent_sessions[:5]:  # Max 5 recent sessions
+        ended_at = session.get("ended_at", "")
+        # Format the date nicely
+        try:
+            if ended_at:
+                dt = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
+                date_str = dt.strftime("%b %d")
+            else:
+                date_str = "Unknown"
+        except Exception:
+            date_str = "Unknown"
+
+        recent_briefing.append({
+            "date": date_str,
+            "summary": session.get("summary", "")[:100],  # Truncate long summaries
+            "files_count": session.get("files_changed", 0)
+        })
+
+    # Extract history section
+    history = project_data.get("history", {})
+    history_briefing = {
+        "narrative": history.get("summary"),
+        "period": history.get("last_compressed_at")
+    }
+
+    return {
+        "roadmap": roadmap_briefing,
+        "state": state_briefing,
+        "recent": recent_briefing,
+        "history": history_briefing
+    }
+
+
 # HTML Template with embedded CSS and JavaScript
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -2123,8 +2276,9 @@ HTML_TEMPLATE = '''
 
         .card-header {
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-start;
             align-items: center;
+            gap: 10px;
             margin-bottom: 8px;
         }
 
@@ -2307,6 +2461,215 @@ HTML_TEMPLATE = '''
 
         .empty-column::before {
             content: '// ';
+        }
+
+        /* Stale Project Card Styles */
+        .card.stale {
+            opacity: 0.65;
+        }
+
+        .card.stale::before {
+            background: var(--text-muted) !important;
+        }
+
+        .stale-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 6px;
+            padding: 4px 8px;
+            background: rgba(75, 75, 90, 0.2);
+            border-radius: 3px;
+        }
+
+        .stale-indicator .stale-icon {
+            font-size: 0.8rem;
+        }
+
+        /* Reboot Button Styles */
+        .reboot-btn {
+            background: transparent;
+            border: 1px solid var(--cyan-dim);
+            color: var(--cyan);
+            padding: 4px 10px;
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            margin-left: auto;
+        }
+
+        .reboot-btn:hover {
+            background: var(--cyan-glow);
+            border-color: var(--cyan);
+        }
+
+        .card.stale .reboot-btn {
+            border-color: var(--amber);
+            color: var(--amber);
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+
+        .card.stale .reboot-btn:hover {
+            background: rgba(224, 176, 115, 0.2);
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 4px rgba(224, 176, 115, 0.3); }
+            50% { box-shadow: 0 0 12px rgba(224, 176, 115, 0.6); }
+        }
+
+        /* Brain Reboot Side Panel */
+        .reboot-panel-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(8, 8, 10, 0.5);
+            z-index: 1000;
+        }
+
+        .reboot-panel-overlay.active {
+            display: block;
+        }
+
+        .reboot-panel {
+            position: fixed;
+            top: 0;
+            right: -420px;
+            width: 400px;
+            height: 100vh;
+            background: var(--bg-surface);
+            border-left: 1px solid var(--border-bright);
+            z-index: 1001;
+            transition: right 0.3s ease;
+            overflow-y: auto;
+            box-shadow: -4px 0 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .reboot-panel.active {
+            right: 0;
+        }
+
+        .reboot-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            background: var(--bg-elevated);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .reboot-panel-title {
+            color: var(--cyan);
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+
+        .reboot-panel-close {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 3px;
+            transition: all 0.15s ease;
+        }
+
+        .reboot-panel-close:hover {
+            color: var(--text-primary);
+            background: var(--bg-hover);
+        }
+
+        .reboot-panel-content {
+            padding: 20px;
+        }
+
+        .reboot-section {
+            margin-bottom: 24px;
+        }
+
+        .reboot-section-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .reboot-section-icon {
+            font-size: 1rem;
+        }
+
+        .reboot-section-content {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+
+        .reboot-section-content p {
+            margin-bottom: 8px;
+        }
+
+        .reboot-section-content .label {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+        }
+
+        .reboot-section-content .value {
+            color: var(--text-primary);
+        }
+
+        .reboot-section-content ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .reboot-section-content li {
+            padding: 6px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .reboot-section-content li:last-child {
+            border-bottom: none;
+        }
+
+        .reboot-empty-state {
+            color: var(--text-muted);
+            font-style: italic;
+            padding: 12px;
+            background: var(--bg-deep);
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .reboot-empty-state a {
+            color: var(--cyan);
+            text-decoration: none;
+        }
+
+        .reboot-empty-state a:hover {
+            text-decoration: underline;
+        }
+
+        .reboot-loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
         }
 
         /* Roadmap Panel Styles */
@@ -2989,6 +3352,18 @@ HTML_TEMPLATE = '''
     </style>
 </head>
 <body>
+    <!-- Brain Reboot Side Panel -->
+    <div id="reboot-panel-overlay" class="reboot-panel-overlay"></div>
+    <div id="reboot-panel" class="reboot-panel">
+        <div class="reboot-panel-header">
+            <span class="reboot-panel-title">Brain Reboot: <span id="reboot-panel-project-name"></span></span>
+            <button class="reboot-panel-close" onclick="closeRebootPanel()">&times;</button>
+        </div>
+        <div id="reboot-panel-content" class="reboot-panel-content">
+            <div class="reboot-loading">Loading briefing...</div>
+        </div>
+    </div>
+
     <!-- Tab Navigation -->
     <nav class="tab-nav">
         <button class="tab-btn active" data-tab="kanban">sessions</button>
@@ -3338,22 +3713,30 @@ HTML_TEMPLATE = '''
                 projectSessions.forEach((session, idx) => {
                         const statusClass = session.status === 'active' ? 'active-session' : 'completed-session';
                         const inputNeededClass = session.activity_state === 'input_needed' ? 'input-needed-card' : '';
-                        const lineNums = ['01', '02', '03', '04'].join('<br>');
+                        const lineNums = ['01', '02', '03', '04', '05'].join('<br>');
 
                         const activityInfo = getActivityInfo(session.activity_state);
 
+                        // Calculate staleness from session data
+                        const lastActivity = session.started_at; // Use session start as activity marker
+                        const stalenessHours = calculateStalenessHours(lastActivity);
+                        const isStale = session.status !== 'active' && isProjectStale(lastActivity);
+                        const staleClass = isStale ? 'stale' : '';
+
                         html += `
-                            <div class="card ${statusClass} ${inputNeededClass}" onclick="focusWindow(${session.pid || 0})" title="Click to focus iTerm window">
+                            <div class="card ${statusClass} ${inputNeededClass} ${staleClass}" onclick="focusWindow(${session.pid || 0})" title="Click to focus iTerm window">
                                 <div class="card-line-numbers">${lineNums}</div>
                                 <div class="card-content">
                                     <div class="card-header">
                                         <span class="uuid">${session.uuid_short}</span>
                                         <span class="status ${session.status}">${session.status}</span>
+                                        <button class="reboot-btn" onclick="event.stopPropagation(); openRebootPanel('${escapeHtml(projectName)}')">Reboot</button>
                                     </div>
                                     <div class="activity-state ${session.activity_state}">
                                         <span class="activity-icon">${activityInfo.icon}</span>
                                         <span class="activity-label">${activityInfo.label}</span>
                                     </div>
+                                    ${isStale ? `<div class="stale-indicator"><span class="stale-icon">&#128347;</span> Stale - ${formatStaleness(stalenessHours)}</div>` : ''}
                                     <div class="task-summary">${escapeHtml(session.task_summary)}</div>
                                     <div class="card-footer">
                                         <span class="elapsed">${session.elapsed}</span>
@@ -3423,6 +3806,171 @@ HTML_TEMPLATE = '''
             div.textContent = text;
             return div.innerHTML;
         }
+
+        // =============================================================================
+        // Brain Reboot Functions
+        // =============================================================================
+
+        // Calculate staleness hours from a timestamp
+        function calculateStalenessHours(lastActivity) {
+            if (!lastActivity) return null;
+            try {
+                const lastTime = new Date(lastActivity);
+                const now = new Date();
+                const diffMs = now - lastTime;
+                return Math.round(diffMs / (1000 * 60 * 60) * 10) / 10; // Round to 1 decimal
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // Check if a project is stale (default threshold: 4 hours)
+        function isProjectStale(lastActivity, thresholdHours = 4) {
+            const hours = calculateStalenessHours(lastActivity);
+            return hours !== null && hours >= thresholdHours;
+        }
+
+        // Format staleness for display
+        function formatStaleness(hours) {
+            if (hours === null) return '';
+            if (hours < 1) return 'less than 1 hour';
+            if (hours < 24) return Math.round(hours) + ' hour' + (Math.round(hours) !== 1 ? 's' : '');
+            const days = Math.round(hours / 24);
+            return days + ' day' + (days !== 1 ? 's' : '');
+        }
+
+        // Open the Brain Reboot side panel
+        async function openRebootPanel(projectName) {
+            const panel = document.getElementById('reboot-panel');
+            const overlay = document.getElementById('reboot-panel-overlay');
+            const content = document.getElementById('reboot-panel-content');
+            const title = document.getElementById('reboot-panel-project-name');
+
+            // Update title
+            title.textContent = projectName;
+
+            // Show loading state
+            content.innerHTML = '<div class="reboot-loading">Loading briefing...</div>';
+
+            // Show panel
+            panel.classList.add('active');
+            overlay.classList.add('active');
+
+            try {
+                const response = await fetch(`/api/project/${encodeURIComponent(projectName)}/reboot`);
+                const data = await response.json();
+
+                if (!data.success) {
+                    content.innerHTML = '<div class="reboot-empty-state">Failed to load briefing: ' + escapeHtml(data.error) + '</div>';
+                    return;
+                }
+
+                const briefing = data.briefing;
+                const meta = data.meta;
+
+                // Build the panel content
+                let html = '';
+
+                // Roadmap Section
+                html += '<div class="reboot-section">';
+                html += '<div class="reboot-section-header"><span class="reboot-section-icon">&#128205;</span> Where You\\'re Going</div>';
+                html += '<div class="reboot-section-content">';
+                if (briefing.roadmap.focus) {
+                    html += '<p><span class="label">Focus:</span> <span class="value">' + escapeHtml(briefing.roadmap.focus) + '</span></p>';
+                    if (briefing.roadmap.why) {
+                        html += '<p><span class="label">Why:</span> ' + escapeHtml(briefing.roadmap.why) + '</p>';
+                    }
+                    if (briefing.roadmap.next_steps && briefing.roadmap.next_steps.length > 0) {
+                        html += '<p><span class="label">Next:</span> ' + escapeHtml(briefing.roadmap.next_steps[0]) + '</p>';
+                    }
+                } else {
+                    html += '<div class="reboot-empty-state">No roadmap defined yet.<br><a href="#" onclick="event.preventDefault(); closeRebootPanel(); toggleRoadmap(\\'' + projectName.toLowerCase().replace(/\\s+/g, '-') + '\\');">Define a roadmap</a></div>';
+                }
+                html += '</div></div>';
+
+                // State Section
+                html += '<div class="reboot-section">';
+                html += '<div class="reboot-section-header"><span class="reboot-section-icon">&#128204;</span> Where You Are</div>';
+                html += '<div class="reboot-section-content">';
+                if (briefing.state.last_action || briefing.state.status) {
+                    if (briefing.state.last_session_time) {
+                        const hours = calculateStalenessHours(briefing.state.last_session_time);
+                        html += '<p><span class="label">Last session:</span> ' + formatStaleness(hours) + ' ago</p>';
+                    }
+                    if (briefing.state.status) {
+                        html += '<p><span class="label">Status:</span> ' + escapeHtml(briefing.state.status) + '</p>';
+                    }
+                    if (briefing.state.last_action) {
+                        html += '<p><span class="label">Last action:</span> ' + escapeHtml(briefing.state.last_action) + '</p>';
+                    }
+                } else {
+                    html += '<div class="reboot-empty-state">No session activity recorded yet</div>';
+                }
+                html += '</div></div>';
+
+                // Recent Sessions Section
+                html += '<div class="reboot-section">';
+                html += '<div class="reboot-section-header"><span class="reboot-section-icon">&#128336;</span> Recent Sessions</div>';
+                html += '<div class="reboot-section-content">';
+                if (briefing.recent && briefing.recent.length > 0) {
+                    html += '<ul>';
+                    briefing.recent.forEach(session => {
+                        let itemHtml = '<li>';
+                        itemHtml += '<span class="label">' + escapeHtml(session.date) + ':</span> ';
+                        itemHtml += escapeHtml(session.summary);
+                        if (session.files_count > 0) {
+                            itemHtml += ' <span class="label">(' + session.files_count + ' files)</span>';
+                        }
+                        itemHtml += '</li>';
+                        html += itemHtml;
+                    });
+                    html += '</ul>';
+                } else {
+                    html += '<div class="reboot-empty-state">No recent sessions</div>';
+                }
+                html += '</div></div>';
+
+                // History Section
+                html += '<div class="reboot-section">';
+                html += '<div class="reboot-section-header"><span class="reboot-section-icon">&#128218;</span> Project History</div>';
+                html += '<div class="reboot-section-content">';
+                if (briefing.history.narrative) {
+                    html += '<p>' + escapeHtml(briefing.history.narrative) + '</p>';
+                } else {
+                    html += '<div class="reboot-empty-state">No compressed history yet</div>';
+                }
+                html += '</div></div>';
+
+                content.innerHTML = html;
+
+            } catch (error) {
+                content.innerHTML = '<div class="reboot-empty-state">Failed to load briefing: ' + escapeHtml(error.message) + '</div>';
+            }
+        }
+
+        // Close the Brain Reboot side panel
+        function closeRebootPanel() {
+            const panel = document.getElementById('reboot-panel');
+            const overlay = document.getElementById('reboot-panel-overlay');
+            panel.classList.remove('active');
+            overlay.classList.remove('active');
+        }
+
+        // Initialize reboot panel event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            // Click outside to close
+            const overlay = document.getElementById('reboot-panel-overlay');
+            if (overlay) {
+                overlay.addEventListener('click', closeRebootPanel);
+            }
+
+            // Escape key to close
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    closeRebootPanel();
+                }
+            });
+        });
 
         // =============================================================================
         // Roadmap Functions
@@ -4020,6 +4568,39 @@ def api_project_roadmap_post(name: str):
             "success": False,
             "error": "Failed to save roadmap data"
         }), 500
+
+
+# =============================================================================
+# Brain Reboot API Endpoint
+# =============================================================================
+
+
+@app.route("/api/project/<name>/reboot", methods=["GET"])
+def api_project_reboot(name: str):
+    """Get a project's brain reboot briefing for quick context reload.
+
+    Args:
+        name: Project name (will be slugified to match YAML filename)
+
+    Returns:
+        JSON with briefing data and staleness meta, or 404 error
+    """
+    # Generate the briefing
+    briefing = generate_reboot_briefing(name)
+    if briefing is None:
+        return jsonify({
+            "success": False,
+            "error": f"Project '{name}' not found"
+        }), 404
+
+    # Calculate staleness information
+    staleness = calculate_staleness(name)
+
+    return jsonify({
+        "success": True,
+        "briefing": briefing,
+        "meta": staleness
+    })
 
 
 @app.route("/api/session/<session_id>/summarise", methods=["POST"])

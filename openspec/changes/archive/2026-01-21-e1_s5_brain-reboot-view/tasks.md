@@ -10,27 +10,27 @@
 
 ### Backend - Staleness Detection
 
-- [ ] 2.1 Add `stale_threshold_hours` config loading (default: 4)
-- [ ] 2.2 Create `calculate_staleness(project_name)` function
+- [x] 2.1 Add `stale_threshold_hours` config loading (default: 4)
+- [x] 2.2 Create `calculate_staleness(project_name)` function
   - Returns `{ is_stale: bool, last_activity: datetime, staleness_hours: float }`
   - Uses `project_data.state.last_session_ended` or recent_sessions timestamps
 
 ### Backend - Reboot API Endpoint
 
-- [ ] 2.3 Create `generate_reboot_briefing(project_name)` function
+- [x] 2.3 Create `generate_reboot_briefing(project_name)` function
   - Aggregates roadmap, state, recent, history sections
   - Handles missing data gracefully (returns null for empty sections)
-- [ ] 2.4 Add `GET /api/project/<name>/reboot` endpoint
+- [x] 2.4 Add `GET /api/project/<name>/reboot` endpoint
   - Returns 404 if project not found
   - Returns 200 with partial data if some sections empty
   - Response format: `{ briefing: {...}, meta: { is_stale, last_activity, staleness_hours } }`
 
 ### Frontend - CSS Styles
 
-- [ ] 2.5 Add stale card CSS styles
+- [x] 2.5 Add stale card CSS styles
   - `.card.stale` class with faded/dimmed appearance (opacity: 0.7)
   - Stale icon and label styling
-- [ ] 2.6 Add side panel CSS styles
+- [x] 2.6 Add side panel CSS styles
   - Fixed position on right side of screen
   - Close button styling
   - Section headers and content formatting
@@ -38,26 +38,26 @@
 
 ### Frontend - Side Panel JavaScript
 
-- [ ] 2.7 Add `openRebootPanel(projectName)` function
+- [x] 2.7 Add `openRebootPanel(projectName)` function
   - Fetches `/api/project/<name>/reboot`
   - Populates panel with briefing data
   - Handles empty states with helpful messages
-- [ ] 2.8 Add `closeRebootPanel()` function
-- [ ] 2.9 Add click-outside-to-close behavior
-- [ ] 2.10 Add only-one-panel-at-a-time logic
+- [x] 2.8 Add `closeRebootPanel()` function
+- [x] 2.9 Add click-outside-to-close behavior
+- [x] 2.10 Add only-one-panel-at-a-time logic
 
 ### Frontend - Card Modifications
 
-- [ ] 2.11 Add Reboot button to project card rendering
+- [x] 2.11 Add Reboot button to project card rendering
   - Emphasized styling on stale cards
-- [ ] 2.12 Add stale indicator to card rendering
+- [x] 2.12 Add stale indicator to card rendering
   - Clock icon + "Stale - X hours" text
   - Apply `.stale` class based on staleness
-- [ ] 2.13 Calculate staleness client-side from session data
+- [x] 2.13 Calculate staleness client-side from session data
 
 ### Frontend - Side Panel HTML
 
-- [ ] 2.14 Add side panel HTML structure
+- [x] 2.14 Add side panel HTML structure
   - Header with project name and close button
   - Four sections: Roadmap, State, Recent, History
   - Empty state messages for each section
