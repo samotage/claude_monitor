@@ -13,8 +13,7 @@ roadmap:
     title: Finish the current orchestration pipeline
     why: Just put the platform in a position to start
     definition_of_done: ''
-  upcoming:
-  - Bug where the input here gets nuked on update
+  upcoming: []
   later:
   - Verify functionality and code review
   not_now: []

@@ -278,11 +278,21 @@ Keep it brief but meaningful. Use past tense. No bullet points - write prose."""
         files = session_data["files_modified"][:10]  # Limit to 10 files
         session_info.append(f"Files modified: {', '.join(files)}")
     if session_data.get("commands_run"):
-        cmds = session_data["commands_run"][:5]  # Limit to 5 commands
-        session_info.append(f"Commands: {', '.join(cmds)}")
+        cmds = session_data["commands_run"]
+        # Handle both count (int) and list of commands
+        if isinstance(cmds, int):
+            if cmds > 0:
+                session_info.append(f"Commands run: {cmds}")
+        elif isinstance(cmds, list):
+            session_info.append(f"Commands: {', '.join(cmds[:5])}")
     if session_data.get("errors"):
-        errors = session_data["errors"][:3]  # Limit to 3 errors
-        session_info.append(f"Errors: {'; '.join(errors)}")
+        errors = session_data["errors"]
+        # Handle both count (int) and list of errors
+        if isinstance(errors, int):
+            if errors > 0:
+                session_info.append(f"Errors encountered: {errors}")
+        elif isinstance(errors, list):
+            session_info.append(f"Errors: {'; '.join(errors[:3])}")
     if session_data.get("summary"):
         session_info.append(f"Session summary: {session_data['summary']}")
 

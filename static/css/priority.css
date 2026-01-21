@@ -1,0 +1,222 @@
+/* Priority Dashboard UI Styles */
+
+/* Recommended Next Panel */
+.recommended-next-panel {
+    background: linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-elevated) 100%);
+    border: 1px solid var(--cyan-dim);
+    border-radius: 6px;
+    margin-bottom: 24px;
+    padding: 16px 20px;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.recommended-next-panel:hover {
+    border-color: var(--cyan);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(86, 212, 221, 0.15);
+}
+
+.recommended-next-panel::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--cyan);
+    border-radius: 6px 0 0 6px;
+}
+
+.recommended-next-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.recommended-next-label {
+    color: var(--cyan);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.recommended-next-label::before {
+    content: '\2605';
+}
+
+.recommended-next-score {
+    background: var(--cyan);
+    color: var(--bg-void);
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.recommended-next-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.recommended-next-project {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.recommended-next-name {
+    color: var(--text-primary);
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.recommended-next-state {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-weight: 500;
+}
+
+.recommended-next-state.idle {
+    background: rgba(100, 180, 255, 0.15);
+    color: #64b4ff;
+}
+
+.recommended-next-state.input_needed {
+    background: rgba(255, 180, 100, 0.2);
+    color: #ffb464;
+}
+
+.recommended-next-state.processing {
+    background: rgba(0, 212, 170, 0.15);
+    color: var(--green);
+}
+
+.recommended-next-rationale {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    font-style: italic;
+}
+
+.recommended-next-rationale::before {
+    content: '"';
+    color: var(--cyan-dim);
+}
+
+.recommended-next-rationale::after {
+    content: '"';
+    color: var(--cyan-dim);
+}
+
+.recommended-next-action {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    margin-top: 4px;
+}
+
+.recommended-next-empty {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    text-align: center;
+    padding: 12px;
+}
+
+/* Priority Badges on Session Cards */
+.priority-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    z-index: 1;
+}
+
+.priority-badge.high {
+    background: var(--cyan);
+    color: var(--bg-void);
+}
+
+.priority-badge.medium {
+    background: var(--text-ghost);
+    color: var(--text-secondary);
+}
+
+.priority-badge.low {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+}
+
+/* Sort Toggle */
+.sort-toggle-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 8px 12px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.sort-toggle-label {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.sort-toggle {
+    display: flex;
+    gap: 0;
+    background: var(--bg-void);
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.sort-toggle-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    padding: 6px 14px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.sort-toggle-btn:hover {
+    color: var(--text-secondary);
+    background: var(--bg-hover);
+}
+
+.sort-toggle-btn.active {
+    background: var(--cyan);
+    color: var(--bg-void);
+}
+
+.soft-transition-indicator {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    color: var(--amber);
+    font-size: 0.75rem;
+    margin-left: auto;
+    animation: pulse-soft 2s ease-in-out infinite;
+}
+
+.soft-transition-indicator.visible {
+    display: flex;
+}

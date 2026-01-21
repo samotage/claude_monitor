@@ -1,7 +1,7 @@
 # codebase-restructure Specification
 
 ## Purpose
-TBD - created by archiving change 01_codebase-restructure. Update Purpose after archive.
+Restructures the codebase from a single monolithic monitor.py into a maintainable architecture with separate modules (lib/), extracted templates (templates/), and a root-level config module. Reduces monitor.py to under 900 lines while maintaining all functionality.
 ## Requirements
 ### Requirement: Template Extraction
 

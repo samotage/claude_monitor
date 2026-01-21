@@ -1,0 +1,91 @@
+/* Session Polling Functions */
+
+// Page Visibility API - pause polling when tab is hidden
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        stopPolling();
+    } else {
+        startPolling();
+        fetchSessions(); // Immediate refresh when tab becomes visible
+    }
+});
+
+function startPolling() {
+    if (!pollingTimeoutId && !document.hidden) {
+        isPollingActive = true;
+        scheduleNextPoll();
+    }
+}
+
+function stopPolling() {
+    if (pollingTimeoutId) {
+        clearTimeout(pollingTimeoutId);
+        pollingTimeoutId = null;
+        isPollingActive = false;
+    }
+}
+
+function scheduleNextPoll() {
+    pollingTimeoutId = setTimeout(() => {
+        if (!document.hidden && isPollingActive) {
+            fetchSessions().finally(scheduleNextPoll);
+        }
+    }, REFRESH_INTERVAL);
+}
+
+async function fetchSessions() {
+    try {
+        const data = await fetchSessionsAPI();
+
+        // Check if anything actually changed before re-rendering
+        const fingerprint = getSessionFingerprint(data.sessions);
+        const hasChanges = fingerprint !== lastFingerprint;
+
+        if (hasChanges) {
+            renderKanban(data.sessions, data.projects);
+            lastFingerprint = fingerprint;
+        }
+
+        updateStats(data.sessions);
+        updateRefreshIndicator();
+    } catch (error) {
+        console.error('Failed to fetch sessions:', error);
+    }
+}
+
+function updateStats(sessions) {
+    const inputNeeded = sessions.filter(s => s.activity_state === 'input_needed').length;
+    const working = sessions.filter(s => s.activity_state === 'processing').length;
+    const idle = sessions.filter(s => s.activity_state === 'idle').length;
+
+    // Only update DOM if values changed
+    if (prevStats.inputNeeded !== inputNeeded) {
+        inputNeededCountEl.textContent = inputNeeded;
+        prevStats.inputNeeded = inputNeeded;
+    }
+    if (prevStats.working !== working) {
+        workingCountEl.textContent = working;
+        prevStats.working = working;
+    }
+    if (prevStats.idle !== idle) {
+        idleCountEl.textContent = idle;
+        prevStats.idle = idle;
+    }
+
+    // Update document title with input needed count for tab visibility
+    if (inputNeeded > 0) {
+        document.title = `(${inputNeeded}) INPUT NEEDED - Claude Monitor`;
+    } else {
+        document.title = 'Claude Monitor';
+    }
+}
+
+function updateRefreshIndicator() {
+    const now = new Date().toLocaleTimeString('en-US', { hour12: false });
+    refreshIndicator.textContent = `last_sync: ${now}`;
+    refreshIndicator.classList.add('active');
+
+    // Clear previous timeout to avoid stacking
+    if (indicatorTimeout) clearTimeout(indicatorTimeout);
+    indicatorTimeout = setTimeout(() => refreshIndicator.classList.remove('active'), 500);
+}

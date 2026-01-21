@@ -1,7 +1,7 @@
 # session-summarisation Specification
 
 ## Purpose
-TBD - created by archiving change session-summarisation. Update Purpose after archive.
+Implements automatic session summarization by parsing Claude Code JSONL logs to extract activity metrics (files modified, commands run, errors encountered). Detects session end via idle timeout or process termination, generates human-readable summaries, and persists them to project YAML with FIFO window management.
 ## Requirements
 ### Requirement: Claude Code Log Discovery
 

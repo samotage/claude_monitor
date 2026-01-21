@@ -1,0 +1,389 @@
+/* Kanban Board - Terminal window style */
+.kanban {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    padding-bottom: 20px;
+}
+
+.kanban::-webkit-scrollbar {
+    height: 8px;
+}
+
+.kanban::-webkit-scrollbar-track {
+    background: var(--bg-deep);
+}
+
+.kanban::-webkit-scrollbar-thumb {
+    background: var(--border-bright);
+    border-radius: 4px;
+}
+
+/* Columns */
+.column {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    flex: 1;
+    min-width: 300px;
+    overflow: hidden;
+}
+
+.column-header {
+    padding: 10px 14px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.column-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.column-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.column-count {
+    background: var(--bg-void);
+    color: var(--green);
+    padding: 2px 10px;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border: 1px solid var(--border);
+}
+
+.column-count.zero {
+    color: var(--text-muted);
+}
+
+.column-body {
+    padding: 12px;
+    min-height: 120px;
+    background: linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-deep) 100%);
+}
+
+/* Cards - styled like log entries */
+.card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0;
+    margin-bottom: 10px;
+    cursor: pointer;
+    overflow: hidden;
+    position: relative;
+}
+
+.card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--cyan);
+    opacity: 0;
+}
+
+.card.active-session::before {
+    background: var(--green);
+    opacity: 1;
+}
+
+.card.completed-session::before {
+    background: var(--text-muted);
+    opacity: 0.5;
+}
+
+.card:hover {
+    border-color: var(--cyan);
+    transform: translateX(4px);
+}
+
+.card:hover::before {
+    opacity: 1;
+    background: var(--cyan);
+}
+
+.card:active {
+    transform: translateX(2px);
+}
+
+/* Card line numbers */
+.card-line-numbers {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 32px;
+    background: var(--bg-void);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 10px 0;
+    font-size: 0.65rem;
+    color: var(--text-ghost);
+    text-align: right;
+    padding-right: 8px;
+    line-height: 1.8;
+}
+
+.card-content {
+    margin-left: 32px;
+    padding: 10px 12px;
+}
+
+.card-header {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.uuid {
+    font-size: 0.75rem;
+    color: var(--magenta);
+    font-weight: 500;
+}
+
+.uuid::before {
+    content: '#';
+    color: var(--text-muted);
+}
+
+/* Status badges */
+.status {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.status.active {
+    background: var(--green-dim);
+    color: var(--green);
+    border: 1px solid var(--green-dim);
+}
+
+.status.active::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    margin-right: 6px;
+}
+
+.status.completed {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+}
+
+.status.completed::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background: var(--text-muted);
+    margin-right: 6px;
+}
+
+/* Activity state indicator */
+.activity-state {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.activity-state.processing {
+    background: rgba(0, 212, 170, 0.15);
+    border: 1px solid rgba(0, 212, 170, 0.3);
+    color: var(--green);
+}
+
+/* INPUT NEEDED - Claude is blocked waiting for response */
+.activity-state.input_needed {
+    background: rgba(255, 180, 100, 0.2);
+    border: 1px solid rgba(255, 180, 100, 0.5);
+    color: #ffb464;
+    font-weight: 600;
+}
+
+/* Card highlight when input is needed */
+.card.input-needed-card {
+    border-color: #ffb464 !important;
+}
+
+.card.input-needed-card::before {
+    background: #ffb464 !important;
+    opacity: 1 !important;
+}
+
+/* IDLE - Session ready for new task */
+.activity-state.idle {
+    background: rgba(100, 180, 255, 0.12);
+    border: 1px solid rgba(100, 180, 255, 0.25);
+    color: #64b4ff;
+}
+
+.activity-state.permission_needed {
+    background: rgba(255, 87, 34, 0.15);
+    border: 1px solid rgba(255, 87, 34, 0.3);
+    color: #ff5722;
+}
+
+.activity-state.completed, .activity-state.unknown {
+    background: rgba(128, 128, 128, 0.1);
+    border: 1px solid rgba(128, 128, 128, 0.2);
+    color: var(--text-muted);
+}
+
+.activity-icon {
+    font-size: 1rem;
+}
+
+.activity-label {
+    flex: 1;
+}
+
+/* Task summary */
+.task-summary {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+/* Syntax highlighting for task summary */
+.task-keyword { color: var(--cyan); }
+.task-string { color: var(--green); }
+.task-number { color: var(--amber); }
+
+/* Card footer */
+.card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+}
+
+.elapsed {
+    color: var(--amber);
+    font-weight: 500;
+}
+
+.elapsed::before {
+    content: 'uptime:';
+    color: var(--text-muted);
+    margin-right: 6px;
+    font-weight: 400;
+}
+
+.pid-info {
+    color: var(--text-ghost);
+}
+
+.pid-info::before {
+    content: 'pid:';
+    margin-right: 4px;
+}
+
+/* Empty states */
+.no-sessions {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 60px 20px;
+    font-style: italic;
+}
+
+.no-sessions::before {
+    content: '$ ';
+    color: var(--cyan);
+}
+
+.empty-column {
+    color: var(--text-ghost);
+    text-align: center;
+    padding: 30px 20px;
+    font-size: 0.8rem;
+}
+
+.empty-column::before {
+    content: '// ';
+}
+
+/* Stale Project Card Styles */
+.card.stale {
+    opacity: 0.65;
+}
+
+.card.stale::before {
+    background: var(--text-muted) !important;
+}
+
+.stale-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 6px;
+    padding: 4px 8px;
+    background: rgba(75, 75, 90, 0.2);
+    border-radius: 3px;
+}
+
+.stale-indicator .stale-icon {
+    font-size: 0.8rem;
+}
+
+/* Reboot Button Styles */
+.reboot-btn {
+    background: transparent;
+    border: 1px solid var(--cyan-dim);
+    color: var(--cyan);
+    padding: 4px 10px;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    margin-left: auto;
+}
+
+.reboot-btn:hover {
+    background: var(--cyan-glow);
+    border-color: var(--cyan);
+}
+
+.card.stale .reboot-btn {
+    border-color: var(--amber);
+    color: var(--amber);
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.card.stale .reboot-btn:hover {
+    background: rgba(224, 176, 115, 0.2);
+}

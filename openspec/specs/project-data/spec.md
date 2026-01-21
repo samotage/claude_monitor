@@ -1,7 +1,7 @@
 # project-data Specification
 
 ## Purpose
-TBD - created by archiving change yaml-data-foundation. Update Purpose after archive.
+Defines the YAML-based data storage layer for project metadata, including file naming conventions, directory structure, and the schema for storing project goals, context, roadmaps, session history, and state. This foundation enables persistent project tracking across monitor restarts.
 ## Requirements
 ### Requirement: Project Data Directory Structure
 

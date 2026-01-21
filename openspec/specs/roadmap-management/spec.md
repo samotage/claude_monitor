@@ -1,7 +1,7 @@
 # roadmap-management Specification
 
 ## Purpose
-TBD - created by archiving change project-roadmap-management. Update Purpose after archive.
+Defines the roadmap management system that allows users to track project direction through a structured schema (next_up, upcoming, later, not_now). Provides REST API endpoints for reading and updating roadmaps, with validation and normalization to ensure data consistency.
 ## Requirements
 ### Requirement: Roadmap Schema Structure
 

@@ -1,7 +1,7 @@
 # brain-reboot Specification
 
 ## Purpose
-TBD - created by archiving change e1_s5_brain-reboot-view. Update Purpose after archive.
+Enables quick context reload for stale projects via a "Brain Reboot" feature. Calculates project staleness based on configurable thresholds, generates structured briefings combining roadmap focus, recent session summaries, and compressed history, and provides a REST API endpoint for the dashboard side panel.
 ## Requirements
 ### Requirement: Reboot API Endpoint
 

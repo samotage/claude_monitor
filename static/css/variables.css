@@ -1,0 +1,38 @@
+/* CSS Custom Properties - Theme Variables */
+:root {
+    /* Terminal-inspired color palette */
+    --bg-void: #08080a;
+    --bg-deep: #0c0c0e;
+    --bg-surface: #111114;
+    --bg-elevated: #18181c;
+    --bg-hover: #1e1e24;
+
+    /* Syntax highlighting colors */
+    --cyan: #56d4dd;
+    --cyan-dim: #56d4dd80;
+    --cyan-glow: #56d4dd40;
+    --green: #73e0a0;
+    --green-dim: #73e0a080;
+    --amber: #e0b073;
+    --amber-dim: #e0b07380;
+    --magenta: #d073e0;
+    --magenta-dim: #d073e080;
+    --red: #e07373;
+    --red-dim: #e0737380;
+    --blue: #7399e0;
+    --blue-dim: #7399e080;
+
+    /* Text colors */
+    --text-primary: #e8e8ed;
+    --text-secondary: #8b8b96;
+    --text-muted: #4a4a54;
+    --text-ghost: #2a2a32;
+    --text-disabled: #3a3a44;
+
+    /* Borders */
+    --border: #252530;
+    --border-bright: #363644;
+
+    /* Fonts - system fonts first for performance, then web fonts */
+    --font-mono: 'SF Mono', 'Monaco', 'Menlo', 'JetBrains Mono', 'Consolas', monospace;
+}

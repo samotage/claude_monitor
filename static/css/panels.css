@@ -1,0 +1,358 @@
+/* Side Panels - Brain Reboot and Context Panels */
+
+/* Brain Reboot Side Panel */
+.reboot-panel-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(8, 8, 10, 0.5);
+    z-index: 1000;
+}
+
+.reboot-panel-overlay.active {
+    display: block;
+}
+
+.reboot-panel {
+    position: fixed;
+    top: 0;
+    right: -420px;
+    width: 400px;
+    height: 100vh;
+    background: var(--bg-surface);
+    border-left: 1px solid var(--border-bright);
+    z-index: 1001;
+    transition: right 0.3s ease;
+    overflow-y: auto;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.4);
+}
+
+.reboot-panel.active {
+    right: 0;
+}
+
+.reboot-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.reboot-panel-title {
+    color: var(--cyan);
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.reboot-panel-close {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 3px;
+    transition: all 0.15s ease;
+}
+
+.reboot-panel-close:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.reboot-panel-content {
+    padding: 20px;
+}
+
+.reboot-section {
+    margin-bottom: 24px;
+}
+
+.reboot-section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.reboot-section-icon {
+    font-size: 1rem;
+}
+
+.reboot-section-content {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.6;
+}
+
+.reboot-section-content p {
+    margin-bottom: 8px;
+}
+
+.reboot-section-content .label {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.reboot-section-content .value {
+    color: var(--text-primary);
+}
+
+.reboot-section-content ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+.reboot-section-content li {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.reboot-section-content li:last-child {
+    border-bottom: none;
+}
+
+.reboot-empty-state {
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 12px;
+    background: var(--bg-deep);
+    border-radius: 4px;
+    text-align: center;
+}
+
+.reboot-empty-state a {
+    color: var(--cyan);
+    text-decoration: none;
+}
+
+.reboot-empty-state a:hover {
+    text-decoration: underline;
+}
+
+.reboot-loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
+}
+
+/* Context Panel (Session Detail Side Panel) */
+.context-panel-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(8, 8, 10, 0.5);
+    z-index: 1000;
+}
+
+.context-panel-overlay.active {
+    display: block;
+}
+
+.context-panel {
+    position: fixed;
+    top: 0;
+    right: -450px;
+    width: 430px;
+    height: 100vh;
+    background: var(--bg-surface);
+    border-left: 1px solid var(--border-bright);
+    z-index: 1001;
+    transition: right 0.3s ease;
+    overflow-y: auto;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.4);
+}
+
+.context-panel.active {
+    right: 0;
+}
+
+.context-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.context-panel-title {
+    color: var(--cyan);
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.context-panel-close {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 3px;
+    transition: all 0.15s ease;
+}
+
+.context-panel-close:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.context-panel-content {
+    padding: 20px;
+}
+
+.context-section {
+    margin-bottom: 24px;
+}
+
+.context-section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.context-section-icon {
+    font-size: 1rem;
+}
+
+.context-section-content {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.6;
+}
+
+.context-priority-display {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: var(--bg-elevated);
+    border-radius: 4px;
+    margin-bottom: 8px;
+}
+
+.context-priority-score {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--cyan);
+}
+
+.context-priority-level {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.context-rationale {
+    color: var(--text-secondary);
+    font-style: italic;
+    line-height: 1.5;
+}
+
+.context-roadmap-item {
+    padding: 8px 12px;
+    background: var(--bg-elevated);
+    border-radius: 4px;
+    margin-bottom: 8px;
+}
+
+.context-roadmap-title {
+    color: var(--text-primary);
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.context-roadmap-why {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.context-state-summary {
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.context-session-list {
+    list-style: none;
+    padding: 0;
+}
+
+.context-session-item {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.context-session-item:last-child {
+    border-bottom: none;
+}
+
+.context-session-time {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.context-panel-actions {
+    display: flex;
+    gap: 12px;
+    padding: 20px;
+    border-top: 1px solid var(--border);
+    position: sticky;
+    bottom: 0;
+    background: var(--bg-surface);
+}
+
+.context-focus-btn {
+    flex: 1;
+    background: var(--cyan);
+    border: none;
+    color: var(--bg-void);
+    padding: 12px 20px;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 600;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.context-focus-btn:hover {
+    background: var(--green);
+}
+
+.context-empty-state {
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 12px;
+    background: var(--bg-deep);
+    border-radius: 4px;
+    text-align: center;
+}

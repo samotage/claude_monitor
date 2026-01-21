@@ -1,7 +1,7 @@
 # headspace Specification
 
 ## Purpose
-TBD - created by archiving change e1_s6_headspace. Update Purpose after archive.
+Implements the Headspace system for tracking cross-project user context including current focus, energy level, and available time. Provides YAML-based storage, REST API endpoints for reading/updating headspace, history tracking for context evolution, and dashboard UI integration.
 ## Requirements
 ### Requirement: Headspace Data Model
 

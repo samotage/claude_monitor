@@ -1,7 +1,7 @@
 # history-compression Specification
 
 ## Purpose
-TBD - created by archiving change history-compression. Update Purpose after archive.
+Provides AI-powered compression of session summaries into narrative project history using OpenRouter API. Manages a compression queue with retry logic, runs a background thread for periodic processing, and maintains compressed history in project YAML for context continuity.
 ## Requirements
 ### Requirement: Compression Queue Management
 

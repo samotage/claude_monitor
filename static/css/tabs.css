@@ -1,0 +1,81 @@
+/* Tab Navigation - styled like terminal tabs */
+.tab-nav {
+    display: flex;
+    background: var(--bg-deep);
+    border-bottom: 1px solid var(--border);
+    padding: 0;
+    position: relative;
+}
+
+.tab-nav::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--cyan-dim), transparent);
+}
+
+.tab-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    padding: 16px 28px;
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    border-right: 1px solid var(--border);
+    transition: all 0.15s ease;
+    position: relative;
+    letter-spacing: 0.02em;
+}
+
+.tab-btn::before {
+    content: '>';
+    margin-right: 8px;
+    opacity: 0;
+    color: var(--cyan);
+    transition: opacity 0.15s ease;
+}
+
+.tab-btn:hover {
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+}
+
+.tab-btn:hover::before {
+    opacity: 0.5;
+}
+
+.tab-btn.active {
+    background: var(--bg-surface);
+    color: var(--cyan);
+}
+
+.tab-btn.active::before {
+    opacity: 1;
+}
+
+.tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--cyan);
+    box-shadow: 0 0 12px var(--cyan-glow);
+}
+
+.tab-content {
+    display: none;
+    padding: 24px;
+    min-height: calc(100vh - 52px);
+    animation: fadeIn 0.2s ease;
+}
+
+.tab-content.active {
+    display: block;
+}

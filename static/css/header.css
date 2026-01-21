@@ -1,0 +1,68 @@
+/* Header - ASCII art style title and stats */
+header {
+    text-align: center;
+    margin-bottom: 32px;
+    padding: 20px 0;
+}
+
+.ascii-title {
+    font-size: 0.65rem;
+    color: var(--cyan);
+    white-space: pre;
+    line-height: 1.1;
+    text-shadow: 0 0 20px var(--cyan-glow);
+    letter-spacing: -0.02em;
+}
+
+.subtitle {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-top: 16px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.subtitle::before {
+    content: '// ';
+    color: var(--text-ghost);
+}
+
+/* Stats bar */
+.stats-bar {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    margin-top: 20px;
+    padding: 12px 24px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    display: inline-flex;
+}
+
+.stat-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.stat-label {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.stat-value {
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.stat-value.active { color: var(--green); }
+.stat-value.input-needed {
+    color: #ffb464;
+    font-weight: 600;
+}
+.stat-value.idle { color: #64b4ff; }
+.stat-value.completed { color: var(--text-muted); }
+.stat-value.total { color: var(--cyan); }

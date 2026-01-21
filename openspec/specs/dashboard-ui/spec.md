@@ -1,7 +1,7 @@
 # dashboard-ui Specification
 
 ## Purpose
-TBD - created by archiving change e1_s8_headspace-aware-dashboard. Update Purpose after archive.
+Defines the headspace-aware dashboard UI enhancements including the "Recommended Next" panel for highlighting priority sessions, priority badges on session cards, sort-by-priority toggle with persistence, expanded context panels showing roadmap and session data, and priority-aware notification formatting.
 ## Requirements
 ### Requirement: Recommended Next Panel
 

@@ -1,5 +1,11 @@
 # Claude Monitor Configuration
 #
+# Copy this file to config.yaml and customize for your setup.
+# The monitor will scan configured project directories for Claude Code sessions.
+
+# =============================================================================
+# Projects
+# =============================================================================
 # Add your projects below. Each project needs:
 #   - name: A display name for the dashboard
 #   - path: Absolute path to the project directory
@@ -15,23 +21,87 @@ projects:
   - name: "another-project"
     path: "/Users/yourname/dev/another-project"
 
+# =============================================================================
+# Dashboard Settings
+# =============================================================================
+
 # How often to refresh the dashboard (in seconds)
 # Lower values = more responsive but more CPU usage
+# Default: 5
 scan_interval: 5
 
 # Delay before focusing iTerm window (in seconds)
 # Increase if focus isn't working reliably
+# Default: 0.1
 iterm_focus_delay: 0.1
 
-# OpenRouter Configuration (for AI-powered history compression)
+# =============================================================================
+# Session Summarization
+# =============================================================================
+
+# Minutes of inactivity before a session is considered "ended"
+# Used to trigger automatic session summarization
+# Default: 60
+idle_timeout_minutes: 60
+
+# =============================================================================
+# Brain Reboot (Context Reload)
+# =============================================================================
+
+# Hours since last activity before a project is flagged as "stale"
+# Stale projects show the brain reboot indicator in the dashboard
+# Default: 4
+stale_threshold_hours: 4
+
+# =============================================================================
+# OpenRouter Configuration (AI-powered History Compression)
+# =============================================================================
 # Get your API key from https://openrouter.ai/keys
 # Note: The API key should never be committed to version control
+
 openrouter:
   # Required: Your OpenRouter API key
-  # api_key: "sk-or-..."
+  # Uncomment and add your key to enable history compression
+  # api_key: "sk-or-v1-..."
 
-  # Optional: Model to use for compression (default: anthropic/claude-3-haiku)
+  # Optional: Model to use for compression
+  # Default: anthropic/claude-3-haiku
   # model: "anthropic/claude-3-haiku"
 
-  # Optional: How often to check for pending compressions (seconds, default: 300)
+  # Optional: How often to check for pending compressions (seconds)
+  # Default: 300 (5 minutes)
   # compression_interval: 300
+
+# =============================================================================
+# Headspace (Cross-Project Context)
+# =============================================================================
+# Headspace tracks your current focus and energy level across all projects
+
+headspace:
+  # Enable/disable the headspace panel in the dashboard
+  # Default: true
+  enabled: true
+
+  # Enable/disable headspace history tracking
+  # When enabled, headspace changes are logged to data/headspace.yaml
+  # Default: true
+  history_enabled: true
+
+# =============================================================================
+# AI Prioritization
+# =============================================================================
+# Uses AI to recommend which project/session to focus on next
+
+priorities:
+  # Enable/disable AI-powered session prioritization
+  # Requires OpenRouter API key to be configured
+  # Default: true (when OpenRouter is configured)
+  enabled: true
+
+  # How often to refresh priorities (seconds)
+  # Default: 60
+  polling_interval: 60
+
+  # Model to use for prioritization (can differ from compression model)
+  # Default: uses openrouter.model setting
+  # model: "anthropic/claude-3-haiku"

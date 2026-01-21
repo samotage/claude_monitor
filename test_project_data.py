@@ -41,7 +41,13 @@ from lib.compression import (
 )
 
 # Session summarization functions
-from lib.summarization import add_recent_session
+from lib.summarization import (
+    add_recent_session,
+    update_project_state,
+    process_session_end,
+    summarise_session,
+    MAX_RECENT_SESSIONS,
+)
 
 # Headspace functions
 from lib.headspace import (
@@ -1320,3 +1326,192 @@ class TestApiPrioritiesEndpoint:
 
         client.get("/api/priorities?refresh=true")
         assert calls[-1] is True
+
+
+class TestFullPipelineIntegration:
+    """Integration tests for the full session → summarization → compression → history pipeline."""
+
+    @pytest.fixture
+    def temp_project_dir(self):
+        """Create temporary project directory structure."""
+        temp_dir = tempfile.mkdtemp()
+        project_dir = Path(temp_dir) / "data" / "projects"
+        project_dir.mkdir(parents=True, exist_ok=True)
+        yield temp_dir
+        shutil.rmtree(temp_dir)
+
+    def test_session_to_history_pipeline(self, temp_project_dir, monkeypatch):
+        """Test complete pipeline: session end → summarization → FIFO trigger → compression queue → history update."""
+        project_dir = Path(temp_project_dir) / "data" / "projects"
+
+        # Mock PROJECT_DATA_DIR to use temp directory
+        monkeypatch.setattr("lib.projects.PROJECT_DATA_DIR", project_dir)
+        monkeypatch.setattr("lib.summarization.load_project_data",
+                          lambda n: load_project_data(n))
+        monkeypatch.setattr("lib.summarization.save_project_data",
+                          lambda n, d: save_project_data(n, d))
+        monkeypatch.setattr("lib.compression.load_project_data",
+                          lambda n: load_project_data(n))
+        monkeypatch.setattr("lib.compression.save_project_data",
+                          lambda n, d: save_project_data(n, d))
+
+        # Create initial project data
+        project_name = "test-pipeline"
+        initial_data = {
+            "name": project_name,
+            "path": "/test/path",
+            "goal": "Test project",
+            "context": {"tech_stack": "Python"},
+            "roadmap": {},
+            "state": {},
+            "recent_sessions": [],
+            "history": {}
+        }
+        save_project_data(project_name, initial_data)
+
+        # Step 1: Add 5 sessions (filling the FIFO window)
+        for i in range(5):
+            session_summary = {
+                "session_id": f"session-{i}",
+                "started_at": "2024-01-01T10:00:00+00:00",
+                "ended_at": "2024-01-01T11:00:00+00:00",
+                "duration_minutes": 60,
+                "summary": f"Session {i} completed",
+                "files_modified": [f"file{i}.py"],
+                "commands_run": 5,
+                "errors": 0
+            }
+            success, removed = add_recent_session(project_name, session_summary)
+            assert success
+            assert len(removed) == 0  # No overflow yet
+
+        # Verify 5 sessions in recent_sessions
+        data = load_project_data(project_name)
+        assert len(data["recent_sessions"]) == 5
+
+        # Step 2: Add 6th session - should trigger FIFO overflow
+        session_6 = {
+            "session_id": "session-5",
+            "started_at": "2024-01-01T12:00:00+00:00",
+            "ended_at": "2024-01-01T13:00:00+00:00",
+            "duration_minutes": 60,
+            "summary": "Session 5 completed",
+            "files_modified": ["file5.py"],
+            "commands_run": 3,
+            "errors": 0
+        }
+        success, removed = add_recent_session(project_name, session_6)
+        assert success
+        assert len(removed) == 1  # One session removed
+        assert removed[0]["session_id"] == "session-0"  # Oldest removed
+
+        # Step 3: Queue removed session for compression
+        add_to_compression_queue(project_name, removed[0])
+
+        # Verify session is in compression queue
+        pending = get_pending_compressions(project_name)
+        assert len(pending) == 1
+        assert pending[0]["session_id"] == "session-0"
+
+        # Step 4: Mock OpenRouter and process compression
+        monkeypatch.setattr(
+            "lib.compression.call_openrouter",
+            lambda msgs, model=None: ("Compressed: Initial session established project baseline.", None)
+        )
+
+        results = process_compression_queue(project_name)
+        assert results["processed"] == 1
+        assert results["failed"] == 0
+        assert results["remaining"] == 0
+
+        # Step 5: Verify history updated
+        history = get_project_history(project_name)
+        assert history["summary"] == "Compressed: Initial session established project baseline."
+        assert history["last_compressed_at"] is not None
+
+        # Step 6: Verify compression queue is empty
+        pending = get_pending_compressions(project_name)
+        assert len(pending) == 0
+
+    def test_compression_queue_retry_on_error(self, temp_project_dir, monkeypatch):
+        """Test compression queue handles errors and retries."""
+        project_dir = Path(temp_project_dir) / "data" / "projects"
+        monkeypatch.setattr("lib.projects.PROJECT_DATA_DIR", project_dir)
+        monkeypatch.setattr("lib.compression.load_project_data",
+                          lambda n: load_project_data(n))
+        monkeypatch.setattr("lib.compression.save_project_data",
+                          lambda n, d: save_project_data(n, d))
+
+        # Create project
+        project_name = "test-retry"
+        initial_data = {
+            "name": project_name,
+            "path": "/test/path",
+            "goal": "Test project",
+            "context": {},
+            "roadmap": {},
+            "state": {},
+            "recent_sessions": [],
+            "history": {}
+        }
+        save_project_data(project_name, initial_data)
+
+        # Add session to compression queue
+        session = {
+            "session_id": "retry-session",
+            "summary": "Test session"
+        }
+        add_to_compression_queue(project_name, session)
+
+        # Mock rate limited response
+        monkeypatch.setattr(
+            "lib.compression.call_openrouter",
+            lambda msgs, model=None: (None, "rate_limited")
+        )
+
+        # Process - should fail but remain in queue for retry
+        results = process_compression_queue(project_name)
+        assert results["processed"] == 0
+        assert results["remaining"] == 1
+
+        # Verify retry count incremented
+        pending = get_pending_compressions(project_name)
+        assert len(pending) == 1
+        assert pending[0]["retry_count"] == 1
+
+    def test_state_update_on_session_end(self, temp_project_dir, monkeypatch):
+        """Test that project state is updated when a session ends."""
+        project_dir = Path(temp_project_dir) / "data" / "projects"
+        monkeypatch.setattr("lib.projects.PROJECT_DATA_DIR", project_dir)
+        monkeypatch.setattr("lib.summarization.load_project_data",
+                          lambda n: load_project_data(n))
+        monkeypatch.setattr("lib.summarization.save_project_data",
+                          lambda n, d: save_project_data(n, d))
+
+        # Create project
+        project_name = "test-state"
+        initial_data = {
+            "name": project_name,
+            "path": "/test/path",
+            "goal": "Test project",
+            "context": {},
+            "roadmap": {},
+            "state": {},
+            "recent_sessions": [],
+            "history": {}
+        }
+        save_project_data(project_name, initial_data)
+
+        # Update state with session summary
+        session_summary = {
+            "session_id": "state-test-session",
+            "ended_at": "2024-01-01T15:00:00+00:00",
+            "summary": "Fixed bug in auth module"
+        }
+        update_project_state(project_name, session_summary)
+
+        # Verify state was updated
+        data = load_project_data(project_name)
+        assert data["state"]["last_session_id"] == "state-test-session"
+        assert data["state"]["last_session_summary"] == "Fixed bug in auth module"
+        assert data["state"]["status"] == "idle"

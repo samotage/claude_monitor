@@ -1,7 +1,7 @@
 # priorities Specification
 
 ## Purpose
-TBD - created by archiving change e1_s7_ai-prioritisation. Update Purpose after archive.
+Implements AI-powered session prioritization using headspace, roadmap, and session context. Aggregates data from multiple sources, calls OpenRouter for intelligent ranking, parses structured responses with fallback defaults, and provides caching with soft transitions to prevent jarring UI changes.
 ## Requirements
 ### Requirement: Context Aggregation
 

@@ -1,0 +1,172 @@
+/* Settings Tab Styles - Config editor style */
+.settings-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.settings-section {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.settings-section-header {
+    background: var(--bg-elevated);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.settings-section h2 {
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.settings-section h2::before {
+    content: '> ';
+    color: var(--cyan);
+}
+
+.settings-section-body {
+    padding: 20px;
+}
+
+.settings-description {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-bottom: 20px;
+}
+
+.settings-description::before {
+    content: '// ';
+    color: var(--text-ghost);
+}
+
+/* Project list */
+.project-list {
+    margin-bottom: 20px;
+}
+
+.project-item {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 10px;
+    padding: 12px 14px;
+    background: var(--bg-elevated);
+    border-radius: 4px;
+    border: 1px solid var(--border);
+}
+
+.project-item input {
+    flex: 1;
+    background: var(--bg-void);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 10px 12px;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    transition: border-color 0.15s ease;
+}
+
+.project-item input:focus {
+    outline: none;
+    border-color: var(--cyan);
+    box-shadow: 0 0 0 3px var(--cyan-glow);
+}
+
+.project-item input::placeholder {
+    color: var(--text-ghost);
+}
+
+.project-name {
+    width: 100px;
+    flex-shrink: 0;
+}
+
+.project-path {
+    flex: 3;
+    min-width: 0;
+}
+
+/* Settings actions */
+.settings-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+}
+
+.settings-status {
+    margin-top: 16px;
+    padding: 12px 16px;
+    border-radius: 4px;
+    display: none;
+    font-size: 0.85rem;
+}
+
+.settings-status::before {
+    content: '> ';
+}
+
+.settings-status.success {
+    display: block;
+    background: var(--green-dim);
+    color: var(--green);
+    border: 1px solid var(--green-dim);
+}
+
+.settings-status.error {
+    display: block;
+    background: var(--red-dim);
+    color: var(--red);
+    border: 1px solid var(--red-dim);
+}
+
+/* Setting rows */
+.setting-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    background: var(--bg-elevated);
+    border-radius: 4px;
+    border: 1px solid var(--border);
+}
+
+.setting-row label {
+    width: 140px;
+    color: var(--cyan);
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.setting-row input {
+    background: var(--bg-void);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 10px 12px;
+    color: var(--text-primary);
+    width: 100px;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+}
+
+.setting-row input:focus {
+    outline: none;
+    border-color: var(--cyan);
+    box-shadow: 0 0 0 3px var(--cyan-glow);
+}
+
+.setting-hint {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}

@@ -1,0 +1,149 @@
+/* Base Styles - Reset and Foundation */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    font-size: 17px;
+}
+
+body {
+    font-family: var(--font-mono);
+    background: var(--bg-void);
+    color: var(--text-primary);
+    min-height: 100vh;
+    line-height: 1.6;
+    position: relative;
+    overflow-x: hidden;
+}
+
+/* Custom scrollbar for webkit */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-deep);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-bright);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* Fade in animation */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Pulse glow animation */
+@keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 4px rgba(224, 176, 115, 0.3); }
+    50% { box-shadow: 0 0 12px rgba(224, 176, 115, 0.6); }
+}
+
+/* Soft pulse animation */
+@keyframes pulse-soft {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+
+/* Refresh indicator */
+.refresh-indicator {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--bg-elevated);
+    padding: 8px 14px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    font-family: var(--font-mono);
+}
+
+.refresh-indicator::before {
+    content: '~ ';
+    color: var(--text-ghost);
+}
+
+.refresh-indicator.active {
+    color: var(--cyan);
+    border-color: var(--cyan-dim);
+}
+
+.refresh-indicator.active::before {
+    color: var(--cyan);
+}
+
+/* Button base styles */
+.btn {
+    background: var(--cyan);
+    color: var(--bg-void);
+    border: none;
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 0.85rem;
+    transition: all 0.15s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.btn:hover {
+    background: var(--text-primary);
+    box-shadow: 0 0 20px var(--cyan-glow);
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border-color: var(--text-muted);
+    box-shadow: none;
+}
+
+.btn-danger {
+    background: transparent;
+    color: var(--red);
+    border: 1px solid var(--red-dim);
+    padding: 8px 12px;
+}
+
+.btn-danger:hover {
+    background: var(--red);
+    color: var(--bg-void);
+    box-shadow: 0 0 20px var(--red-dim);
+}
+
+/* Window dots (used in multiple places) */
+.window-dots {
+    display: flex;
+    gap: 6px;
+}
+
+.window-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-ghost);
+}
+
+.window-dot.red { background: var(--red-dim); }
+.window-dot.yellow { background: var(--amber-dim); }
+.window-dot.green { background: var(--green-dim); }
