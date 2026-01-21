@@ -1,8 +1,8 @@
-# Epic: AI-Powered Focus System for Claude Monitor
+# Epic: AI-Powered Headspace System for Claude Monitor
 
 ## Overview
 
-Transform Claude Monitor from a passive session viewer into an active focus management tool that helps users prioritise work and quickly reload context when returning to projects.
+Transform Claude Monitor from a passive session viewer into an active headspace management tool that helps users prioritise work and quickly reload context when returning to projects.
 
 **Inspired by:** John Duduk's focus model - AI as monitor/router, summariser/recaller, decomposer/scaffolder.
 
@@ -124,9 +124,9 @@ User can glance at the dashboard to know which session needs attention, and can 
 
 ---
 
-## Sprint 6: Focus Strategy
+## Sprint 6: Headspace Strategy
 
-**Goal:** Users can set and adjust their current focus goal, visible at top of dashboard.
+**Goal:** Users can set and adjust their current headspace goal, visible at top of dashboard.
 
 **Scope:**
 - Create `data/strategy.yaml` schema
@@ -137,7 +137,7 @@ User can glance at the dashboard to know which session needs attention, and can 
 - Optional: strategy history
 
 **Delivers:**
-- Editable focus goal at top of dashboard
+- Editable headspace goal at top of dashboard
 - Strategy persists in YAML
 - Foundation for AI prioritisation
 
@@ -149,7 +149,7 @@ User can glance at the dashboard to know which session needs attention, and can 
 
 ## Sprint 7: AI Prioritisation
 
-**Goal:** AI ranks sessions based on focus strategy, roadmaps, and activity state.
+**Goal:** AI ranks sessions based on headspace strategy, roadmaps, and activity state.
 
 **Scope:**
 - API endpoint: `GET /api/priorities`
@@ -169,7 +169,7 @@ User can glance at the dashboard to know which session needs attention, and can 
 
 ---
 
-## Sprint 8: Focus-Aware Dashboard UI
+## Sprint 8: Headspace-Aware Dashboard UI
 
 **Goal:** Surface AI prioritisation in the dashboard.
 
@@ -181,7 +181,7 @@ User can glance at the dashboard to know which session needs attention, and can 
 - Integrate with existing notification system (priority-aware notifications)
 
 **Delivers:**
-- Complete focus-aware dashboard
+- Complete headspace-aware dashboard
 - Users know at a glance which session needs attention
 - End-to-end epic goal achieved
 
@@ -203,11 +203,11 @@ Sprint 1: YAML Foundation
     │               │
     │               └── Sprint 5: Brain Reboot View
     │
-    └── Sprint 6: Focus Strategy
+    └── Sprint 6: Headspace Strategy
             │
             └── Sprint 7: AI Prioritisation (requires OpenRouter from Sprint 4)
                     │
-                    └── Sprint 8: Focus-Aware Dashboard UI
+                    └── Sprint 8: Headspace-Aware Dashboard UI
 ```
 
 ---
@@ -219,11 +219,11 @@ Sprint 1: YAML Foundation
 | 1 | YAML Foundation | None | Small |
 | 2 | Roadmap Management | Sprint 1 | Small |
 | 3 | Session Summarisation | Sprint 1 | Medium |
-| 4 | Focus Strategy | Sprint 1 | Small |
+| 4 | Headspace Strategy | Sprint 1 | Small |
 | 5 | History Compression | Sprint 3 | Medium |
 | 6 | Brain Reboot View | Sprints 2, 5 | Medium |
 | 7 | AI Prioritisation | Sprints 4, 6 | Medium |
-| 8 | Focus-Aware Dashboard UI | Sprint 7 | Medium |
+| 8 | Headspace-Aware Dashboard UI | Sprint 7 | Medium |
 
 ---
 

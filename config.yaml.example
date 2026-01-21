@@ -22,3 +22,16 @@ scan_interval: 5
 # Delay before focusing iTerm window (in seconds)
 # Increase if focus isn't working reliably
 iterm_focus_delay: 0.1
+
+# OpenRouter Configuration (for AI-powered history compression)
+# Get your API key from https://openrouter.ai/keys
+# Note: The API key should never be committed to version control
+openrouter:
+  # Required: Your OpenRouter API key
+  # api_key: "sk-or-..."
+
+  # Optional: Model to use for compression (default: anthropic/claude-3-haiku)
+  # model: "anthropic/claude-3-haiku"
+
+  # Optional: How often to check for pending compressions (seconds, default: 300)
+  # compression_interval: 300
