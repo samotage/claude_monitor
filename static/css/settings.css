@@ -170,3 +170,107 @@
     color: var(--text-muted);
     font-size: 0.75rem;
 }
+
+/* Password input with reveal toggle */
+.password-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.password-input-wrapper input {
+    flex: 1;
+    background: var(--bg-void);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 10px 12px;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+}
+
+.password-input-wrapper input:focus {
+    outline: none;
+    border-color: var(--cyan);
+    box-shadow: 0 0 0 3px var(--cyan-glow);
+}
+
+.password-reveal-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 8px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    transition: all 0.15s ease;
+    text-transform: lowercase;
+}
+
+.password-reveal-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+}
+
+.password-reveal-btn.revealed {
+    background: var(--cyan-dim);
+    color: var(--cyan);
+    border-color: var(--cyan-dim);
+}
+
+/* Wider text inputs for long strings (API keys, model names) */
+.setting-input-wide {
+    width: 300px !important;
+}
+
+/* Toggle button for boolean settings (ON/OFF) */
+.btn-toggle {
+    min-width: 60px;
+    padding: 8px 16px;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.btn-toggle.on {
+    background: var(--green);
+    color: var(--bg-void);
+    border: 1px solid var(--green);
+}
+
+.btn-toggle.off {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+}
+
+.btn-toggle:hover {
+    box-shadow: none;
+}
+
+.btn-toggle.on:hover {
+    background: var(--green);
+    filter: brightness(1.1);
+}
+
+.btn-toggle.off:hover {
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+}
+
+/* Global save section at bottom */
+.settings-actions-global {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 24px;
+    padding: 20px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+.settings-actions-global .btn {
+    align-self: flex-start;
+}

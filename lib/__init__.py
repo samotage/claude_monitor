@@ -1,4 +1,4 @@
-"""Claude Monitor library modules.
+"""Claude Headspace library modules.
 
 This package contains the core functionality modules:
 - iterm: iTerm AppleScript integration and window focus
@@ -8,4 +8,6 @@ This package contains the core functionality modules:
 - projects: Project data, roadmap, and CLAUDE.md parsing
 - summarization: JSONL log parsing and session summarization
 - compression: History compression with OpenRouter API
+- session_sync: Background session state synchronization
+- help: Help documentation loading and search
 """

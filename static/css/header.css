@@ -1,43 +1,16 @@
-/* Header - ASCII art style title and stats */
-header {
-    text-align: center;
-    margin-bottom: 32px;
-    padding: 20px 0;
-}
-
-.ascii-title {
-    font-size: 0.65rem;
-    color: var(--cyan);
-    white-space: pre;
-    line-height: 1.1;
-    text-shadow: 0 0 20px var(--cyan-glow);
-    letter-spacing: -0.02em;
-}
-
-.subtitle {
-    color: var(--text-muted);
-    font-size: 0.8rem;
-    margin-top: 16px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-}
-
-.subtitle::before {
-    content: '// ';
-    color: var(--text-ghost);
-}
-
-/* Stats bar */
+/* Global Stats Bar - below navigation, also fixed */
 .stats-bar {
     display: flex;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 32px;
-    margin-top: 20px;
-    padding: 12px 24px;
+    padding: 10px 24px;
     background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    display: inline-flex;
+    border-bottom: 1px solid var(--border);
+    position: fixed;
+    top: 52px;  /* Height of tab-nav */
+    left: 0;
+    right: 0;
+    z-index: 99;
 }
 
 .stat-item {

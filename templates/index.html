@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Claude Monitor</title>
+    <title>Claude Headspace</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111114'/%3E%3Crect x='5' y='10' width='9' height='14' rx='2' fill='%2356d4dd'/%3E%3Crect x='18' y='6' width='9' height='18' rx='2' fill='%2373e0a0'/%3E%3C/svg%3E">
 
     <!-- Fonts -->
@@ -22,6 +22,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/priority.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/roadmap.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/readme.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/help.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/logging.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/settings.css') }}">
 </head>
 <body>
@@ -54,42 +56,44 @@
 
     <!-- Tab Navigation -->
     <nav class="tab-nav">
-        <button class="tab-btn active" data-tab="kanban">sessions</button>
-        <button class="tab-btn" data-tab="health">readme.md</button>
-        <button class="tab-btn" data-tab="settings">config.yaml</button>
-    </nav>
-
-    <!-- Kanban Tab -->
-    <div id="kanban-tab" class="tab-content active">
-        <header>
-            <pre class="ascii-title"> ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
+        <a class="nav-brand" href="#" onclick="switchToTab('dashboard'); return false;">
+            <pre class="nav-ascii"> ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
 ██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝
 ██║     ██║     ███████║██║   ██║██║  ██║█████╗
 ██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝
 ╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗
- ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝
-            M O N I T O R</pre>
-            <p class="subtitle">tracking claude code sessions across projects</p>
-            <div class="stats-bar" id="stats-bar">
-                <div class="stat-item">
-                    <span class="stat-label">input needed</span>
-                    <span class="stat-value input-needed" id="input-needed-count">0</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">working</span>
-                    <span class="stat-value active" id="working-count">0</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">idle</span>
-                    <span class="stat-value idle" id="idle-count">0</span>
-                </div>
-            </div>
-        </header>
+ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝</pre><span class="nav-brand-cursor">&gt;_</span><span class="nav-brand-suffix">headspace</span>
+        </a>
+        <button class="tab-btn active" data-tab="dashboard">dashboard</button>
+        <button class="tab-btn" data-tab="focus">focus</button>
+        <button class="tab-btn" data-tab="logging">logging</button>
+        <button class="tab-btn" data-tab="config">config</button>
+        <button class="tab-btn" data-tab="help">help</button>
+    </nav>
+
+    <!-- Global Stats Bar -->
+    <div class="stats-bar" id="stats-bar">
+        <div class="stat-item">
+            <span class="stat-label">input needed</span>
+            <span class="stat-value input-needed" id="input-needed-count">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">working</span>
+            <span class="stat-value active" id="working-count">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">idle</span>
+            <span class="stat-value idle" id="idle-count">0</span>
+        </div>
+    </div>
+
+    <!-- Dashboard Tab -->
+    <div id="dashboard-tab" class="tab-content active">
 
         <!-- Headspace Panel -->
         <div id="headspace-panel" class="headspace-panel" style="display: none;">
             <div class="headspace-header">
-                <span class="headspace-label">HEADSPACE</span>
+                <span class="headspace-label">HEADSPACE FOCUS</span>
                 <button class="headspace-edit-btn" onclick="enterHeadspaceEditMode()">Edit</button>
             </div>
 
@@ -134,6 +138,7 @@
             </div>
             <div class="recommended-next-content">
                 <div class="recommended-next-project">
+                    <span class="recommended-next-uuid" id="recommended-next-uuid"></span>
                     <span class="recommended-next-name" id="recommended-next-name"></span>
                     <span class="recommended-next-state" id="recommended-next-state"></span>
                 </div>
@@ -164,44 +169,116 @@
         </div>
     </div>
 
-    <!-- Health Tab -->
-    <div id="health-tab" class="tab-content">
-        <div class="readme-container">
-            <div class="readme-header">
-                <div class="window-dots">
-                    <span class="window-dot red"></span>
-                    <span class="window-dot yellow"></span>
-                    <span class="window-dot green"></span>
-                </div>
-                <span class="readme-filename">README.md</span>
+    <!-- Focus Tab -->
+    <div id="focus-tab" class="tab-content">
+        <div class="focus-container">
+            <div class="focus-header">
+                <h2>Current Focus</h2>
+                <p class="focus-description">Set your current headspace to help prioritize across projects.</p>
             </div>
-            <div id="readme-content" class="readme-content">
-                <p>loading documentation...</p>
+            <div class="focus-form">
+                <div class="focus-input-group">
+                    <label class="focus-label">What's your focus right now?</label>
+                    <textarea id="focus-current-input" class="focus-textarea" placeholder="e.g., Ship the new feature before EOD"></textarea>
+                </div>
+                <div class="focus-input-group">
+                    <label class="focus-label">Constraints (optional)</label>
+                    <textarea id="focus-constraints-input" class="focus-textarea focus-textarea-small" placeholder="e.g., Limited time, need to avoid breaking changes"></textarea>
+                </div>
+                <div class="focus-actions">
+                    <button class="btn" onclick="saveFocusFromTab()">Save Focus</button>
+                    <span id="focus-save-status" class="focus-status"></span>
+                </div>
+            </div>
+            <div class="focus-history-section">
+                <h3>Recent Focus History</h3>
+                <div id="focus-history-list" class="focus-history-list">
+                    <p class="focus-loading">Loading history...</p>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Settings Tab -->
-    <div id="settings-tab" class="tab-content">
+    <!-- Logging Tab -->
+    <div id="logging-tab" class="tab-content">
+        <div class="logging-container">
+            <!-- Logging Header with Sub-Tabs and Pop-out -->
+            <div class="logging-header">
+                <div class="logging-subtabs">
+                    <button class="logging-subtab active" data-subtab="openrouter">openrouter</button>
+                </div>
+                <button class="logging-popout-btn" onclick="openLoggingPopout()" title="Open in new tab">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                        <polyline points="15 3 21 3 21 9"></polyline>
+                        <line x1="10" y1="14" x2="21" y2="3"></line>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Search Bar -->
+            <div class="logging-search-container">
+                <input type="text" id="logging-search" class="logging-search" placeholder="Search logs...">
+            </div>
+
+            <!-- Log Entries Container -->
+            <div id="logging-entries" class="logging-entries">
+                <div class="logging-empty" id="logging-empty">
+                    No API logs yet. Logs will appear here when OpenRouter API calls are made.
+                </div>
+                <div class="logging-error" id="logging-error" style="display: none;">
+                    <span>Failed to load logs.</span>
+                    <button onclick="loadOpenRouterLogs()">Retry</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Tab -->
+    <div id="help-tab" class="tab-content">
+        <div class="help-container">
+            <!-- Sidebar with navigation and search -->
+            <div class="help-sidebar">
+                <div id="help-search-container">
+                    <input type="text" id="help-search" placeholder="Search documentation...">
+                    <div id="help-search-results"></div>
+                </div>
+                <nav id="help-nav">
+                    <!-- Navigation will be populated by JS -->
+                </nav>
+            </div>
+            <!-- Main content area -->
+            <div class="help-main">
+                <div class="help-header">
+                    <div class="window-dots">
+                        <span class="window-dot red"></span>
+                        <span class="window-dot yellow"></span>
+                        <span class="window-dot green"></span>
+                    </div>
+                    <span class="help-filename">docs/application/</span>
+                </div>
+                <div id="help-content">
+                    <div class="help-loading">Loading documentation...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Config Tab -->
+    <div id="config-tab" class="tab-content">
         <div class="settings-container">
             <div class="settings-section">
                 <div class="settings-section-header">
                     <h2>monitored_projects</h2>
                 </div>
                 <div class="settings-section-body">
-                    <p class="settings-description">Configure the projects that Claude Monitor will track.</p>
+                    <p class="settings-description">Configure the projects that Claude Headspace will track.</p>
 
                     <div id="project-list" class="project-list">
                         <!-- Projects will be rendered here -->
                     </div>
 
                     <button class="btn btn-secondary" onclick="addProject()">+ add_project</button>
-
-                    <div class="settings-actions">
-                        <button class="btn" onclick="saveSettings()">save_config</button>
-                    </div>
-
-                    <div id="settings-status" class="settings-status"></div>
                 </div>
             </div>
 
@@ -225,6 +302,98 @@
 
             <div class="settings-section">
                 <div class="settings-section-header">
+                    <h2>session_summarization</h2>
+                </div>
+                <div class="settings-section-body">
+                    <p class="settings-description">Configure when sessions are considered ended for summarization.</p>
+                    <div class="setting-row">
+                        <label>idle_timeout</label>
+                        <input type="number" id="idle-timeout-minutes" min="5" max="480" value="60">
+                        <span class="setting-hint">minutes</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-header">
+                    <h2>brain_reboot</h2>
+                </div>
+                <div class="settings-section-body">
+                    <p class="settings-description">Configure when projects are flagged as stale for context reload.</p>
+                    <div class="setting-row">
+                        <label>stale_threshold</label>
+                        <input type="number" id="stale-threshold-hours" min="0.5" max="48" step="0.5" value="4">
+                        <span class="setting-hint">hours</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-header">
+                    <h2>openrouter</h2>
+                </div>
+                <div class="settings-section-body">
+                    <p class="settings-description">AI-powered history compression. Get API key from openrouter.ai/keys</p>
+                    <div class="setting-row">
+                        <label>api_key</label>
+                        <div class="password-input-wrapper">
+                            <input type="password" id="openrouter-api-key" class="setting-input-wide" placeholder="sk-or-v1-...">
+                            <button type="button" class="password-reveal-btn" onclick="togglePasswordVisibility('openrouter-api-key', this)">show</button>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <label>model</label>
+                        <input type="text" id="openrouter-model" class="setting-input-wide" value="anthropic/claude-3-haiku">
+                    </div>
+                    <div class="setting-row">
+                        <label>compression_interval</label>
+                        <input type="number" id="openrouter-compression-interval" min="60" max="3600" value="300">
+                        <span class="setting-hint">seconds</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-header">
+                    <h2>headspace</h2>
+                </div>
+                <div class="settings-section-body">
+                    <p class="settings-description">Cross-project context tracking for focus and energy.</p>
+                    <div class="setting-row">
+                        <label>enabled</label>
+                        <button id="headspace-enabled-btn" class="btn btn-toggle" onclick="toggleSettingBoolean('headspace-enabled-btn')">ON</button>
+                    </div>
+                    <div class="setting-row">
+                        <label>history_enabled</label>
+                        <button id="headspace-history-btn" class="btn btn-toggle" onclick="toggleSettingBoolean('headspace-history-btn')">ON</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-header">
+                    <h2>ai_prioritization</h2>
+                </div>
+                <div class="settings-section-body">
+                    <p class="settings-description">AI-powered session prioritization. Requires OpenRouter API key.</p>
+                    <div class="setting-row">
+                        <label>enabled</label>
+                        <button id="priorities-enabled-btn" class="btn btn-toggle" onclick="toggleSettingBoolean('priorities-enabled-btn')">ON</button>
+                    </div>
+                    <div class="setting-row">
+                        <label>polling_interval</label>
+                        <input type="number" id="priorities-polling-interval" min="30" max="600" value="60">
+                        <span class="setting-hint">seconds</span>
+                    </div>
+                    <div class="setting-row">
+                        <label>model</label>
+                        <input type="text" id="priorities-model" class="setting-input-wide" placeholder="uses openrouter.model if empty">
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-header">
                     <h2>notifications</h2>
                 </div>
                 <div class="settings-section-body">
@@ -238,6 +407,12 @@
                         <button class="btn btn-secondary" onclick="testMacNotification()">send test notification</button>
                     </div>
                 </div>
+            </div>
+
+            <!-- Global Save Section -->
+            <div class="settings-actions-global">
+                <button class="btn" onclick="saveSettings()">save_all_config</button>
+                <div id="settings-status" class="settings-status"></div>
             </div>
         </div>
     </div>
@@ -253,6 +428,36 @@
         };
     </script>
 
+    <!-- Mermaid.js for diagram rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+        // Initialize Mermaid with dark theme
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: 'dark',
+            themeVariables: {
+                primaryColor: '#56d4dd',
+                primaryTextColor: '#e8e8e8',
+                primaryBorderColor: '#3a3a4a',
+                lineColor: '#5a5a6a',
+                secondaryColor: '#73e0a0',
+                tertiaryColor: '#1a1a24',
+                background: '#111114',
+                mainBkg: '#1a1a24',
+                secondBkg: '#111114',
+                nodeBorder: '#3a3a4a',
+                clusterBkg: '#1a1a24',
+                clusterBorder: '#3a3a4a',
+                titleColor: '#e8e8e8',
+                edgeLabelBackground: '#1a1a24'
+            },
+            flowchart: {
+                htmlLabels: true,
+                curve: 'basis'
+            }
+        });
+    </script>
+
     <!-- JS Modules (order matters for dependencies) -->
     <script src="{{ url_for('static', filename='js/config.js') }}"></script>
     <script src="{{ url_for('static', filename='js/utils.js') }}"></script>
@@ -266,6 +471,8 @@
     <script src="{{ url_for('static', filename='js/tabs.js') }}"></script>
     <script src="{{ url_for('static', filename='js/settings.js') }}"></script>
     <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/help.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/logging.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-"""Configuration management for Claude Monitor.
+"""Configuration management for Claude Headspace.
 
 This module handles loading and saving the config.yaml file.
 """
@@ -15,6 +15,27 @@ DEFAULT_CONFIG = {
     "projects": [],
     "scan_interval": 2,
     "iterm_focus_delay": 0.1,
+    "idle_timeout_minutes": 60,
+    "stale_threshold_hours": 4,
+    "openrouter": {
+        "api_key": "",
+        "model": "anthropic/claude-3-haiku",
+        "compression_interval": 300,
+    },
+    "headspace": {
+        "enabled": True,
+        "history_enabled": True,
+    },
+    "priorities": {
+        "enabled": True,
+        "polling_interval": 60,
+        "model": "",
+    },
+    "session_sync": {
+        "enabled": True,
+        "interval": 60,
+        "jsonl_tail_entries": 20,
+    },
 }
 
 

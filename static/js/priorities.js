@@ -67,6 +67,7 @@ function updateRecommendedNextPanel() {
     const content = panel.querySelector('.recommended-next-content');
     const emptyState = document.getElementById('recommended-next-empty');
     const scoreEl = document.getElementById('recommended-next-score');
+    const uuidEl = document.getElementById('recommended-next-uuid');
     const nameEl = document.getElementById('recommended-next-name');
     const stateEl = document.getElementById('recommended-next-state');
     const rationaleEl = document.getElementById('recommended-next-rationale');
@@ -85,10 +86,12 @@ function updateRecommendedNextPanel() {
     scoreEl.style.display = 'inline';
 
     scoreEl.textContent = topSession.priority_score;
+    uuidEl.textContent = topSession.uuid_short || '';
     nameEl.textContent = topSession.project_name;
     stateEl.textContent = formatActivityState(topSession.activity_state);
     stateEl.className = 'recommended-next-state ' + topSession.activity_state;
-    rationaleEl.textContent = topSession.rationale || 'Top priority session';
+    // Show activity summary if available, otherwise fall back to rationale
+    rationaleEl.textContent = topSession.activity_summary || topSession.rationale || 'Top priority session';
 }
 
 function focusRecommendedSession() {

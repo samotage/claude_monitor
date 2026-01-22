@@ -105,3 +105,99 @@ async function saveHeadspace() {
         console.error('Failed to save headspace:', error);
     }
 }
+
+// =============================================================================
+// Focus Tab Functions
+// =============================================================================
+
+async function loadFocusTab() {
+    const focusInput = document.getElementById('focus-current-input');
+    const constraintsInput = document.getElementById('focus-constraints-input');
+    const historyList = document.getElementById('focus-history-list');
+
+    // Load current headspace into inputs
+    try {
+        const data = await fetchHeadspaceAPI();
+        if (data.success && data.data) {
+            focusInput.value = data.data.current_focus || '';
+            constraintsInput.value = data.data.constraints || '';
+        }
+    } catch (error) {
+        console.error('Failed to load headspace for focus tab:', error);
+    }
+
+    // Load history
+    try {
+        const response = await fetch('/api/headspace/history');
+        const data = await response.json();
+
+        if (data.success && data.data && data.data.length > 0) {
+            let html = '';
+            data.data.slice(0, 10).forEach(item => {
+                const time = formatHeadspaceTimestamp(item.updated_at);
+                html += `
+                    <div class="focus-history-item">
+                        <div class="focus-history-content">"${escapeHtml(item.current_focus)}"</div>
+                        <div class="focus-history-time">${time}</div>
+                    </div>
+                `;
+            });
+            historyList.innerHTML = html;
+        } else {
+            historyList.innerHTML = '<p class="focus-empty">No focus history yet.</p>';
+        }
+    } catch (error) {
+        console.error('Failed to load focus history:', error);
+        historyList.innerHTML = '<p class="focus-empty">Failed to load history.</p>';
+    }
+}
+
+async function saveFocusFromTab() {
+    const focusInput = document.getElementById('focus-current-input');
+    const constraintsInput = document.getElementById('focus-constraints-input');
+    const statusEl = document.getElementById('focus-save-status');
+
+    const currentFocus = focusInput.value.trim();
+    const constraints = constraintsInput.value.trim() || null;
+
+    if (!currentFocus) {
+        statusEl.textContent = 'Focus is required';
+        statusEl.className = 'focus-status error';
+        focusInput.focus();
+        return;
+    }
+
+    statusEl.textContent = 'Saving...';
+    statusEl.className = 'focus-status';
+
+    try {
+        const data = await saveHeadspaceAPI({
+            current_focus: currentFocus,
+            constraints: constraints
+        });
+
+        if (data.success) {
+            currentHeadspace = data.data;
+            statusEl.textContent = 'Saved!';
+            statusEl.className = 'focus-status success';
+
+            // Also update the dashboard headspace panel
+            renderHeadspace();
+
+            // Reload history
+            loadFocusTab();
+
+            setTimeout(() => {
+                statusEl.textContent = '';
+                statusEl.className = 'focus-status';
+            }, 2000);
+        } else {
+            statusEl.textContent = 'Failed to save';
+            statusEl.className = 'focus-status error';
+        }
+    } catch (error) {
+        console.error('Failed to save focus:', error);
+        statusEl.textContent = 'Error saving';
+        statusEl.className = 'focus-status error';
+    }
+}

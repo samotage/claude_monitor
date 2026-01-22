@@ -174,3 +174,157 @@
     color: var(--text-disabled);
     font-size: 0.85rem;
 }
+
+/* =============================================================================
+   Focus Tab Styles
+   ============================================================================= */
+
+.focus-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 40px 20px;
+}
+
+.focus-header {
+    margin-bottom: 32px;
+}
+
+.focus-header h2 {
+    color: var(--text-primary);
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0 0 8px 0;
+}
+
+.focus-description {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.focus-form {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 32px;
+}
+
+.focus-input-group {
+    margin-bottom: 20px;
+}
+
+.focus-input-group:last-of-type {
+    margin-bottom: 0;
+}
+
+.focus-label {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-bottom: 8px;
+}
+
+.focus-textarea {
+    width: 100%;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    color: var(--text-primary);
+    font-size: 1rem;
+    font-family: inherit;
+    line-height: 1.5;
+    box-sizing: border-box;
+    resize: vertical;
+    min-height: 100px;
+    transition: border-color 0.15s ease;
+}
+
+.focus-textarea:focus {
+    outline: none;
+    border-color: var(--cyan);
+}
+
+.focus-textarea::placeholder {
+    color: var(--text-disabled);
+}
+
+.focus-textarea-small {
+    min-height: 60px;
+}
+
+.focus-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 20px;
+}
+
+.focus-status {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.focus-status.success {
+    color: var(--green);
+}
+
+.focus-status.error {
+    color: var(--amber);
+}
+
+.focus-history-section {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+}
+
+.focus-history-section h3 {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0 0 16px 0;
+}
+
+.focus-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.focus-history-item {
+    padding: 12px 16px;
+    background: var(--bg-deep);
+    border-radius: 6px;
+    border-left: 3px solid var(--border);
+}
+
+.focus-history-content {
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    margin-bottom: 4px;
+}
+
+.focus-history-time {
+    color: var(--text-disabled);
+    font-size: 0.75rem;
+}
+
+.focus-empty {
+    color: var(--text-disabled);
+    font-size: 0.9rem;
+    text-align: center;
+    padding: 20px;
+}
+
+.focus-loading {
+    color: var(--text-disabled);
+    font-size: 0.9rem;
+    text-align: center;
+    padding: 20px;
+}

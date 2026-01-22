@@ -1,4 +1,4 @@
-# Claude Monitor Configuration
+# Claude Headspace Configuration
 #
 # Copy this file to config.yaml and customize for your setup.
 # The monitor will scan configured project directories for Claude Code sessions.
@@ -105,3 +105,24 @@ priorities:
   # Model to use for prioritization (can differ from compression model)
   # Default: uses openrouter.model setting
   # model: "anthropic/claude-3-haiku"
+
+# =============================================================================
+# Session State Sync
+# =============================================================================
+# Background thread that monitors sessions and populates headspace data
+# This enables the "Where You Are" section to show live session activity
+
+session_sync:
+  # Enable/disable session state synchronization
+  # Default: true
+  enabled: true
+
+  # How often to sync session state (seconds)
+  # Lower = more responsive, higher = less CPU/disk usage
+  # Default: 60
+  interval: 60
+
+  # Number of recent JSONL log entries to read for live context
+  # Higher = more context but more processing
+  # Default: 20
+  jsonl_tail_entries: 20

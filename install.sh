@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Claude Monitor - Installation Script
+# Claude Headspace - Installation Script
 #
-# This script sets up Claude Monitor on your Mac.
+# This script sets up Claude Headspace on your Mac.
 #
 
 set -e
@@ -18,14 +18,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo -e "${CYAN}"
 echo "╔═══════════════════════════════════════╗"
-echo "║       Claude Monitor Installer        ║"
+echo "║      Claude Headspace Installer       ║"
 echo "╚═══════════════════════════════════════╝"
 echo -e "${NC}"
 
 # Check for macOS
 check_macos() {
     if [[ "$(uname)" != "Darwin" ]]; then
-        echo -e "${RED}Error: Claude Monitor requires macOS (uses AppleScript for iTerm integration)${NC}"
+        echo -e "${RED}Error: Claude Headspace requires macOS (uses AppleScript for iTerm integration)${NC}"
         exit 1
     fi
     echo -e "${GREEN}✓${NC} macOS detected"
@@ -55,7 +55,7 @@ check_python() {
 check_iterm() {
     if [[ ! -d "/Applications/iTerm.app" ]]; then
         echo -e "${YELLOW}Warning: iTerm2 not found in /Applications${NC}"
-        echo "  Claude Monitor requires iTerm2 for session tracking."
+        echo "  Claude Headspace requires iTerm2 for session tracking."
         echo "  Download from: https://iterm2.com/"
         read -p "Continue anyway? (y/N) " -n 1 -r
         echo

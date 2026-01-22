@@ -108,3 +108,66 @@ function getActivityInfo(state) {
 function getSessionFingerprint(sessions) {
     return sessions.map(s => `${s.uuid}:${s.activity_state}:${s.status}:${s.elapsed}`).join('|');
 }
+
+/**
+ * Check if any blocking UI state is active that should prevent full kanban re-render.
+ * Returns true if roadmap editing, side panels open, etc.
+ */
+function hasBlockingUIState() {
+    // Check if any roadmap is in edit mode
+    for (const slug in roadmapEditMode) {
+        if (roadmapEditMode[slug]) return true;
+    }
+
+    // Check if Headspace panel is open
+    const rebootPanel = document.getElementById('reboot-panel');
+    if (rebootPanel && rebootPanel.classList.contains('active')) return true;
+
+    // Check if Context panel is open
+    const contextPanel = document.getElementById('context-panel');
+    if (contextPanel && contextPanel.classList.contains('active')) return true;
+
+    return false;
+}
+
+/**
+ * Get current UI state to preserve during targeted updates.
+ */
+function captureUIState() {
+    const state = {
+        expandedRoadmaps: [],
+        editingRoadmaps: []
+    };
+
+    // Capture expanded roadmaps
+    document.querySelectorAll('.roadmap-panel.expanded').forEach(panel => {
+        const slug = panel.id.replace('roadmap-', '');
+        state.expandedRoadmaps.push(slug);
+    });
+
+    // Capture editing roadmaps
+    for (const slug in roadmapEditMode) {
+        if (roadmapEditMode[slug]) {
+            state.editingRoadmaps.push(slug);
+        }
+    }
+
+    return state;
+}
+
+/**
+ * Restore UI state after kanban re-render.
+ */
+function restoreUIState(state) {
+    // Restore expanded roadmaps
+    state.expandedRoadmaps.forEach(slug => {
+        const panel = document.getElementById(`roadmap-${slug}`);
+        if (panel) {
+            panel.classList.add('expanded');
+            // Re-render the roadmap content from cache
+            if (roadmapCache[slug]) {
+                renderRoadmapDisplay(slug, roadmapCache[slug]);
+            }
+        }
+    });
+}

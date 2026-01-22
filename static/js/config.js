@@ -31,6 +31,7 @@ let currentHeadspace = null;
 const roadmapCache = {};
 const roadmapEditMode = {};
 const roadmapSaveTimers = {};
+const roadmapExpandedState = {};  // Track expanded roadmaps
 
 // Kanban fingerprint for change detection
 let lastFingerprint = '';

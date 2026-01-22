@@ -22,12 +22,12 @@
     --blue: #7399e0;
     --blue-dim: #7399e080;
 
-    /* Text colors */
+    /* Text colors - improved contrast */
     --text-primary: #e8e8ed;
-    --text-secondary: #8b8b96;
-    --text-muted: #4a4a54;
-    --text-ghost: #2a2a32;
-    --text-disabled: #3a3a44;
+    --text-secondary: #a0a0ab;
+    --text-muted: #6a6a78;
+    --text-ghost: #505060;
+    --text-disabled: #4a4a58;
 
     /* Borders */
     --border: #252530;

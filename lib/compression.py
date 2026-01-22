@@ -1,4 +1,4 @@
-"""History compression for Claude Monitor.
+"""History compression for Claude Headspace.
 
 This module handles:
 - OpenRouter API integration
@@ -211,7 +211,7 @@ def call_openrouter(messages: list[dict], model: str = None) -> tuple[Optional[s
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "HTTP-Referer": "https://github.com/samotage/claude_monitor",
-        "X-Title": "Claude Monitor"
+        "X-Title": "Claude Headspace"
     }
 
     payload = {

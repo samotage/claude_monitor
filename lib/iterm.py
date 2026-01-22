@@ -1,4 +1,4 @@
-"""iTerm integration module for Claude Monitor.
+"""iTerm integration module for Claude Headspace.
 
 This module handles all AppleScript-based iTerm window operations:
 - Enumerating iTerm windows and sessions
@@ -80,6 +80,36 @@ def get_iterm_windows() -> dict[str, dict]:
         return windows
     except Exception:
         return {}
+
+
+def is_claude_process(pid: int) -> bool:
+    """Check if a PID is a Claude Code process.
+
+    This prevents PID reuse issues where a dead session's PID
+    gets recycled by the OS for an unrelated process.
+
+    Args:
+        pid: Process ID to check
+
+    Returns:
+        True if the process appears to be Claude Code
+    """
+    try:
+        # Get the full command line for the process
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return False
+
+        command = result.stdout.strip().lower()
+        # Claude Code runs as node with claude in the path, or as 'claude' directly
+        return "claude" in command
+    except Exception:
+        return False
 
 
 def get_pid_tty(pid: int) -> Optional[str]:

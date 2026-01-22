@@ -81,31 +81,31 @@
     align-items: center;
     gap: 8px;
     color: var(--text-muted);
-    font-size: 0.75rem;
+    font-size: 0.85rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    margin-bottom: 12px;
-    padding-bottom: 8px;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
     border-bottom: 1px solid var(--border);
 }
 
 .reboot-section-icon {
-    font-size: 1rem;
+    font-size: 1.1rem;
 }
 
 .reboot-section-content {
     color: var(--text-secondary);
-    font-size: 0.85rem;
-    line-height: 1.6;
+    font-size: 1rem;
+    line-height: 1.7;
 }
 
 .reboot-section-content p {
-    margin-bottom: 8px;
+    margin-bottom: 10px;
 }
 
 .reboot-section-content .label {
     color: var(--text-muted);
-    font-size: 0.75rem;
+    font-size: 0.9rem;
 }
 
 .reboot-section-content .value {

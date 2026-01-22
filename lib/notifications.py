@@ -1,4 +1,4 @@
-"""macOS notification handling for Claude Monitor.
+"""macOS notification handling for Claude Headspace.
 
 This module handles:
 - Sending native macOS notifications via terminal-notifier

@@ -1,20 +1,78 @@
-"""Session summarization for Claude Monitor.
+"""Session summarization for Claude Headspace.
 
 This module handles:
 - JSONL session log parsing
 - Session activity extraction (files, commands, errors)
 - Summary text generation
 - Project state and recent sessions updates
+- Terminal content preparation for AI summarization
 """
 
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Generator, Optional
 
 from config import load_config
 from lib.projects import load_project_data, save_project_data
+
+
+# =============================================================================
+# Terminal Content Preparation for AI
+# =============================================================================
+
+
+def prepare_content_for_summary(content_tail: str, max_chars: int = 1500) -> str:
+    """Prepare terminal content for AI summarization.
+
+    Cleans and truncates terminal content to be suitable for inclusion
+    in an AI prompt for generating activity summaries.
+
+    Args:
+        content_tail: Raw terminal content (up to 5000 chars from iTerm)
+        max_chars: Maximum characters to return (default 1500 for token efficiency)
+
+    Returns:
+        Cleaned and truncated content suitable for AI prompt
+    """
+    if not content_tail:
+        return ""
+
+    text = content_tail
+
+    # 1. Strip ANSI escape codes (colors, cursor movement, etc.)
+    ansi_pattern = re.compile(r'\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[PX^_][^\x1b]*\x1b\\')
+    text = ansi_pattern.sub('', text)
+
+    # 2. Remove common box-drawing and UI chrome characters used by Claude Code TUI
+    # Box drawing: ─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼ ═ ║ ╔ ╗ ╚ ╝ ╠ ╣ ╦ ╩ ╬
+    # Block elements: █ ▀ ▄ ▌ ▐ ░ ▒ ▓
+    ui_chrome_pattern = re.compile(r'[─│┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬█▀▄▌▐░▒▓◀▶▲▼●○◉◎■□▪▫]+')
+    text = ui_chrome_pattern.sub(' ', text)
+
+    # 3. Remove spinner/progress characters (braille patterns used by Claude Code)
+    spinner_pattern = re.compile(r'[⠁⠂⠃⠄⠅⠆⠇⠈⠉⠊⠋⠌⠍⠎⠏⠐⠑⠒⠓⠔⠕⠖⠗⠘⠙⠚⠛⠜⠝⠞⠟⠠⠡⠢⠣⠤⠥⠦⠧⠨⠩⠪⠫⠬⠭⠮⠯⠰⠱⠲⠳⠴⠵⠶⠷⠸⠹⠺⠻⠼⠽⠾⠿⡀⡄⡆⡇◐◑◒◓◴◵◶◷⣾⣽⣻⢿⡿⣟⣯⣷]+')
+    text = spinner_pattern.sub('', text)
+
+    # 4. Collapse multiple whitespace/newlines into single space or newline
+    text = re.sub(r'[ \t]+', ' ', text)  # Multiple spaces/tabs to single space
+    text = re.sub(r'\n{3,}', '\n\n', text)  # 3+ newlines to 2
+    text = re.sub(r' *\n *', '\n', text)  # Trim spaces around newlines
+
+    # 5. Strip leading/trailing whitespace
+    text = text.strip()
+
+    # 6. Take the last max_chars characters (most recent activity)
+    if len(text) > max_chars:
+        text = text[-max_chars:]
+        # Remove partial line at the start (find first newline)
+        first_newline = text.find('\n')
+        if first_newline > 0 and first_newline < 200:  # Only if reasonably close to start
+            text = text[first_newline + 1:]
+
+    return text.strip()
 
 # Path to Claude Code's projects directory
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
@@ -33,18 +91,19 @@ def encode_project_path(project_path: str) -> str:
     """Encode a project path to Claude Code's directory format.
 
     Claude Code stores logs in ~/.claude/projects/<encoded-path>/
-    where the path has forward slashes replaced with hyphens.
+    where the path has forward slashes and underscores replaced with hyphens.
 
     Args:
-        project_path: Absolute path to the project (e.g., /Users/sam/project)
+        project_path: Absolute path to the project (e.g., /Users/sam/my_project)
 
     Returns:
-        Encoded path string (e.g., -Users-sam-project)
+        Encoded path string (e.g., -Users-sam-my-project)
     """
     # Ensure we're working with an absolute path
     path = Path(project_path).resolve()
-    # Replace forward slashes with hyphens
-    return str(path).replace("/", "-")
+    # Replace forward slashes and underscores with hyphens
+    encoded = str(path).replace("/", "-").replace("_", "-")
+    return encoded
 
 
 def get_claude_logs_directory(project_path: str) -> Optional[Path]:

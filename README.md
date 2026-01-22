@@ -1,4 +1,4 @@
-# Claude Monitor
+# Claude Headspace
 
 A Kanban-style dashboard for tracking Claude Code sessions across multiple projects, with native macOS notifications.
 

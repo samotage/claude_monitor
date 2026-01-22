@@ -42,7 +42,22 @@ async function fetchSessions() {
         const hasChanges = fingerprint !== lastFingerprint;
 
         if (hasChanges) {
-            renderKanban(data.sessions, data.projects);
+            // Check for blocking UI state (editing roadmap, panels open)
+            if (hasBlockingUIState()) {
+                // Skip full re-render to preserve UI state
+                // Just update the global session data for when panels close
+                currentSessions = data.sessions;
+                currentProjects = data.projects;
+            } else {
+                // Capture UI state before re-render
+                const uiState = captureUIState();
+
+                // Full re-render
+                renderKanban(data.sessions, data.projects);
+
+                // Restore UI state (expanded roadmaps)
+                restoreUIState(uiState);
+            }
             lastFingerprint = fingerprint;
         }
 
@@ -74,9 +89,9 @@ function updateStats(sessions) {
 
     // Update document title with input needed count for tab visibility
     if (inputNeeded > 0) {
-        document.title = `(${inputNeeded}) INPUT NEEDED - Claude Monitor`;
+        document.title = `(${inputNeeded}) INPUT NEEDED - Claude Headspace`;
     } else {
-        document.title = 'Claude Monitor';
+        document.title = 'Claude Headspace';
     }
 }
 

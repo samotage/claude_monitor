@@ -1,8 +1,8 @@
-# Claude Monitor - Project Specification
+# Claude Headspace - Project Specification
 
 ## Overview
 
-Claude Monitor is a Kanban-style web dashboard for tracking Claude Code sessions across multiple projects. It monitors iTerm windows and displays real-time session status with click-to-focus functionality and native macOS notifications.
+Claude Headspace is a Kanban-style web dashboard for tracking Claude Code sessions across multiple projects. It monitors iTerm windows and displays real-time session status with click-to-focus functionality and native macOS notifications.
 
 ### Key Features
 - Track active Claude Code sessions across projects

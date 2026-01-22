@@ -1,9 +1,9 @@
 /* Priority Dashboard UI Styles */
 
-/* Recommended Next Panel */
+/* Recommended Next Panel - orange call-to-action */
 .recommended-next-panel {
     background: linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-elevated) 100%);
-    border: 1px solid var(--cyan-dim);
+    border: 1px solid rgba(255, 180, 100, 0.4);
     border-radius: 6px;
     margin-bottom: 24px;
     padding: 16px 20px;
@@ -13,9 +13,9 @@
 }
 
 .recommended-next-panel:hover {
-    border-color: var(--cyan);
+    border-color: #ffb464;
     transform: translateY(-2px);
-    box-shadow: 0 4px 20px rgba(86, 212, 221, 0.15);
+    box-shadow: 0 4px 20px rgba(255, 180, 100, 0.2);
 }
 
 .recommended-next-panel::before {
@@ -25,7 +25,7 @@
     top: 0;
     bottom: 0;
     width: 4px;
-    background: var(--cyan);
+    background: #ffb464;
     border-radius: 6px 0 0 6px;
 }
 
@@ -37,7 +37,7 @@
 }
 
 .recommended-next-label {
-    color: var(--cyan);
+    color: #ffb464;
     font-size: 0.7rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -52,7 +52,7 @@
 }
 
 .recommended-next-score {
-    background: var(--cyan);
+    background: #ffb464;
     color: var(--bg-void);
     padding: 4px 12px;
     border-radius: 4px;
@@ -70,6 +70,17 @@
     display: flex;
     align-items: center;
     gap: 12px;
+}
+
+.recommended-next-uuid {
+    font-size: 0.85rem;
+    color: #ffb464;
+    font-weight: 500;
+}
+
+.recommended-next-uuid:not(:empty)::before {
+    content: '#';
+    color: rgba(255, 180, 100, 0.6);
 }
 
 .recommended-next-name {
@@ -109,12 +120,12 @@
 
 .recommended-next-rationale::before {
     content: '"';
-    color: var(--cyan-dim);
+    color: rgba(255, 180, 100, 0.5);
 }
 
 .recommended-next-rationale::after {
     content: '"';
-    color: var(--cyan-dim);
+    color: rgba(255, 180, 100, 0.5);
 }
 
 .recommended-next-action {
