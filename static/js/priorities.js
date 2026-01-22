@@ -43,7 +43,8 @@ async function fetchPriorities(forceRefresh = false) {
         updateSoftTransitionIndicator();
 
         // Re-render kanban if in priority mode to update badges
-        if (sortMode === 'priority' && currentSessions) {
+        // But skip if user has blocking UI state (e.g., editing roadmap)
+        if (sortMode === 'priority' && currentSessions && !hasBlockingUIState()) {
             renderKanban(currentSessions, currentProjects);
         }
     } catch (error) {
@@ -90,6 +91,26 @@ function updateRecommendedNextPanel() {
     nameEl.textContent = topSession.project_name;
     stateEl.textContent = formatActivityState(topSession.activity_state);
     stateEl.className = 'recommended-next-state ' + topSession.activity_state;
+
+    // Find the matching session from currentSessions to get last_message
+    const sessionPid = topSession.session_id;
+    const matchingSession = currentSessions?.find(s => String(s.pid) === String(sessionPid));
+    const lastMessage = matchingSession?.last_message || '';
+
+    // Add tooltip with last message if available
+    if (lastMessage) {
+        stateEl.setAttribute('data-tooltip', escapeHtml(lastMessage));
+        stateEl.classList.add('has-tooltip');
+        stateEl.onclick = function(e) {
+            e.stopPropagation();
+            showTooltipPopup(this);
+        };
+    } else {
+        stateEl.removeAttribute('data-tooltip');
+        stateEl.classList.remove('has-tooltip');
+        stateEl.onclick = null;
+    }
+
     // Show activity summary if available, otherwise fall back to rationale
     rationaleEl.textContent = topSession.activity_summary || topSession.rationale || 'Top priority session';
 }

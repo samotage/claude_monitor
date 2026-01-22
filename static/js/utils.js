@@ -136,7 +136,8 @@ function hasBlockingUIState() {
 function captureUIState() {
     const state = {
         expandedRoadmaps: [],
-        editingRoadmaps: []
+        editingRoadmaps: [],
+        formValues: {}
     };
 
     // Capture expanded roadmaps
@@ -145,10 +146,23 @@ function captureUIState() {
         state.expandedRoadmaps.push(slug);
     });
 
-    // Capture editing roadmaps
+    // Capture editing roadmaps AND their form values
     for (const slug in roadmapEditMode) {
         if (roadmapEditMode[slug]) {
             state.editingRoadmaps.push(slug);
+
+            // Capture current form field values
+            const formValues = {
+                title: document.getElementById(`roadmap-edit-title-${slug}`)?.value || '',
+                why: document.getElementById(`roadmap-edit-why-${slug}`)?.value || '',
+                dod: document.getElementById(`roadmap-edit-dod-${slug}`)?.value || '',
+                upcoming: document.getElementById(`roadmap-edit-upcoming-${slug}`)?.value || '',
+                later: document.getElementById(`roadmap-edit-later-${slug}`)?.value || '',
+                notNow: document.getElementById(`roadmap-edit-notnow-${slug}`)?.value || ''
+            };
+            state.formValues[slug] = formValues;
+            // Also store in global cache for persistence
+            roadmapFormCache[slug] = formValues;
         }
     }
 
@@ -170,4 +184,59 @@ function restoreUIState(state) {
             }
         }
     });
+
+    // Restore editing roadmaps with their form values
+    state.editingRoadmaps.forEach(slug => {
+        const panel = document.getElementById(`roadmap-${slug}`);
+        if (panel) {
+            // Ensure panel is expanded first
+            panel.classList.add('expanded');
+
+            // Re-enter edit mode (this renders the form)
+            if (typeof editRoadmap === 'function') {
+                editRoadmap(slug);
+
+                // Restore form values after a small delay to ensure DOM is ready
+                setTimeout(() => {
+                    const formValues = state.formValues[slug] || roadmapFormCache[slug];
+                    if (formValues) {
+                        const titleEl = document.getElementById(`roadmap-edit-title-${slug}`);
+                        const whyEl = document.getElementById(`roadmap-edit-why-${slug}`);
+                        const dodEl = document.getElementById(`roadmap-edit-dod-${slug}`);
+                        const upcomingEl = document.getElementById(`roadmap-edit-upcoming-${slug}`);
+                        const laterEl = document.getElementById(`roadmap-edit-later-${slug}`);
+                        const notNowEl = document.getElementById(`roadmap-edit-notnow-${slug}`);
+
+                        if (titleEl) titleEl.value = formValues.title;
+                        if (whyEl) whyEl.value = formValues.why;
+                        if (dodEl) dodEl.value = formValues.dod;
+                        if (upcomingEl) upcomingEl.value = formValues.upcoming;
+                        if (laterEl) laterEl.value = formValues.later;
+                        if (notNowEl) notNowEl.value = formValues.notNow;
+                    }
+                }, 50);
+            }
+        }
+    });
+
+    // Clear the form cache for restored roadmaps
+    state.editingRoadmaps.forEach(slug => {
+        delete roadmapFormCache[slug];
+    });
+}
+
+/**
+ * Trigger a deferred render if blocking UI state has ended.
+ * Called when edit forms are closed, panels are dismissed, etc.
+ */
+function triggerDeferredRenderIfReady() {
+    // Only proceed if there's a deferred render waiting AND blocking state has ended
+    if (renderDeferred && !hasBlockingUIState()) {
+        renderDeferred = false;
+
+        // Re-render with the latest session data that was collected while blocked
+        if (currentSessions && currentProjects) {
+            renderKanban(currentSessions, currentProjects);
+        }
+    }
 }

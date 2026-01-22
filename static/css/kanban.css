@@ -488,4 +488,112 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-style: italic;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition: background-color 0.15s ease;
+}
+
+.priority-rationale:hover {
+    background-color: rgba(86, 212, 221, 0.1);
+}
+
+.priority-rationale:active {
+    background-color: rgba(86, 212, 221, 0.2);
+}
+
+/* Touch-friendly tooltip popup */
+.tooltip-popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 9998;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.tooltip-popup-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.tooltip-popup {
+    position: fixed;
+    z-index: 9999;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    max-width: min(90vw, 400px);
+    max-height: 60vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    transform: translateY(10px);
+    opacity: 0;
+    visibility: hidden;
+    transition: transform 0.2s ease, opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.tooltip-popup.active {
+    transform: translateY(0);
+    opacity: 1;
+    visibility: visible;
+}
+
+.tooltip-popup-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.tooltip-popup-title {
+    color: var(--cyan);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.tooltip-popup-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    line-height: 1;
+    border-radius: 4px;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.tooltip-popup-close:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.tooltip-popup-content {
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+    .tooltip-popup {
+        left: 5vw !important;
+        right: 5vw !important;
+        bottom: 20px !important;
+        top: auto !important;
+        max-width: none;
+        max-height: 50vh;
+    }
 }

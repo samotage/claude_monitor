@@ -158,6 +158,40 @@
     color: var(--text-primary);
 }
 
+.headspace-autosave-hint {
+    color: var(--text-disabled);
+    font-size: 0.75rem;
+    font-style: italic;
+}
+
+/* Headspace Auto-save States */
+.headspace-panel.saving .headspace-edit-form::after {
+    content: 'Saving...';
+    position: absolute;
+    top: 16px;
+    right: 60px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.headspace-panel.saved .headspace-edit-form::after {
+    content: 'Saved';
+    position: absolute;
+    top: 16px;
+    right: 60px;
+    color: var(--green);
+    font-size: 0.75rem;
+}
+
+.headspace-panel.save-error .headspace-edit-form::after {
+    content: 'Error';
+    position: absolute;
+    top: 16px;
+    right: 60px;
+    color: var(--amber);
+    font-size: 0.75rem;
+}
+
 /* Headspace Empty State */
 .headspace-empty {
     text-align: center;
@@ -273,6 +307,12 @@
 
 .focus-status.error {
     color: var(--amber);
+}
+
+.focus-autosave-hint {
+    color: var(--text-disabled);
+    font-size: 0.8rem;
+    font-style: italic;
 }
 
 .focus-history-section {

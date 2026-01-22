@@ -146,6 +146,9 @@ function closeContextPanel() {
     overlay.classList.remove('active');
     contextPanelSessionPid = null;
     contextPanelSessionUuid = null;
+
+    // Trigger deferred render if blocking state has ended
+    triggerDeferredRenderIfReady();
 }
 
 function focusContextSession() {
@@ -296,6 +299,9 @@ function closeRebootPanel() {
     const overlay = document.getElementById('reboot-panel-overlay');
     panel.classList.remove('active');
     overlay.classList.remove('active');
+
+    // Trigger deferred render if blocking state has ended
+    triggerDeferredRenderIfReady();
 }
 
 function initPanelEventListeners() {

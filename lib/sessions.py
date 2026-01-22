@@ -15,6 +15,61 @@ from lib.iterm import get_iterm_windows, get_pid_tty, is_claude_process
 from lib.summarization import prepare_content_for_summary
 
 
+def extract_last_message(content_tail: str, max_chars: int = 500) -> str:
+    """Extract the last Claude message/response from terminal content.
+
+    Looks for the most recent substantial block of text that represents
+    what Claude last said. This is useful for showing in tooltips.
+
+    Args:
+        content_tail: Raw terminal content (last ~5000 chars from iTerm)
+        max_chars: Maximum characters to return
+
+    Returns:
+        The last message text, cleaned and truncated
+    """
+    if not content_tail:
+        return ""
+
+    # First clean the content using existing function
+    cleaned = prepare_content_for_summary(content_tail, max_chars=2000)
+
+    if not cleaned:
+        return ""
+
+    # Split into lines and work backwards to find last substantial content
+    lines = cleaned.strip().split('\n')
+
+    # Filter out empty lines and very short lines (likely prompts or UI)
+    substantial_lines = []
+    for line in reversed(lines):
+        line = line.strip()
+        # Skip empty lines, prompts, and very short lines
+        if not line:
+            continue
+        # Skip lines that look like prompts (common prompt patterns)
+        if line in ('>', '$', '❯', '%', '#') or len(line) < 5:
+            continue
+        # Skip lines that are just UI elements
+        if line.startswith('---') or line.startswith('==='):
+            continue
+        substantial_lines.insert(0, line)
+        # Stop after collecting enough lines (last meaningful paragraph)
+        if len('\n'.join(substantial_lines)) > max_chars:
+            break
+
+    if not substantial_lines:
+        return ""
+
+    result = '\n'.join(substantial_lines)
+
+    # Truncate if needed
+    if len(result) > max_chars:
+        result = result[:max_chars].rsplit(' ', 1)[0] + '...'
+
+    return result.strip()
+
+
 def scan_sessions(config: dict) -> list[dict]:
     """Scan all registered project directories for active sessions.
 
@@ -75,6 +130,9 @@ def scan_sessions(config: dict) -> list[dict]:
                 # Prepare terminal content for AI summarization
                 content_snippet = prepare_content_for_summary(content_tail)
 
+                # Extract last message for tooltip display
+                last_message = extract_last_message(content_tail)
+
                 sessions.append({
                     "uuid": session_uuid,
                     "uuid_short": session_uuid[-8:] if session_uuid else "unknown",
@@ -89,6 +147,7 @@ def scan_sessions(config: dict) -> list[dict]:
                     "window_title": window_title,
                     "task_summary": task_summary,
                     "content_snippet": content_snippet,
+                    "last_message": last_message,
                 })
             except Exception:
                 continue

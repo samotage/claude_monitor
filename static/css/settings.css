@@ -105,11 +105,14 @@
 }
 
 .settings-status {
-    margin-top: 16px;
-    padding: 12px 16px;
-    border-radius: 4px;
-    display: none;
+    padding: 8px 0;
     font-size: 0.85rem;
+    color: var(--text-muted);
+    min-height: 1.5em;
+}
+
+.settings-status:empty {
+    display: none;
 }
 
 .settings-status::before {
@@ -117,17 +120,17 @@
 }
 
 .settings-status.success {
-    display: block;
-    background: var(--green-dim);
     color: var(--green);
-    border: 1px solid var(--green-dim);
 }
 
 .settings-status.error {
-    display: block;
-    background: var(--red-dim);
-    color: var(--red);
-    border: 1px solid var(--red-dim);
+    color: var(--amber);
+}
+
+.settings-autosave-hint {
+    color: var(--text-disabled);
+    font-size: 0.8rem;
+    font-style: italic;
 }
 
 /* Setting rows */

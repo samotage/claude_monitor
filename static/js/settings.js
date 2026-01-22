@@ -1,5 +1,84 @@
 /* Settings Functions */
 
+// Auto-save debounce timer for settings
+let settingsSaveTimer = null;
+
+/**
+ * Schedule auto-save for settings (debounced, longer delay for batching)
+ */
+function scheduleSettingsAutoSave() {
+    if (settingsSaveTimer) {
+        clearTimeout(settingsSaveTimer);
+    }
+    settingsSaveTimer = setTimeout(() => {
+        saveSettingsQuietly();
+    }, 500);
+}
+
+/**
+ * Auto-save settings without clearing status message immediately
+ */
+async function saveSettingsQuietly() {
+    const statusEl = document.getElementById('settings-status');
+
+    // Filter out empty projects
+    const validProjects = currentProjects.filter(p => p.name && p.path);
+
+    const config = {
+        projects: validProjects,
+        scan_interval: parseInt(document.getElementById('scan-interval').value) || 2,
+        iterm_focus_delay: parseFloat(document.getElementById('focus-delay').value) || 0.1,
+        idle_timeout_minutes: parseInt(document.getElementById('idle-timeout-minutes').value) || 60,
+        stale_threshold_hours: parseFloat(document.getElementById('stale-threshold-hours').value) || 4,
+        openrouter: {
+            api_key: document.getElementById('openrouter-api-key').value || '',
+            model: document.getElementById('openrouter-model').value || 'anthropic/claude-3-haiku',
+            compression_interval: parseInt(document.getElementById('openrouter-compression-interval').value) || 300
+        },
+        headspace: {
+            enabled: getToggleState('headspace-enabled-btn'),
+            history_enabled: getToggleState('headspace-history-btn')
+        },
+        priorities: {
+            enabled: getToggleState('priorities-enabled-btn'),
+            polling_interval: parseInt(document.getElementById('priorities-polling-interval').value) || 60,
+            model: document.getElementById('priorities-model').value || ''
+        }
+    };
+
+    statusEl.className = 'settings-status';
+    statusEl.textContent = 'Auto-saving...';
+
+    try {
+        const result = await saveConfigAPI(config);
+
+        if (result.success) {
+            statusEl.className = 'settings-status success';
+            statusEl.textContent = 'Saved';
+            currentProjects = validProjects;
+
+            setTimeout(() => {
+                if (statusEl.textContent === 'Saved') {
+                    statusEl.textContent = '';
+                    statusEl.className = 'settings-status';
+                }
+            }, 1500);
+        } else {
+            statusEl.className = 'settings-status error';
+            statusEl.textContent = 'Error: ' + (result.error || 'unknown');
+            setTimeout(() => {
+                statusEl.className = 'settings-status';
+            }, 3000);
+        }
+    } catch (error) {
+        statusEl.className = 'settings-status error';
+        statusEl.textContent = 'Error: ' + error.message;
+        setTimeout(() => {
+            statusEl.className = 'settings-status';
+        }, 3000);
+    }
+}
+
 async function loadReadme() {
     try {
         const data = await fetchReadmeAPI();
@@ -60,10 +139,10 @@ function renderProjectList() {
     container.innerHTML = currentProjects.map((project, index) => `
         <div class="project-item">
             <input type="text" class="project-name" placeholder="project_name"
-                   value="${escapeHtml(project.name)}" onchange="updateProject(${index}, 'name', this.value)">
+                   value="${escapeHtml(project.name)}" onchange="updateProject(${index}, 'name', this.value)" onblur="scheduleSettingsAutoSave()">
             <input type="text" class="project-path" placeholder="/path/to/project"
-                   value="${escapeHtml(project.path)}" onchange="updateProject(${index}, 'path', this.value)">
-            <button class="btn btn-danger" onclick="removeProject(${index})">rm</button>
+                   value="${escapeHtml(project.path)}" onchange="updateProject(${index}, 'path', this.value)" onblur="scheduleSettingsAutoSave()">
+            <button class="btn btn-danger" onclick="removeProject(${index}); scheduleSettingsAutoSave()">rm</button>
         </div>
     `).join('');
 }
@@ -172,6 +251,8 @@ function toggleSettingBoolean(btnId) {
     const btn = document.getElementById(btnId);
     const currentState = btn?.dataset.state === 'on';
     setToggleState(btnId, !currentState);
+    // Auto-save after toggle
+    scheduleSettingsAutoSave();
 }
 
 /* Password visibility toggle */

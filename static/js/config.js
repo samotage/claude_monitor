@@ -32,9 +32,13 @@ const roadmapCache = {};
 const roadmapEditMode = {};
 const roadmapSaveTimers = {};
 const roadmapExpandedState = {};  // Track expanded roadmaps
+const roadmapFormCache = {};  // Cache in-progress form values to survive re-renders
 
 // Kanban fingerprint for change detection
 let lastFingerprint = '';
+
+// Flag to track if a render was deferred due to blocking UI state
+let renderDeferred = false;
 
 // Cache DOM element references
 let inputNeededCountEl;

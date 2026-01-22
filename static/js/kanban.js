@@ -31,10 +31,13 @@ function renderKanban(sessions, projects) {
         if (priorityInfo && prioritiesAvailable) {
             const badgeClass = getPriorityBadgeClass(priorityInfo.priority_score);
             const rationale = priorityInfo.rationale ? escapeHtml(priorityInfo.rationale) : '';
+            // Use last_message for detailed tooltip, fall back to rationale
+            const lastMessage = session.last_message ? escapeHtml(session.last_message) : '';
+            const tooltipContent = lastMessage || rationale;
             priorityHtml = `
                 <div class="card-priority">
                     <span class="priority-score ${badgeClass}">${priorityInfo.priority_score}</span>
-                    ${rationale ? `<span class="priority-rationale" title="${rationale}">// ${rationale}</span>` : ''}
+                    ${rationale ? `<span class="priority-rationale" data-tooltip="${tooltipContent}" onclick="event.stopPropagation(); showTooltipPopup(this)">// ${rationale}</span>` : ''}
                 </div>
             `;
         }
@@ -176,3 +179,78 @@ async function focusWindow(pid) {
         console.error('Failed to focus window:', error);
     }
 }
+
+/**
+ * Show tooltip popup with content from a rationale element.
+ * Works on both desktop (click) and mobile (tap).
+ * @param {HTMLElement} element - The element with data-tooltip attribute
+ */
+function showTooltipPopup(element) {
+    const tooltip = element.getAttribute('data-tooltip');
+    if (!tooltip) return;
+
+    const overlay = document.getElementById('tooltip-popup-overlay');
+    const popup = document.getElementById('tooltip-popup');
+    const content = document.getElementById('tooltip-popup-content');
+
+    if (!overlay || !popup || !content) return;
+
+    // Decode HTML entities and set content
+    const decoded = tooltip.replace(/&amp;/g, '&')
+                          .replace(/&lt;/g, '<')
+                          .replace(/&gt;/g, '>')
+                          .replace(/&quot;/g, '"')
+                          .replace(/&#039;/g, "'")
+                          .replace(/&#x27;/g, "'");
+    content.textContent = decoded;
+
+    // Position popup near the element on desktop, bottom of screen on mobile
+    const isMobile = window.innerWidth <= 768;
+    if (!isMobile) {
+        const rect = element.getBoundingClientRect();
+        const popupHeight = 200; // Estimate
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+
+        // Position horizontally centered on element, clamped to viewport
+        let left = rect.left + (rect.width / 2) - 200; // 200 is half of max-width
+        left = Math.max(20, Math.min(left, window.innerWidth - 420));
+
+        // Position vertically: below if space, otherwise above
+        let top;
+        if (spaceBelow > popupHeight + 20) {
+            top = rect.bottom + 10;
+        } else if (spaceAbove > popupHeight + 20) {
+            top = rect.top - popupHeight - 10;
+        } else {
+            top = Math.max(20, (window.innerHeight - popupHeight) / 2);
+        }
+
+        popup.style.left = `${left}px`;
+        popup.style.top = `${top}px`;
+        popup.style.right = 'auto';
+        popup.style.bottom = 'auto';
+    }
+
+    // Show overlay and popup
+    overlay.classList.add('active');
+    popup.classList.add('active');
+}
+
+/**
+ * Hide the tooltip popup.
+ */
+function hideTooltipPopup() {
+    const overlay = document.getElementById('tooltip-popup-overlay');
+    const popup = document.getElementById('tooltip-popup');
+
+    if (overlay) overlay.classList.remove('active');
+    if (popup) popup.classList.remove('active');
+}
+
+// Close tooltip on escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        hideTooltipPopup();
+    }
+});

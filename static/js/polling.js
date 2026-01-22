@@ -48,6 +48,8 @@ async function fetchSessions() {
                 // Just update the global session data for when panels close
                 currentSessions = data.sessions;
                 currentProjects = data.projects;
+                // Mark that a render was deferred - will trigger when blocking state ends
+                renderDeferred = true;
             } else {
                 // Capture UI state before re-render
                 const uiState = captureUIState();

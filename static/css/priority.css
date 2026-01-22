@@ -111,6 +111,38 @@
     color: var(--green);
 }
 
+/* Clickable state badge with tooltip - touch-friendly */
+.recommended-next-state.has-tooltip {
+    cursor: pointer;
+    position: relative;
+    transition: all 0.15s ease;
+    /* Increase touch target for mobile */
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+}
+
+.recommended-next-state.has-tooltip::after {
+    content: '\2139';  /* Info icon */
+    margin-left: 6px;
+    opacity: 0.6;
+    font-size: 0.7rem;
+}
+
+.recommended-next-state.has-tooltip:hover,
+.recommended-next-state.has-tooltip:active {
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Touch feedback for mobile */
+@media (hover: none) {
+    .recommended-next-state.has-tooltip:active {
+        transform: scale(0.95);
+    }
+}
+
 .recommended-next-rationale {
     color: var(--text-secondary);
     font-size: 0.9rem;

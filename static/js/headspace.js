@@ -1,5 +1,33 @@
 /* Headspace Functions */
 
+// Auto-save debounce timers
+let headspaceSaveTimer = null;
+let focusTabSaveTimer = null;
+
+/**
+ * Schedule auto-save for headspace panel (debounced)
+ */
+function scheduleHeadspaceAutoSave() {
+    if (headspaceSaveTimer) {
+        clearTimeout(headspaceSaveTimer);
+    }
+    headspaceSaveTimer = setTimeout(() => {
+        saveHeadspaceQuietly();
+    }, 300);
+}
+
+/**
+ * Schedule auto-save for focus tab (debounced)
+ */
+function scheduleFocusTabAutoSave() {
+    if (focusTabSaveTimer) {
+        clearTimeout(focusTabSaveTimer);
+    }
+    focusTabSaveTimer = setTimeout(() => {
+        saveFocusTabQuietly();
+    }, 300);
+}
+
 async function loadHeadspace() {
     const panel = document.getElementById('headspace-panel');
     if (!panel) return;
@@ -106,6 +134,49 @@ async function saveHeadspace() {
     }
 }
 
+/**
+ * Auto-save headspace without exiting edit mode (quiet save)
+ */
+async function saveHeadspaceQuietly() {
+    const focusInput = document.getElementById('headspace-focus-input');
+    const constraintsInput = document.getElementById('headspace-constraints-input');
+    const panel = document.getElementById('headspace-panel');
+
+    if (!focusInput) return;
+
+    const currentFocus = focusInput.value.trim();
+    const constraints = constraintsInput.value.trim() || null;
+
+    // Don't save if focus is empty
+    if (!currentFocus) return;
+
+    // Show saving indicator
+    panel.classList.add('saving');
+
+    try {
+        const data = await saveHeadspaceAPI({
+            current_focus: currentFocus,
+            constraints: constraints
+        });
+
+        if (data.success) {
+            currentHeadspace = data.data;
+            panel.classList.remove('saving');
+            panel.classList.add('saved');
+            setTimeout(() => panel.classList.remove('saved'), 1500);
+        } else {
+            panel.classList.remove('saving');
+            panel.classList.add('save-error');
+            setTimeout(() => panel.classList.remove('save-error'), 2000);
+        }
+    } catch (error) {
+        console.error('Failed to auto-save headspace:', error);
+        panel.classList.remove('saving');
+        panel.classList.add('save-error');
+        setTimeout(() => panel.classList.remove('save-error'), 2000);
+    }
+}
+
 // =============================================================================
 // Focus Tab Functions
 // =============================================================================
@@ -199,5 +270,61 @@ async function saveFocusFromTab() {
         console.error('Failed to save focus:', error);
         statusEl.textContent = 'Error saving';
         statusEl.className = 'focus-status error';
+    }
+}
+
+/**
+ * Auto-save focus tab without reloading history (quiet save)
+ */
+async function saveFocusTabQuietly() {
+    const focusInput = document.getElementById('focus-current-input');
+    const constraintsInput = document.getElementById('focus-constraints-input');
+    const statusEl = document.getElementById('focus-save-status');
+
+    if (!focusInput) return;
+
+    const currentFocus = focusInput.value.trim();
+    const constraints = constraintsInput.value.trim() || null;
+
+    // Don't save if focus is empty
+    if (!currentFocus) return;
+
+    statusEl.textContent = 'Auto-saving...';
+    statusEl.className = 'focus-status';
+
+    try {
+        const data = await saveHeadspaceAPI({
+            current_focus: currentFocus,
+            constraints: constraints
+        });
+
+        if (data.success) {
+            currentHeadspace = data.data;
+            statusEl.textContent = 'Saved';
+            statusEl.className = 'focus-status success';
+
+            // Update the dashboard headspace panel
+            renderHeadspace();
+
+            setTimeout(() => {
+                statusEl.textContent = '';
+                statusEl.className = 'focus-status';
+            }, 1500);
+        } else {
+            statusEl.textContent = 'Save failed';
+            statusEl.className = 'focus-status error';
+            setTimeout(() => {
+                statusEl.textContent = '';
+                statusEl.className = 'focus-status';
+            }, 2000);
+        }
+    } catch (error) {
+        console.error('Failed to auto-save focus:', error);
+        statusEl.textContent = 'Error';
+        statusEl.className = 'focus-status error';
+        setTimeout(() => {
+            statusEl.textContent = '';
+            statusEl.className = 'focus-status';
+        }, 2000);
     }
 }

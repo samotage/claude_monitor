@@ -27,6 +27,16 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/settings.css') }}">
 </head>
 <body>
+    <!-- Tooltip Popup (touch-friendly) -->
+    <div id="tooltip-popup-overlay" class="tooltip-popup-overlay" onclick="hideTooltipPopup()"></div>
+    <div id="tooltip-popup" class="tooltip-popup">
+        <div class="tooltip-popup-header">
+            <span class="tooltip-popup-title">Last Response</span>
+            <button class="tooltip-popup-close" onclick="hideTooltipPopup()">&times;</button>
+        </div>
+        <div id="tooltip-popup-content" class="tooltip-popup-content"></div>
+    </div>
+
     <!-- Brain Reboot Side Panel -->
     <div id="reboot-panel-overlay" class="reboot-panel-overlay"></div>
     <div id="reboot-panel" class="reboot-panel">
@@ -64,12 +74,51 @@
 ╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗
  ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝</pre><span class="nav-brand-cursor">&gt;_</span><span class="nav-brand-suffix">headspace</span>
         </a>
-        <button class="tab-btn active" data-tab="dashboard">dashboard</button>
-        <button class="tab-btn" data-tab="focus">focus</button>
-        <button class="tab-btn" data-tab="logging">logging</button>
-        <button class="tab-btn" data-tab="config">config</button>
-        <button class="tab-btn" data-tab="help">help</button>
+        <div class="tab-btn-group">
+            <button class="tab-btn active" data-tab="dashboard">dashboard</button>
+            <button class="tab-btn" data-tab="focus">focus</button>
+            <button class="tab-btn" data-tab="logging">logging</button>
+            <button class="tab-btn" data-tab="config">config</button>
+            <button class="tab-btn" data-tab="help">help</button>
+        </div>
+        <!-- Hamburger Menu Button (mobile only) -->
+        <button class="hamburger-btn" onclick="toggleMobileMenu()" aria-label="Menu">
+            <span class="hamburger-line"></span>
+            <span class="hamburger-line"></span>
+            <span class="hamburger-line"></span>
+        </button>
     </nav>
+
+    <!-- Mobile Menu Drawer -->
+    <div id="mobile-menu-overlay" class="mobile-menu-overlay" onclick="closeMobileMenu()"></div>
+    <div id="mobile-menu" class="mobile-menu">
+        <div class="mobile-menu-header">
+            <span class="mobile-menu-title">&gt;_ menu</span>
+            <button class="mobile-menu-close" onclick="closeMobileMenu()">&times;</button>
+        </div>
+        <div class="mobile-menu-items">
+            <button class="mobile-menu-item active" data-tab="dashboard" onclick="switchToTabMobile('dashboard')">
+                <span class="mobile-menu-icon">&#9632;</span>
+                <span>dashboard</span>
+            </button>
+            <button class="mobile-menu-item" data-tab="focus" onclick="switchToTabMobile('focus')">
+                <span class="mobile-menu-icon">&#9673;</span>
+                <span>focus</span>
+            </button>
+            <button class="mobile-menu-item" data-tab="logging" onclick="switchToTabMobile('logging')">
+                <span class="mobile-menu-icon">&#9998;</span>
+                <span>logging</span>
+            </button>
+            <button class="mobile-menu-item" data-tab="config" onclick="switchToTabMobile('config')">
+                <span class="mobile-menu-icon">&#9881;</span>
+                <span>config</span>
+            </button>
+            <button class="mobile-menu-item" data-tab="help" onclick="switchToTabMobile('help')">
+                <span class="mobile-menu-icon">&#63;</span>
+                <span>help</span>
+            </button>
+        </div>
+    </div>
 
     <!-- Global Stats Bar -->
     <div class="stats-bar" id="stats-bar">
@@ -111,15 +160,15 @@
             <div class="headspace-edit-form">
                 <div class="headspace-input-group">
                     <label class="headspace-input-label">Focus</label>
-                    <input type="text" class="headspace-input" id="headspace-focus-input" placeholder="What's your focus right now?">
+                    <input type="text" class="headspace-input" id="headspace-focus-input" placeholder="What's your focus right now?" onblur="scheduleHeadspaceAutoSave()">
                 </div>
                 <div class="headspace-input-group">
                     <label class="headspace-input-label">Constraints (optional)</label>
-                    <input type="text" class="headspace-input" id="headspace-constraints-input" placeholder="Any limitations or boundaries?">
+                    <input type="text" class="headspace-input" id="headspace-constraints-input" placeholder="Any limitations or boundaries?" onblur="scheduleHeadspaceAutoSave()">
                 </div>
                 <div class="headspace-edit-actions">
-                    <button class="headspace-cancel-btn" onclick="exitHeadspaceEditMode()">Cancel</button>
-                    <button class="headspace-save-btn" onclick="saveHeadspace()">Save</button>
+                    <span class="headspace-autosave-hint">Changes save automatically</span>
+                    <button class="headspace-cancel-btn" onclick="exitHeadspaceEditMode()">Done</button>
                 </div>
             </div>
 
@@ -179,15 +228,15 @@
             <div class="focus-form">
                 <div class="focus-input-group">
                     <label class="focus-label">What's your focus right now?</label>
-                    <textarea id="focus-current-input" class="focus-textarea" placeholder="e.g., Ship the new feature before EOD"></textarea>
+                    <textarea id="focus-current-input" class="focus-textarea" placeholder="e.g., Ship the new feature before EOD" onblur="scheduleFocusTabAutoSave()"></textarea>
                 </div>
                 <div class="focus-input-group">
                     <label class="focus-label">Constraints (optional)</label>
-                    <textarea id="focus-constraints-input" class="focus-textarea focus-textarea-small" placeholder="e.g., Limited time, need to avoid breaking changes"></textarea>
+                    <textarea id="focus-constraints-input" class="focus-textarea focus-textarea-small" placeholder="e.g., Limited time, need to avoid breaking changes" onblur="scheduleFocusTabAutoSave()"></textarea>
                 </div>
                 <div class="focus-actions">
-                    <button class="btn" onclick="saveFocusFromTab()">Save Focus</button>
                     <span id="focus-save-status" class="focus-status"></span>
+                    <span class="focus-autosave-hint">Changes save automatically</span>
                 </div>
             </div>
             <div class="focus-history-section">
@@ -202,27 +251,23 @@
     <!-- Logging Tab -->
     <div id="logging-tab" class="tab-content">
         <div class="logging-container">
-            <!-- Logging Header with Sub-Tabs and Pop-out -->
+            <!-- Logging Header - all controls grouped together -->
             <div class="logging-header">
-                <div class="logging-subtabs">
-                    <button class="logging-subtab active" data-subtab="openrouter">openrouter</button>
-                </div>
-                <div class="logging-header-actions">
-                    <button class="logging-action-btn" onclick="refreshLogs()" title="Refresh logs">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="23 4 23 10 17 10"></polyline>
-                            <polyline points="1 20 1 14 7 14"></polyline>
-                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                        </svg>
-                    </button>
-                    <button class="logging-action-btn" onclick="openLoggingPopout()" title="Open in new tab">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                            <polyline points="15 3 21 3 21 9"></polyline>
-                            <line x1="10" y1="14" x2="21" y2="3"></line>
-                        </svg>
-                    </button>
-                </div>
+                <button class="logging-subtab active" data-subtab="openrouter">openrouter</button>
+                <button class="logging-action-btn" onclick="refreshLogs()" title="Refresh logs">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="23 4 23 10 17 10"></polyline>
+                        <polyline points="1 20 1 14 7 14"></polyline>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                    </svg>
+                </button>
+                <button class="logging-action-btn" onclick="openLoggingPopout()" title="Open in new tab">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                        <polyline points="15 3 21 3 21 9"></polyline>
+                        <line x1="10" y1="14" x2="21" y2="3"></line>
+                    </svg>
+                </button>
             </div>
 
             <!-- Search Bar -->
@@ -298,12 +343,12 @@
                 <div class="settings-section-body">
                     <div class="setting-row">
                         <label>scan_interval</label>
-                        <input type="number" id="scan-interval" min="1" max="60" value="2">
+                        <input type="number" id="scan-interval" min="1" max="60" value="2" onblur="scheduleSettingsAutoSave()">
                         <span class="setting-hint">seconds</span>
                     </div>
                     <div class="setting-row">
                         <label>focus_delay</label>
-                        <input type="number" id="focus-delay" min="0" max="1" step="0.1" value="0.1">
+                        <input type="number" id="focus-delay" min="0" max="1" step="0.1" value="0.1" onblur="scheduleSettingsAutoSave()">
                         <span class="setting-hint">seconds</span>
                     </div>
                 </div>
@@ -317,7 +362,7 @@
                     <p class="settings-description">Configure when sessions are considered ended for summarization.</p>
                     <div class="setting-row">
                         <label>idle_timeout</label>
-                        <input type="number" id="idle-timeout-minutes" min="5" max="480" value="60">
+                        <input type="number" id="idle-timeout-minutes" min="5" max="480" value="60" onblur="scheduleSettingsAutoSave()">
                         <span class="setting-hint">minutes</span>
                     </div>
                 </div>
@@ -331,7 +376,7 @@
                     <p class="settings-description">Configure when projects are flagged as stale for context reload.</p>
                     <div class="setting-row">
                         <label>stale_threshold</label>
-                        <input type="number" id="stale-threshold-hours" min="0.5" max="48" step="0.5" value="4">
+                        <input type="number" id="stale-threshold-hours" min="0.5" max="48" step="0.5" value="4" onblur="scheduleSettingsAutoSave()">
                         <span class="setting-hint">hours</span>
                     </div>
                 </div>
@@ -346,17 +391,17 @@
                     <div class="setting-row">
                         <label>api_key</label>
                         <div class="password-input-wrapper">
-                            <input type="password" id="openrouter-api-key" class="setting-input-wide" placeholder="sk-or-v1-...">
+                            <input type="password" id="openrouter-api-key" class="setting-input-wide" placeholder="sk-or-v1-..." onblur="scheduleSettingsAutoSave()">
                             <button type="button" class="password-reveal-btn" onclick="togglePasswordVisibility('openrouter-api-key', this)">show</button>
                         </div>
                     </div>
                     <div class="setting-row">
                         <label>model</label>
-                        <input type="text" id="openrouter-model" class="setting-input-wide" value="anthropic/claude-3-haiku">
+                        <input type="text" id="openrouter-model" class="setting-input-wide" value="anthropic/claude-3-haiku" onblur="scheduleSettingsAutoSave()">
                     </div>
                     <div class="setting-row">
                         <label>compression_interval</label>
-                        <input type="number" id="openrouter-compression-interval" min="60" max="3600" value="300">
+                        <input type="number" id="openrouter-compression-interval" min="60" max="3600" value="300" onblur="scheduleSettingsAutoSave()">
                         <span class="setting-hint">seconds</span>
                     </div>
                 </div>
@@ -391,12 +436,12 @@
                     </div>
                     <div class="setting-row">
                         <label>polling_interval</label>
-                        <input type="number" id="priorities-polling-interval" min="30" max="600" value="60">
+                        <input type="number" id="priorities-polling-interval" min="30" max="600" value="60" onblur="scheduleSettingsAutoSave()">
                         <span class="setting-hint">seconds</span>
                     </div>
                     <div class="setting-row">
                         <label>model</label>
-                        <input type="text" id="priorities-model" class="setting-input-wide" placeholder="uses openrouter.model if empty">
+                        <input type="text" id="priorities-model" class="setting-input-wide" placeholder="uses openrouter.model if empty" onblur="scheduleSettingsAutoSave()">
                     </div>
                 </div>
             </div>
@@ -420,8 +465,8 @@
 
             <!-- Global Save Section -->
             <div class="settings-actions-global">
-                <button class="btn" onclick="saveSettings()">save_all_config</button>
                 <div id="settings-status" class="settings-status"></div>
+                <span class="settings-autosave-hint">Changes save automatically on blur</span>
             </div>
         </div>
     </div>

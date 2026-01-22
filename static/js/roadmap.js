@@ -262,6 +262,12 @@ function cancelRoadmapEdit(projectSlug) {
     if (roadmapCache[projectSlug]) {
         renderRoadmapDisplay(projectSlug, roadmapCache[projectSlug]);
     }
+
+    // Clear any cached form values for this roadmap
+    delete roadmapFormCache[projectSlug];
+
+    // Trigger deferred render if blocking state has ended
+    triggerDeferredRenderIfReady();
 }
 
 async function saveRoadmap(projectSlug) {

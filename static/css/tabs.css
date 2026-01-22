@@ -129,3 +129,217 @@
 .tab-content.active {
     display: block;
 }
+
+/* Tab button group wrapper */
+.tab-btn-group {
+    display: flex;
+    align-items: center;
+}
+
+/* Hamburger Menu Button - hidden on desktop */
+.hamburger-btn {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    background: transparent;
+    border: none;
+    padding: 12px 16px;
+    cursor: pointer;
+    margin-left: auto;
+}
+
+.hamburger-line {
+    display: block;
+    width: 22px;
+    height: 2px;
+    background: var(--cyan);
+    border-radius: 1px;
+    transition: all 0.3s ease;
+}
+
+.hamburger-btn:hover .hamburger-line {
+    background: var(--text-primary);
+}
+
+/* Hamburger animation when menu is open */
+.hamburger-btn.active .hamburger-line:nth-child(1) {
+    transform: rotate(45deg) translate(5px, 5px);
+}
+
+.hamburger-btn.active .hamburger-line:nth-child(2) {
+    opacity: 0;
+}
+
+.hamburger-btn.active .hamburger-line:nth-child(3) {
+    transform: rotate(-45deg) translate(5px, -5px);
+}
+
+/* Mobile Menu Overlay */
+.mobile-menu-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 199;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.mobile-menu-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Mobile Menu Drawer - slides in from right */
+.mobile-menu {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 280px;
+    max-width: 80vw;
+    background: var(--bg-deep);
+    border-left: 1px solid var(--border);
+    z-index: 200;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.mobile-menu.active {
+    transform: translateX(0);
+}
+
+.mobile-menu-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+}
+
+.mobile-menu-title {
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--cyan);
+}
+
+.mobile-menu-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    line-height: 1;
+    border-radius: 4px;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.mobile-menu-close:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.mobile-menu-items {
+    flex: 1;
+    padding: 12px 0;
+    overflow-y: auto;
+}
+
+.mobile-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    padding: 16px 24px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border-left: 3px solid transparent;
+}
+
+.mobile-menu-item:hover {
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+}
+
+.mobile-menu-item.active {
+    background: var(--bg-surface);
+    color: var(--cyan);
+    border-left-color: var(--cyan);
+}
+
+.mobile-menu-icon {
+    font-size: 1.1rem;
+    width: 24px;
+    text-align: center;
+    color: inherit;
+    opacity: 0.7;
+}
+
+.mobile-menu-item.active .mobile-menu-icon {
+    opacity: 1;
+}
+
+/* ========================================
+   Mobile Responsive Styles
+   ======================================== */
+@media (max-width: 768px) {
+    /* Show hamburger, hide tab buttons */
+    .hamburger-btn {
+        display: flex;
+    }
+
+    .tab-btn-group {
+        display: none;
+    }
+
+    /* Adjust nav brand on mobile - keep ASCII logo */
+    .nav-brand {
+        padding: 8px 12px;
+        flex: 1;
+        overflow: hidden;
+    }
+
+    /* Scale down the ASCII art slightly for mobile */
+    .nav-ascii {
+        font-size: 0.25rem;
+    }
+
+    .nav-brand-cursor,
+    .nav-brand-suffix {
+        font-size: 0.75rem;
+    }
+
+    /* Adjust content padding for smaller nav */
+    .tab-content {
+        padding: 16px;
+        padding-top: 100px;
+    }
+}
+
+/* Even smaller screens */
+@media (max-width: 480px) {
+    .mobile-menu {
+        width: 100%;
+        max-width: none;
+    }
+
+    .mobile-menu-item {
+        padding: 18px 24px;
+        font-size: 1.1rem;
+    }
+}
