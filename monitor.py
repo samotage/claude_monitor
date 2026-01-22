@@ -587,7 +587,7 @@ def compute_priorities(force_refresh: bool = False) -> dict:
     messages = build_prioritisation_prompt(context)
     config = get_priorities_config()
 
-    response_text, error = call_openrouter(messages, model=config["model"])
+    response_text, error = call_openrouter(messages, model=config["model"], caller="priorities")
 
     if error:
         # Fallback to default ordering

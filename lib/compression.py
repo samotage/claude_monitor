@@ -16,6 +16,7 @@ import requests
 
 from config import load_config
 from lib.projects import load_project_data, save_project_data
+from lib.logging import create_log_entry, write_log_entry
 
 # Default OpenRouter configuration
 DEFAULT_OPENROUTER_MODEL = "anthropic/claude-3-haiku"
@@ -184,12 +185,13 @@ def get_openrouter_config() -> dict:
     }
 
 
-def call_openrouter(messages: list[dict], model: str = None) -> tuple[Optional[str], Optional[str]]:
+def call_openrouter(messages: list[dict], model: str = None, caller: str = None) -> tuple[Optional[str], Optional[str]]:
     """Call OpenRouter chat completion API.
 
     Args:
         messages: List of message dicts with 'role' and 'content'
         model: Model to use (defaults to config or DEFAULT_OPENROUTER_MODEL)
+        caller: Optional identifier for what triggered the call (e.g., "compression")
 
     Returns:
         Tuple of (response_text, error_message)
@@ -228,26 +230,80 @@ def call_openrouter(messages: list[dict], model: str = None) -> tuple[Optional[s
         )
 
         if response.status_code == 429:
+            _log_api_call(model, messages, None, 0, 0, 0, False, "rate_limited", caller)
             return None, "rate_limited"
 
         if response.status_code == 401:
+            _log_api_call(model, messages, None, 0, 0, 0, False, "authentication_failed", caller)
             return None, "authentication_failed"
 
         if response.status_code != 200:
-            return None, f"API error: HTTP {response.status_code}"
+            error_msg = f"API error: HTTP {response.status_code}"
+            _log_api_call(model, messages, None, 0, 0, 0, False, error_msg, caller)
+            return None, error_msg
 
         data = response.json()
         content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+        # Extract usage info from response
+        usage = data.get("usage", {})
+        input_tokens = usage.get("prompt_tokens", 0)
+        output_tokens = usage.get("completion_tokens", 0)
+
+        # Get cost from response (OpenRouter provides this)
+        # Cost is in the response under usage.total_cost or we calculate it
+        cost = 0.0
+        if "total_cost" in usage:
+            cost = usage["total_cost"]
+        elif "cost" in data:
+            cost = data["cost"]
+
         if not content:
+            _log_api_call(model, messages, None, input_tokens, output_tokens, cost, False, "Empty response from API", caller)
             return None, "Empty response from API"
 
+        # Log successful call
+        _log_api_call(model, messages, content, input_tokens, output_tokens, cost, True, None, caller)
         return content, None
 
     except requests.Timeout:
+        _log_api_call(model, messages, None, 0, 0, 0, False, "timeout", caller)
         return None, "timeout"
     except requests.RequestException as e:
         # Sanitize error message to avoid leaking sensitive info
-        return None, f"Request failed: {type(e).__name__}"
+        error_msg = f"Request failed: {type(e).__name__}"
+        _log_api_call(model, messages, None, 0, 0, 0, False, error_msg, caller)
+        return None, error_msg
+
+
+def _log_api_call(
+    model: str,
+    messages: list[dict],
+    response_content: Optional[str],
+    input_tokens: int,
+    output_tokens: int,
+    cost: float,
+    success: bool,
+    error: Optional[str],
+    caller: Optional[str]
+) -> None:
+    """Log an OpenRouter API call."""
+    try:
+        entry = create_log_entry(
+            model=model,
+            request_messages=messages,
+            response_content=response_content,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost=cost,
+            success=success,
+            error=error,
+            caller=caller,
+        )
+        write_log_entry(entry)
+    except Exception:
+        # Don't let logging failures break the main functionality
+        pass
 
 
 # =============================================================================
@@ -327,7 +383,7 @@ def compress_session(project_name: str, session_data: dict) -> tuple[bool, Optio
 
     # Build and send compression request
     messages = build_compression_prompt(session_data, existing_summary)
-    response, error = call_openrouter(messages)
+    response, error = call_openrouter(messages, caller="compression")
 
     if error:
         return False, error

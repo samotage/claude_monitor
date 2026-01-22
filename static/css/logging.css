@@ -45,7 +45,12 @@
     color: var(--cyan);
 }
 
-.logging-popout-btn {
+.logging-header-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.logging-action-btn {
     background: transparent;
     border: 1px solid var(--border);
     border-radius: 4px;
@@ -58,10 +63,19 @@
     justify-content: center;
 }
 
-.logging-popout-btn:hover {
+.logging-action-btn:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
     border-color: var(--border-bright);
+}
+
+.logging-action-btn.refreshing svg {
+    animation: spin 0.5s ease;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 /* Search Container */

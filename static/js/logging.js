@@ -366,6 +366,27 @@ function openLoggingPopout() {
 }
 
 /**
+ * Manually refresh logs (with visual feedback)
+ */
+async function refreshLogs() {
+    const btn = document.querySelector('.logging-action-btn[onclick="refreshLogs()"]');
+    if (btn) {
+        btn.classList.add('refreshing');
+    }
+
+    // Reset timestamp to get full log list
+    lastLogTimestamp = null;
+    await loadOpenRouterLogs();
+
+    // Remove animation class after it completes
+    setTimeout(() => {
+        if (btn) {
+            btn.classList.remove('refreshing');
+        }
+    }, 500);
+}
+
+/**
  * Format timestamp for display
  */
 function formatTimestamp(isoTimestamp) {
