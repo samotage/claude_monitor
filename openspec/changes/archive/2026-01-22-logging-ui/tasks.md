@@ -6,25 +6,25 @@
 
 ## 2. Backend Implementation (Phase 2)
 
-- [ ] 2.1 Create `lib/logging.py` with log data format specification
+- [x] 2.1 Create `lib/logging.py` with log data format specification
   - Define LogEntry dataclass with all required fields
   - Define log file path constant (e.g., `data/logs/openrouter.jsonl`)
   - Implement `read_openrouter_logs()` function to parse log file
   - Implement `get_logs_since(timestamp)` for incremental fetching
 
-- [ ] 2.2 Add API endpoint in `monitor.py`
+- [x] 2.2 Add API endpoint in `monitor.py`
   - Add `/api/logs/openrouter` GET endpoint
   - Support `since` query parameter for polling
   - Support `search` query parameter for filtering
   - Return JSON array of log entries
 
-- [ ] 2.3 Create standalone logging route
+- [x] 2.3 Create standalone logging route
   - Add `/logging` route for pop-out capability
   - Render logging panel in standalone mode
 
 ## 3. Frontend Structure (Phase 2)
 
-- [ ] 3.1 Update `templates/index.html`
+- [x] 3.1 Update `templates/index.html`
   - Add "logging" tab button to navigation
   - Add `logging-tab` content div with sub-tab structure
   - Add OpenRouter sub-tab container
@@ -33,7 +33,7 @@
   - Add empty state element
   - Add error state element
 
-- [ ] 3.2 Create `static/css/logging.css`
+- [x] 3.2 Create `static/css/logging.css`
   - Style logging sub-tab navigation
   - Style log entry cards (collapsed state)
   - Style log entry expanded state
@@ -42,12 +42,12 @@
   - Style empty and error states
   - Add expand/collapse animation (200ms)
 
-- [ ] 3.3 Update CSS imports in `templates/index.html`
+- [x] 3.3 Update CSS imports in `templates/index.html`
   - Add logging.css link
 
 ## 4. Frontend Logic (Phase 2)
 
-- [ ] 4.1 Create `static/js/logging.js`
+- [x] 4.1 Create `static/js/logging.js`
   - Implement `initLogging()` function
   - Implement `loadOpenRouterLogs()` for initial fetch
   - Implement `renderLogEntry(entry)` for card rendering
@@ -58,23 +58,23 @@
   - Handle empty state display
   - Handle error state with retry
 
-- [ ] 4.2 Update `static/js/tabs.js`
+- [x] 4.2 Update `static/js/tabs.js`
   - Add logging tab initialization in `initTabNavigation()`
   - Call `initLogging()` on first tab visit (lazy load pattern)
 
-- [ ] 4.3 Update JS imports in `templates/index.html`
+- [x] 4.3 Update JS imports in `templates/index.html`
   - Add logging.js script tag
 
 ## 5. Log Entry Display (Phase 2)
 
-- [ ] 5.1 Implement collapsed card view
+- [x] 5.1 Implement collapsed card view
   - Display timestamp in human-readable format
   - Display model identifier
   - Display success/failure status icon
   - Display cost formatted as currency
   - Display total token count
 
-- [ ] 5.2 Implement expanded card view
+- [x] 5.2 Implement expanded card view
   - Show full request payload with JSON formatting
   - Show full response content
   - Show detailed token breakdown (input/output)
@@ -83,7 +83,7 @@
 
 ## 6. Search and Filtering (Phase 2)
 
-- [ ] 6.1 Implement client-side search
+- [x] 6.1 Implement client-side search
   - Filter log entries as user types
   - Match against all visible fields
   - Update display without scroll jumping
@@ -91,7 +91,7 @@
 
 ## 7. Auto-Refresh (Phase 2)
 
-- [ ] 7.1 Implement polling mechanism
+- [x] 7.1 Implement polling mechanism
   - Poll backend at reasonable interval (5-10 seconds)
   - Use `since` parameter to fetch only new entries
   - Prepend new entries to list (newest first)

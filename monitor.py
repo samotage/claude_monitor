@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Claude Code Monitor - Kanban-style dashboard for tracking Claude Code sessions.
+"""Claude Headspace - Kanban-style dashboard for tracking Claude Code sessions.
 
 This is the main Flask application entry point. Business logic is organized
 in modules under lib/:
@@ -75,6 +75,7 @@ from lib.summarization import (
     add_recent_session,
 )
 from lib.compression import call_openrouter
+from lib.session_sync import start_session_sync_thread
 
 # Flask application
 app = Flask(__name__, template_folder='templates', static_folder='static')
@@ -91,6 +92,16 @@ def index():
     config = load_config()
     return render_template(
         "index.html",
+        scan_interval=config.get("scan_interval", 2),
+    )
+
+
+@app.route("/logging")
+def logging_popout():
+    """Serve the logging panel in standalone pop-out mode."""
+    config = load_config()
+    return render_template(
+        "logging.html",
         scan_interval=config.get("scan_interval", 2),
     )
 
@@ -212,6 +223,112 @@ def api_readme():
 
 
 # =============================================================================
+# Routes - Help Documentation API
+# =============================================================================
+
+
+@app.route("/api/help")
+def api_help_index():
+    """Get index of all help documentation pages."""
+    from lib.help import load_help_index
+    pages = load_help_index()
+    return jsonify({
+        "success": True,
+        "pages": pages
+    })
+
+
+@app.route("/api/help/search")
+def api_help_search():
+    """Search help documentation."""
+    from lib.help import search_help
+    query = request.args.get("q", "")
+    results = search_help(query)
+    return jsonify({
+        "success": True,
+        "query": query,
+        "results": results
+    })
+
+
+@app.route("/api/help/<slug>")
+def api_help_page(slug: str):
+    """Get a specific help page as HTML."""
+    from lib.help import load_help_page
+    page = load_help_page(slug)
+
+    if page is None:
+        return jsonify({
+            "success": False,
+            "error": f"Help page '{slug}' not found"
+        }), 404
+
+    # Convert markdown to HTML
+    html = markdown.markdown(
+        page["content"],
+        extensions=["tables", "fenced_code", "codehilite"]
+    )
+
+    return jsonify({
+        "success": True,
+        "page": {
+            "slug": page["slug"],
+            "title": page["title"],
+            "html": html,
+            "keywords": page["keywords"],
+            "headings": page["headings"]
+        }
+    })
+
+
+# =============================================================================
+# Routes - Logging API
+# =============================================================================
+
+
+@app.route("/api/logs/openrouter")
+def api_logs_openrouter():
+    """Get OpenRouter API call logs.
+
+    Query parameters:
+        since: ISO 8601 timestamp - only return logs after this time
+        search: Search query to filter logs
+    """
+    from lib.logging import read_openrouter_logs, get_logs_since, search_logs
+
+    since = request.args.get("since")
+    search_query = request.args.get("search", "").strip()
+
+    # Get logs (optionally filtered by timestamp)
+    if since:
+        logs = get_logs_since(since)
+    else:
+        logs = read_openrouter_logs()
+
+    # Apply search filter if provided
+    if search_query:
+        logs = search_logs(search_query, logs)
+
+    return jsonify({
+        "success": True,
+        "logs": logs,
+        "count": len(logs)
+    })
+
+
+@app.route("/api/logs/openrouter/stats")
+def api_logs_openrouter_stats():
+    """Get aggregate statistics for OpenRouter API calls."""
+    from lib.logging import get_log_stats
+
+    stats = get_log_stats()
+    return jsonify({
+        "success": True,
+        "stats": stats
+    })
+
+
+# =============================================================================
 # Routes - Roadmap API
 # =============================================================================
 
@@ -294,9 +411,16 @@ def api_project_roadmap_post(name: str):
 
 @app.route("/api/project/<permalink>/brain-refresh", methods=["GET"])
 def api_project_brain_refresh(permalink: str):
-    """Get a project's brain refresh briefing for quick context reload."""
+    """Get a project's brain refresh briefing for quick context reload.
+
+    Query params:
+        session_id: Optional session UUID for session-specific context
+    """
+    # Get optional session_id from query params
+    session_id = request.args.get("session_id")
+
     # Generate the briefing (permalink is the slugified project name)
-    briefing = generate_reboot_briefing(permalink)
+    briefing = generate_reboot_briefing(permalink, session_id=session_id)
     if briefing is None:
         return jsonify({
             "success": False,
@@ -417,18 +541,28 @@ def compute_priorities(force_refresh: bool = False) -> dict:
             "priorities": []
         }
 
+    # Get current sessions FIRST (needed for content-based cache validation)
+    context = aggregate_priority_context()
+    sessions = context["sessions"]
+
     # Check cache unless forced refresh
+    # Pass sessions so cache can check if content has changed
     if not force_refresh:
-        cached = get_cached_priorities()
+        cached = get_cached_priorities(sessions)
         if cached:
-            # Add activity_state to cached priorities
-            sessions = get_sessions_with_activity()
+            # Get session states for filtering
             session_states = {s["session_id"]: s["activity_state"] for s in sessions}
+
+            # Only include priorities for sessions that still exist
+            valid_priorities = []
             for p in cached["priorities"]:
-                p["activity_state"] = session_states.get(p["session_id"], "unknown")
+                if p["session_id"] in session_states:
+                    p["activity_state"] = session_states[p["session_id"]]
+                    valid_priorities.append(p)
+
             return {
                 "success": True,
-                "priorities": cached["priorities"],
+                "priorities": valid_priorities,
                 "metadata": {
                     "timestamp": cached["timestamp"],
                     "headspace_summary": None,  # Not fetched for cache hit
@@ -436,10 +570,6 @@ def compute_priorities(force_refresh: bool = False) -> dict:
                     "soft_transition_pending": cached["soft_transition_pending"]
                 }
             }
-
-    # Aggregate context
-    context = aggregate_priority_context()
-    sessions = context["sessions"]
 
     if not sessions:
         return {
@@ -462,7 +592,7 @@ def compute_priorities(force_refresh: bool = False) -> dict:
     if error:
         # Fallback to default ordering
         priorities = default_priority_order(sessions)
-        update_priorities_cache(priorities, error=error)
+        update_priorities_cache(priorities, sessions=sessions, error=error)
 
         # Add activity_state
         session_states = {s["session_id"]: s["activity_state"] for s in sessions}
@@ -487,8 +617,8 @@ def compute_priorities(force_refresh: bool = False) -> dict:
     # Apply soft transitions
     priorities, soft_pending = apply_soft_transition(priorities, sessions)
 
-    # Update cache
-    update_priorities_cache(priorities)
+    # Update cache with content hash for change detection
+    update_priorities_cache(priorities, sessions=sessions)
 
     # Add activity_state to each priority
     session_states = {s["session_id"]: s["activity_state"] for s in sessions}
@@ -595,7 +725,7 @@ def api_config_post():
 def main():
     """Run the monitor web server."""
     config = load_config()
-    print(f"Claude Monitor starting...")
+    print(f"Claude Headspace starting...")
     print(f"Monitoring {len(config.get('projects', []))} projects")
     print(f"Refresh interval: {config.get('scan_interval', 2)}s")
 
@@ -610,6 +740,15 @@ def main():
         print(f"History compression enabled (interval: {interval}s)")
     else:
         print("History compression disabled (no OpenRouter API key)")
+
+    # Start session sync thread if enabled
+    session_sync_config = config.get("session_sync", {})
+    if session_sync_config.get("enabled", True):
+        start_session_sync_thread()
+        interval = session_sync_config.get("interval", 60)
+        print(f"Session sync enabled (interval: {interval}s)")
+    else:
+        print("Session sync disabled")
 
     print(f"\nOpen http://localhost:5050 in your browser")
     print("Press Ctrl+C to stop\n")

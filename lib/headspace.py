@@ -1,4 +1,4 @@
-"""Headspace management and AI prioritisation for Claude Monitor.
+"""Headspace management and AI prioritisation for Claude Headspace.
 
 This module handles:
 - Loading and saving the user's current focus (headspace)
@@ -7,6 +7,7 @@ This module handles:
 - AI-powered session prioritisation
 """
 
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,13 +24,15 @@ HEADSPACE_DATA_PATH = Path(__file__).parent.parent / "data" / "headspace.yaml"
 # Defaults for priority configuration
 DEFAULT_PRIORITIES_POLLING_INTERVAL = 60  # seconds
 DEFAULT_PRIORITIES_MODEL = "anthropic/claude-3-haiku"
+DEFAULT_MAX_CACHE_AGE = 300  # 5 minutes - force refresh even if content unchanged
 
 # In-memory cache for priorities
 _priorities_cache: dict = {
     "priorities": None,
     "timestamp": None,
     "pending_priorities": None,  # For soft transitions
-    "error": None
+    "error": None,
+    "content_hash": None  # Hash of session content for change detection
 }
 
 
@@ -223,11 +226,45 @@ def get_priorities_config() -> dict:
     }
 
 
-def is_cache_valid() -> bool:
-    """Check if cached priorities are still valid.
+def compute_sessions_hash(sessions: list[dict]) -> str:
+    """Compute a hash of session data for change detection.
+
+    Uses only stable data (session IDs and activity states) to determine
+    if we need to re-prioritize. Terminal content changes constantly
+    but doesn't necessarily warrant a new API call.
+
+    Args:
+        sessions: List of session dicts
 
     Returns:
-        True if cache exists and is within polling interval
+        MD5 hash string of session state
+    """
+    # Build a string of stable data that affects prioritization
+    # Content changes constantly, but we only need to re-call AI when:
+    # - Sessions appear/disappear
+    # - Activity state changes (idle -> processing -> input_needed)
+    hash_parts = []
+    for s in sorted(sessions, key=lambda x: x.get("session_id", "")):
+        part = f"{s.get('session_id', '')}|{s.get('activity_state', '')}"
+        hash_parts.append(part)
+
+    hash_input = "||".join(hash_parts)
+    return hashlib.md5(hash_input.encode()).hexdigest()
+
+
+def is_cache_valid(current_sessions: list[dict] = None) -> bool:
+    """Check if cached priorities are still valid.
+
+    Cache is valid if:
+    1. Cache exists
+    2. Content hash matches (nothing has changed)
+    3. Cache is not too old (max 5 minutes even if unchanged)
+
+    Args:
+        current_sessions: Current session list to compare hash against
+
+    Returns:
+        True if cache is valid and can be used
     """
     global _priorities_cache
 
@@ -237,22 +274,32 @@ def is_cache_valid() -> bool:
     if _priorities_cache["timestamp"] is None:
         return False
 
-    config = get_priorities_config()
-    polling_interval = config["polling_interval"]
-
+    # Always refresh if cache is too old (5 minutes max)
     cache_age = (datetime.now(timezone.utc) - _priorities_cache["timestamp"]).total_seconds()
-    return cache_age < polling_interval
+    if cache_age > DEFAULT_MAX_CACHE_AGE:
+        return False
+
+    # If we have current sessions, check if content has changed
+    if current_sessions is not None and _priorities_cache["content_hash"] is not None:
+        current_hash = compute_sessions_hash(current_sessions)
+        if current_hash != _priorities_cache["content_hash"]:
+            return False  # Content changed, invalidate cache
+
+    return True
 
 
-def get_cached_priorities() -> Optional[dict]:
+def get_cached_priorities(current_sessions: list[dict] = None) -> Optional[dict]:
     """Get cached priorities if valid.
+
+    Args:
+        current_sessions: Current session list to compare hash against
 
     Returns:
         Cached priority data or None if cache invalid
     """
     global _priorities_cache
 
-    if is_cache_valid():
+    if is_cache_valid(current_sessions):
         return {
             "priorities": _priorities_cache["priorities"],
             "timestamp": _priorities_cache["timestamp"].isoformat() if _priorities_cache["timestamp"] else None,
@@ -262,17 +309,20 @@ def get_cached_priorities() -> Optional[dict]:
     return None
 
 
-def update_priorities_cache(priorities: list[dict], error: str = None) -> None:
+def update_priorities_cache(priorities: list[dict], sessions: list[dict] = None, error: str = None) -> None:
     """Update the priorities cache.
 
     Args:
         priorities: List of priority dicts
+        sessions: Current sessions (used to compute content hash)
         error: Error message if prioritisation failed
     """
     global _priorities_cache
     _priorities_cache["priorities"] = priorities
     _priorities_cache["timestamp"] = datetime.now(timezone.utc)
     _priorities_cache["error"] = error
+    if sessions:
+        _priorities_cache["content_hash"] = compute_sessions_hash(sessions)
 
 
 def get_priorities_cache() -> dict:
@@ -333,7 +383,7 @@ def build_prioritisation_prompt(context: dict) -> list[dict]:
 
     # System prompt
     system_prompt = """You are a focus assistant helping a developer prioritise their Claude Code sessions.
-Rank sessions by relevance to the user's goals. Return JSON only.
+Rank sessions by relevance to the user's goals. Describe what each session is doing. Return JSON only.
 
 Ranking factors (in order):
 1. Relevance to headspace/current focus (if set)
@@ -344,9 +394,22 @@ Ranking factors (in order):
 Output format (JSON only, no markdown):
 {
   "priorities": [
-    {"project_name": "...", "session_id": "...", "priority_score": 0-100, "rationale": "brief reason"}
+    {
+      "project_name": "...",
+      "session_id": "...",
+      "priority_score": 0-100,
+      "rationale": "brief prioritization reason",
+      "activity_summary": "1-sentence description of current activity"
+    }
   ]
-}"""
+}
+
+Activity summary guidelines:
+- Describe the CURRENT action based on terminal content
+- Use present continuous tense: "Reading...", "Writing...", "Waiting for..."
+- Be specific: mention file names, features, or tasks when visible
+- If session is idle, describe what was just completed or is ready
+- Keep under 100 characters"""
 
     # Build user prompt with context
     user_parts = []
@@ -366,6 +429,7 @@ Output format (JSON only, no markdown):
         sid = session["session_id"]
         state = session["activity_state"]
         task = session.get("task_summary", "")
+        content = session.get("content_snippet", "")
 
         # Add roadmap context for this project
         roadmap = roadmaps.get(proj, {})
@@ -385,6 +449,11 @@ Output format (JSON only, no markdown):
             session_line += f" [project: {summary[:100]}]"
 
         user_parts.append(session_line)
+
+        # Add terminal content snippet for AI to analyze (truncate to 500 chars in prompt)
+        if content:
+            truncated_content = content[:500]
+            user_parts.append(f"  [terminal output: {truncated_content}]")
 
     user_prompt = "\n".join(user_parts)
 
@@ -430,16 +499,22 @@ def parse_priority_response(response_text: str, sessions: list[dict]) -> list[di
         if not priorities:
             return default_priority_order(sessions)
 
+        # Build lookup for uuid_short from sessions
+        uuid_lookup = {s["session_id"]: s.get("uuid_short", "") for s in sessions}
+
         # Validate and normalize
         result = []
         for p in priorities:
             if not isinstance(p, dict):
                 continue
+            session_id = str(p.get("session_id", ""))
             result.append({
                 "project_name": p.get("project_name", ""),
-                "session_id": str(p.get("session_id", "")),
+                "session_id": session_id,
+                "uuid_short": uuid_lookup.get(session_id, ""),
                 "priority_score": max(0, min(100, int(p.get("priority_score", 50)))),
-                "rationale": str(p.get("rationale", ""))[:200]  # Limit rationale length
+                "rationale": str(p.get("rationale", ""))[:200],  # Limit rationale length
+                "activity_summary": str(p.get("activity_summary", ""))[:100]  # AI-generated activity description
             })
 
         if not result:
@@ -452,8 +527,10 @@ def parse_priority_response(response_text: str, sessions: list[dict]) -> list[di
                 result.append({
                     "project_name": session["project_name"],
                     "session_id": session["session_id"],
+                    "uuid_short": session.get("uuid_short", ""),
                     "priority_score": 0,
-                    "rationale": "Not ranked by AI"
+                    "rationale": "Not ranked by AI",
+                    "activity_summary": ""
                 })
 
         # Sort by priority_score descending
@@ -485,8 +562,10 @@ def default_priority_order(sessions: list[dict]) -> list[dict]:
     return [{
         "project_name": s["project_name"],
         "session_id": s["session_id"],
+        "uuid_short": s.get("uuid_short", ""),
         "priority_score": 50 - (i * 5),  # Descending scores
-        "rationale": f"Default ordering by activity state ({s.get('activity_state', 'unknown')})"
+        "rationale": f"Default ordering by activity state ({s.get('activity_state', 'unknown')})",
+        "activity_summary": ""  # No AI summary when using fallback
     } for i, s in enumerate(sorted_sessions)]
 
 
@@ -547,8 +626,10 @@ def aggregate_priority_context() -> dict:
     formatted_sessions = [{
         "project_name": s.get("project_name", "Unknown"),
         "session_id": str(s.get("pid", "")),  # Use PID as session_id
+        "uuid_short": s.get("uuid_short", ""),
         "activity_state": s.get("activity_state", "unknown"),
-        "task_summary": s.get("task_summary", "")
+        "task_summary": s.get("task_summary", ""),
+        "content_snippet": s.get("content_snippet", "")  # Terminal content for AI summarization
     } for s in sessions]
 
     return {

@@ -1,4 +1,4 @@
-"""Session scanning and activity state parsing for Claude Monitor.
+"""Session scanning and activity state parsing for Claude Headspace.
 
 This module handles:
 - Scanning project directories for active Claude sessions
@@ -11,7 +11,8 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from lib.iterm import get_iterm_windows, get_pid_tty
+from lib.iterm import get_iterm_windows, get_pid_tty, is_claude_process
+from lib.summarization import prepare_content_for_summary
 
 
 def scan_sessions(config: dict) -> list[dict]:
@@ -42,6 +43,11 @@ def scan_sessions(config: dict) -> list[dict]:
                 window_info = None
                 session_tty = None
                 if session_pid:
+                    # First verify this is actually a Claude process (prevents PID reuse issues)
+                    if not is_claude_process(session_pid):
+                        # PID was reused by another process - this session is dead
+                        continue
+
                     session_tty = get_pid_tty(session_pid)
                     if session_tty:
                         window_info = iterm_windows.get(session_tty)
@@ -66,6 +72,9 @@ def scan_sessions(config: dict) -> list[dict]:
                 # Extract activity state and task summary from window title + content
                 activity_state, task_summary = parse_activity_state(window_title, content_tail)
 
+                # Prepare terminal content for AI summarization
+                content_snippet = prepare_content_for_summary(content_tail)
+
                 sessions.append({
                     "uuid": session_uuid,
                     "uuid_short": session_uuid[-8:] if session_uuid else "unknown",
@@ -79,6 +88,7 @@ def scan_sessions(config: dict) -> list[dict]:
                     "activity_state": activity_state,
                     "window_title": window_title,
                     "task_summary": task_summary,
+                    "content_snippet": content_snippet,
                 })
             except Exception:
                 continue

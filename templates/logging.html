@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logging - Claude Headspace</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111114'/%3E%3Crect x='5' y='10' width='9' height='14' rx='2' fill='%2356d4dd'/%3E%3Crect x='18' y='6' width='9' height='18' rx='2' fill='%2373e0a0'/%3E%3C/svg%3E">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+    <!-- CSS Modules -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/variables.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/logging.css') }}">
+
+    <style>
+        /* Pop-out specific styles */
+        body {
+            padding: 0;
+            margin: 0;
+        }
+        .popout-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 20px;
+            background: var(--bg-elevated);
+            border-bottom: 1px solid var(--border);
+        }
+        .popout-title {
+            font-family: var(--font-mono);
+            font-size: 14px;
+            color: var(--text-primary);
+        }
+        .popout-title span {
+            color: var(--cyan);
+        }
+        .logging-panel-popout {
+            padding: 20px;
+            height: calc(100vh - 60px);
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <div class="popout-header">
+        <div class="popout-title">
+            <span>claude</span>_headspace / logging
+        </div>
+    </div>
+
+    <div class="logging-panel-popout">
+        <!-- Logging Sub-Tabs -->
+        <div class="logging-subtabs">
+            <button class="logging-subtab active" data-subtab="openrouter">openrouter</button>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="logging-search-container">
+            <input type="text" id="logging-search" class="logging-search" placeholder="Search logs...">
+        </div>
+
+        <!-- Log Entries Container -->
+        <div id="logging-entries" class="logging-entries">
+            <div class="logging-empty" id="logging-empty">
+                No API logs yet. Logs will appear here when OpenRouter API calls are made.
+            </div>
+            <div class="logging-error" id="logging-error" style="display: none;">
+                <span>Failed to load logs.</span>
+                <button onclick="loadOpenRouterLogs()">Retry</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inline config from Jinja template -->
+    <script>
+        window.CONFIG = {
+            refreshInterval: {{ scan_interval * 1000 }},
+            isPopout: true
+        };
+    </script>
+
+    <!-- JS Modules -->
+    <script src="{{ url_for('static', filename='js/logging.js') }}"></script>
+    <script>
+        // Initialize logging on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            initLogging();
+        });
+    </script>
+</body>
+</html>

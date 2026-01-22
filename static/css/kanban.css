@@ -117,6 +117,16 @@
     transform: translateX(2px);
 }
 
+/* Keyframes for recommended card glow animation - orange pulse */
+@keyframes recommended-glow {
+    from {
+        box-shadow: 0 0 10px rgba(255, 180, 100, 0.3), 0 0 20px rgba(255, 180, 100, 0.15);
+    }
+    to {
+        box-shadow: 0 0 20px rgba(255, 180, 100, 0.45), 0 0 40px rgba(255, 180, 100, 0.25);
+    }
+}
+
 /* Card line numbers */
 .card-line-numbers {
     position: absolute;
@@ -201,7 +211,7 @@
     margin-right: 6px;
 }
 
-/* Activity state indicator */
+/* Activity state indicator - clickable to focus iTerm */
 .activity-state {
     display: flex;
     align-items: center;
@@ -211,6 +221,17 @@
     margin-bottom: 10px;
     font-size: 0.8rem;
     font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.activity-state:hover {
+    transform: translateX(2px);
+    filter: brightness(1.1);
+}
+
+.activity-state:active {
+    transform: translateX(1px);
 }
 
 .activity-state.processing {
@@ -227,12 +248,26 @@
     font-weight: 600;
 }
 
-/* Card highlight when input is needed */
+/* Card highlight when input is needed - cyan for non-priority items */
 .card.input-needed-card {
-    border-color: #ffb464 !important;
+    border-color: var(--cyan) !important;
 }
 
 .card.input-needed-card::before {
+    background: var(--cyan) !important;
+    opacity: 1 !important;
+}
+
+/* Recommended next card - orange call-to-action for top priority */
+.card.recommended-next-card,
+.card.input-needed-card.recommended-next-card {
+    border-color: #ffb464 !important;
+    box-shadow: 0 0 15px rgba(255, 180, 100, 0.35), 0 0 30px rgba(255, 180, 100, 0.2) !important;
+    animation: recommended-glow 2s ease-in-out infinite alternate;
+}
+
+.card.recommended-next-card::before,
+.card.input-needed-card.recommended-next-card::before {
     background: #ffb464 !important;
     opacity: 1 !important;
 }
@@ -271,6 +306,22 @@
     margin-bottom: 10px;
     line-height: 1.5;
     word-break: break-word;
+}
+
+/* AI-generated activity summary */
+.activity-summary {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    margin-bottom: 10px;
+    line-height: 1.5;
+    word-break: break-word;
+    font-style: italic;
+}
+
+.activity-summary::before {
+    content: "// ";
+    color: var(--text-muted);
+    font-style: normal;
 }
 
 /* Syntax highlighting for task summary */
@@ -386,4 +437,55 @@
 
 .card.stale .reboot-btn:hover {
     background: rgba(224, 176, 115, 0.2);
+}
+
+/* Card Priority - score and rationale */
+.card-priority {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 8px 0;
+    padding: 6px 10px;
+    background: rgba(86, 212, 221, 0.06);
+    border-left: 2px solid var(--cyan-dim);
+    border-radius: 0 3px 3px 0;
+}
+
+.priority-score {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 3px;
+    min-width: 28px;
+    text-align: center;
+}
+
+.priority-score.high {
+    background: rgba(115, 224, 160, 0.2);
+    color: var(--green);
+    border: 1px solid rgba(115, 224, 160, 0.4);
+}
+
+.priority-score.medium {
+    background: rgba(224, 176, 115, 0.2);
+    color: var(--amber);
+    border: 1px solid rgba(224, 176, 115, 0.4);
+}
+
+.priority-score.low {
+    background: rgba(128, 128, 140, 0.15);
+    color: var(--text-muted);
+    border: 1px solid rgba(128, 128, 140, 0.3);
+}
+
+.priority-rationale {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-style: italic;
 }

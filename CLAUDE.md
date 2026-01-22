@@ -17,11 +17,11 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 <!-- OPENSPEC:END -->
 
-# CLAUDE.md - Claude Monitor Project Guide
+# CLAUDE.md - Claude Headspace Project Guide
 
 ## Project Overview
 
-Claude Monitor is a Kanban-style web dashboard for tracking Claude Code sessions across multiple projects. It monitors iTerm windows and displays real-time session status with click-to-focus functionality and native macOS notifications.
+Claude Headspace is a Kanban-style web dashboard for tracking Claude Code sessions across multiple projects. It monitors iTerm windows and displays real-time session status with click-to-focus functionality and native macOS notifications.
 
 **Purpose:**
 - Track active Claude Code sessions across projects

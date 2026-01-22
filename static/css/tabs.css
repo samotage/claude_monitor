@@ -1,10 +1,59 @@
-/* Tab Navigation - styled like terminal tabs */
+/* Tab Navigation - styled like terminal tabs, fixed at top */
 .tab-nav {
     display: flex;
+    align-items: center;
     background: var(--bg-deep);
     border-bottom: 1px solid var(--border);
     padding: 0;
-    position: relative;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+}
+
+/* Nav Brand - small ASCII art + >_ headspace */
+.nav-brand {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    padding: 8px 20px;
+    border-right: 1px solid var(--border);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.nav-brand:hover .nav-ascii {
+    text-shadow: 0 0 12px var(--cyan-glow);
+}
+
+.nav-ascii {
+    font-size: 0.32rem;
+    line-height: 1.0;
+    color: var(--cyan);
+    text-shadow: 0 0 8px var(--cyan-glow);
+    white-space: pre;
+    letter-spacing: -0.02em;
+    margin: 0;
+}
+
+.nav-brand-cursor {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--cyan);
+    text-shadow: 0 0 8px var(--cyan-glow);
+    margin-left: 8px;
+    line-height: 1;
+}
+
+.nav-brand-suffix {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: 0.02em;
+    line-height: 1;
 }
 
 .tab-nav::before {
@@ -72,7 +121,8 @@
 .tab-content {
     display: none;
     padding: 24px;
-    min-height: calc(100vh - 52px);
+    padding-top: 116px;  /* 52px (tab-nav) + 40px (stats-bar) + 24px (content padding) */
+    min-height: 100vh;
     animation: fadeIn 0.2s ease;
 }
 

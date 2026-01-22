@@ -1,5 +1,5 @@
 #!/bin/bash
-# Restart the Claude Monitor Flask server
+# Restart the Claude Headspace Flask server
 
 # Kill any existing server (case-insensitive match for Python/python)
 pkill -if "python.*monitor\.py" 2>/dev/null

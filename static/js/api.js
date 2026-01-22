@@ -68,10 +68,14 @@ async function fetchPrioritiesAPI(forceRefresh = false) {
     return response;
 }
 
-async function fetchBrainRefreshAPI(projectName) {
+async function fetchBrainRefreshAPI(projectName, sessionId = null) {
     // Convert project name to permalink (slug)
     const permalink = projectName.toLowerCase().replace(/\s+/g, '-');
-    const response = await fetch(`/api/project/${permalink}/brain-refresh`);
+    let url = `/api/project/${permalink}/brain-refresh`;
+    if (sessionId) {
+        url += `?session_id=${encodeURIComponent(sessionId)}`;
+    }
+    const response = await fetch(url);
     return await response.json();
 }
 

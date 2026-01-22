@@ -1,4 +1,4 @@
-"""Project data management for Claude Monitor.
+"""Project data management for Claude Headspace.
 
 This module handles:
 - Project YAML data loading and saving
@@ -415,11 +415,12 @@ def calculate_staleness(project_name: str) -> dict:
         }
 
 
-def generate_reboot_briefing(project_name: str) -> Optional[dict]:
+def generate_reboot_briefing(project_name: str, session_id: Optional[str] = None) -> Optional[dict]:
     """Generate a structured briefing for quick context reload.
 
     Args:
         project_name: Name of the project
+        session_id: Optional session UUID to get session-specific context
 
     Returns:
         Dict with briefing sections, or None if project not found
@@ -439,13 +440,44 @@ def generate_reboot_briefing(project_name: str) -> Optional[dict]:
         "next_steps": upcoming[:3] if upcoming else []  # First 3 upcoming items
     }
 
-    # Extract state section
+    # Extract state section - use session-specific context if available
     state = project_data.get("state", {})
-    state_briefing = {
-        "status": state.get("status"),
-        "last_action": state.get("last_session_summary"),
-        "last_session_time": state.get("last_session_ended")
-    }
+    sessions_context = state.get("sessions_context", {})
+
+    # If session_id provided and exists in sessions_context, use that
+    if session_id and session_id in sessions_context:
+        session_ctx = sessions_context[session_id]
+        live_context = session_ctx.get("live_context", {})
+        state_briefing = {
+            "status": state.get("status"),
+            "last_action": state.get("last_session_summary"),
+            "last_session_time": state.get("last_session_ended"),
+            # Session-specific context
+            "activity_state": session_ctx.get("activity_state"),
+            "task_summary": session_ctx.get("task_summary"),
+            "session_id": session_id,
+            "live_context": {
+                "recent_files": live_context.get("recent_files", []),
+                "recent_activity": live_context.get("recent_commands", []),
+                "last_activity": live_context.get("last_activity"),
+            }
+        }
+    else:
+        # Fallback to primary session context
+        live_context = state.get("live_context", {})
+        state_briefing = {
+            "status": state.get("status"),
+            "last_action": state.get("last_session_summary"),
+            "last_session_time": state.get("last_session_ended"),
+            # Live context from session sync
+            "activity_state": state.get("activity_state"),
+            "task_summary": state.get("task_summary"),
+            "live_context": {
+                "recent_files": live_context.get("recent_files", []),
+                "recent_activity": live_context.get("recent_commands", []),  # Activity summaries
+                "last_activity": live_context.get("last_activity"),
+            }
+        }
 
     # Extract recent sessions (condensed)
     recent_sessions = project_data.get("recent_sessions", [])

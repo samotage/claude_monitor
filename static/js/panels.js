@@ -4,13 +4,17 @@
 // Context Panel Functions
 // =============================================================================
 
-async function openContextPanel(projectName, sessionPid) {
+// Store session UUID for use in the panel
+let contextPanelSessionUuid = null;
+
+async function openContextPanel(projectName, sessionPid, sessionUuid = null) {
     const panel = document.getElementById('context-panel');
     const overlay = document.getElementById('context-panel-overlay');
     const content = document.getElementById('context-panel-content');
     const title = document.getElementById('context-panel-project-name');
 
     contextPanelSessionPid = sessionPid;
+    contextPanelSessionUuid = sessionUuid;
     title.textContent = projectName;
     content.innerHTML = '<div class="reboot-loading">Loading context...</div>';
 
@@ -18,7 +22,7 @@ async function openContextPanel(projectName, sessionPid) {
     overlay.classList.add('active');
 
     try {
-        const rebootData = await fetchBrainRefreshAPI(projectName);
+        const rebootData = await fetchBrainRefreshAPI(projectName, sessionUuid);
         const priorityInfo = getSessionPriority(sessionPid);
 
         let html = '';
@@ -122,7 +126,7 @@ async function openContextPanel(projectName, sessionPid) {
                 <div class="context-section">
                     <div class="context-empty-state">
                         No project data available.
-                        <a href="#" onclick="event.stopPropagation(); openRebootPanel('${escapeHtml(projectName)}'); closeContextPanel();">View Headspace</a>
+                        <a href="#" onclick="event.stopPropagation(); openRebootPanel('${escapeHtml(projectName)}', contextPanelSessionUuid); closeContextPanel();">View Headspace</a>
                     </div>
                 </div>
             `;
@@ -141,6 +145,7 @@ function closeContextPanel() {
     panel.classList.remove('active');
     overlay.classList.remove('active');
     contextPanelSessionPid = null;
+    contextPanelSessionUuid = null;
 }
 
 function focusContextSession() {
@@ -153,7 +158,7 @@ function focusContextSession() {
 // Brain Reboot Panel Functions
 // =============================================================================
 
-async function openRebootPanel(projectName) {
+async function openRebootPanel(projectName, sessionId = null) {
     const panel = document.getElementById('reboot-panel');
     const overlay = document.getElementById('reboot-panel-overlay');
     const content = document.getElementById('reboot-panel-content');
@@ -166,7 +171,7 @@ async function openRebootPanel(projectName) {
     overlay.classList.add('active');
 
     try {
-        const data = await fetchBrainRefreshAPI(projectName);
+        const data = await fetchBrainRefreshAPI(projectName, sessionId);
 
         if (!data.success) {
             content.innerHTML = '<div class="reboot-empty-state">Failed to load briefing: ' + escapeHtml(data.error) + '</div>';
@@ -197,16 +202,49 @@ async function openRebootPanel(projectName) {
         html += '<div class="reboot-section">';
         html += '<div class="reboot-section-header"><span class="reboot-section-icon">&#128204;</span> Where You Are</div>';
         html += '<div class="reboot-section-content">';
-        if (briefing.state.last_action || briefing.state.status) {
+
+        // Check if there's live context (active session) or historical state
+        const liveContext = briefing.state.live_context || {};
+        const hasLiveContext = liveContext.recent_files?.length > 0 || briefing.state.task_summary;
+        const hasHistoricalState = briefing.state.last_action || briefing.state.status;
+
+        if (hasLiveContext || hasHistoricalState) {
+            // Show activity state if available
+            if (briefing.state.activity_state) {
+                const stateEmoji = {
+                    'processing': '⚙️',
+                    'idle': '💤',
+                    'input_needed': '❓'
+                }[briefing.state.activity_state] || '•';
+                html += '<p><span class="label">' + stateEmoji + ' State:</span> <span class="value">' + escapeHtml(briefing.state.activity_state) + '</span></p>';
+            }
+
+            // Show current task/summary
+            if (briefing.state.task_summary) {
+                html += '<p><span class="label">Working on:</span> <span class="value">' + escapeHtml(briefing.state.task_summary) + '</span></p>';
+            }
+
+            // Show recent files (more relevant than raw commands)
+            if (liveContext.recent_files && liveContext.recent_files.length > 0) {
+                html += '<p><span class="label">Recent files:</span> <span class="value">' + escapeHtml(liveContext.recent_files.join(', ')) + '</span></p>';
+            }
+
+            // Show recent activity summaries if available
+            if (liveContext.recent_activity && liveContext.recent_activity.length > 0) {
+                html += '<p><span class="label">Recent activity:</span></p><ul class="activity-list">';
+                liveContext.recent_activity.forEach(activity => {
+                    html += '<li>' + escapeHtml(activity) + '</li>';
+                });
+                html += '</ul>';
+            }
+
+            // Historical info (for context when session ends)
             if (briefing.state.last_session_time) {
                 const hours = calculateStalenessHours(briefing.state.last_session_time);
-                html += '<p><span class="label">Last session:</span> ' + formatStaleness(hours) + ' ago</p>';
-            }
-            if (briefing.state.status) {
-                html += '<p><span class="label">Status:</span> ' + escapeHtml(briefing.state.status) + '</p>';
+                html += '<p><span class="label">Last session:</span> <span class="value">' + formatStaleness(hours) + ' ago</span></p>';
             }
             if (briefing.state.last_action) {
-                html += '<p><span class="label">Last action:</span> ' + escapeHtml(briefing.state.last_action) + '</p>';
+                html += '<p><span class="label">Previous:</span> <span class="value">' + escapeHtml(briefing.state.last_action) + '</span></p>';
             }
         } else {
             html += '<div class="reboot-empty-state">No session activity recorded yet</div>';
