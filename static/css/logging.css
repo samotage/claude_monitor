@@ -3,7 +3,8 @@
 .logging-container {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 120px);
+    /* Adjust for tab-content padding: 116px top + 24px bottom */
+    height: calc(100vh - 140px);
     padding: 20px;
     gap: 16px;
 }
@@ -152,6 +153,7 @@
     border-radius: 6px;
     overflow: hidden;
     transition: border-color 0.15s ease;
+    flex-shrink: 0;  /* Prevent entries from being compressed in flex container */
 }
 
 .log-entry:hover {
@@ -169,6 +171,15 @@
     padding: 12px 16px;
     cursor: pointer;
     gap: 16px;
+    min-height: 48px;
+    line-height: 1.4;
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+}
+
+.log-entry-header > * {
+    display: inline-flex !important;
+    visibility: visible !important;
 }
 
 .log-entry-timestamp {

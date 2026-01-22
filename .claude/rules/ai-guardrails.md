@@ -56,6 +56,25 @@ If unverified, phrase as expectations:
 - Bad: "The feature now works correctly"
 - Good: "This code should implement the feature. Not yet verified with tests."
 
+## User Observations Are Ground Truth
+
+**When the user reports something is broken, believe them.**
+
+- User's direct visual observations override tool outputs
+- Accessibility snapshots, DOM data, and API responses do NOT represent visual rendering
+- Never say "it's working" when the user says it isn't
+- If your tools show different data than what the user reports, acknowledge the discrepancy immediately: "You're right that it's not displaying correctly. My tool shows the data exists in the DOM, but something is preventing it from rendering. Let me investigate why."
+
+**The correct response when a user reports a problem:**
+1. Acknowledge their observation as fact
+2. Investigate the cause
+3. Fix it
+
+**NOT:**
+1. Run a tool
+2. Tell them it looks fine to you
+3. Make them prove it again
+
 ## STOP Means STOP
 
 When user says "STOP", "HANG ON", "WAIT", or similar:

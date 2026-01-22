@@ -24,7 +24,8 @@ HEADSPACE_DATA_PATH = Path(__file__).parent.parent / "data" / "headspace.yaml"
 # Defaults for priority configuration
 DEFAULT_PRIORITIES_POLLING_INTERVAL = 60  # seconds
 DEFAULT_PRIORITIES_MODEL = "anthropic/claude-3-haiku"
-DEFAULT_MAX_CACHE_AGE = 300  # 5 minutes - force refresh even if content unchanged
+# Note: We no longer use time-based cache expiration.
+# Cache only invalidates when session content actually changes.
 
 # In-memory cache for priorities
 _priorities_cache: dict = {
@@ -258,7 +259,11 @@ def is_cache_valid(current_sessions: list[dict] = None) -> bool:
     Cache is valid if:
     1. Cache exists
     2. Content hash matches (nothing has changed)
-    3. Cache is not too old (max 5 minutes even if unchanged)
+
+    Note: We intentionally do NOT expire cache based on time.
+    Only call the API when sessions actually change (appear/disappear,
+    activity state changes). This prevents redundant API calls for
+    stale/unchanged sessions.
 
     Args:
         current_sessions: Current session list to compare hash against
@@ -274,12 +279,7 @@ def is_cache_valid(current_sessions: list[dict] = None) -> bool:
     if _priorities_cache["timestamp"] is None:
         return False
 
-    # Always refresh if cache is too old (5 minutes max)
-    cache_age = (datetime.now(timezone.utc) - _priorities_cache["timestamp"]).total_seconds()
-    if cache_age > DEFAULT_MAX_CACHE_AGE:
-        return False
-
-    # If we have current sessions, check if content has changed
+    # Only invalidate if content has actually changed
     if current_sessions is not None and _priorities_cache["content_hash"] is not None:
         current_hash = compute_sessions_hash(current_sessions)
         if current_hash != _priorities_cache["content_hash"]:
