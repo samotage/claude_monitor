@@ -1,0 +1,39 @@
+# Project configuration template
+# Copy this file to <your-project-name>.yaml and customize
+
+name: My Project
+path: /path/to/your/project
+goal: A brief description of your project's purpose and goals.
+
+context:
+  tech_stack: Python, Flask, etc.
+  target_users: Developers, end users, etc.
+  refreshed_at: null
+
+roadmap:
+  next_up:
+    title: Current priority task
+    why: Reason this is the priority
+    definition_of_done: ''
+  upcoming: []
+  later: []
+  not_now: []
+
+state:
+  status: active  # active, paused, completed
+  current_session_id: null
+  activity_state: idle
+  task_summary: ''
+  live_context:
+    recent_files: []
+    recent_commands: []
+    current_task: ''
+    tool_in_progress: null
+    last_activity: null
+  sessions_context: {}
+  last_session_id: null
+  last_session_ended: null
+  last_session_summary: null
+
+recent_sessions: []
+history: {}

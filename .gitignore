@@ -12,6 +12,7 @@ __pycache__/
 .vscode/
 *.swp
 .claude/settings.local.json
+.claude/settings.json
 
 # OS
 .DS_Store
@@ -33,3 +34,7 @@ config.yaml
 
 # Orchestration working files (runtime state)
 orch/working/
+
+# Project data files (user-specific, use project.yaml.example as template)
+data/projects/*
+!data/projects/project.yaml.example
