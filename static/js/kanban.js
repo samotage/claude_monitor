@@ -47,8 +47,10 @@ function renderKanban(sessions, projects) {
                 <div class="card-line-numbers">${lineNums}</div>
                 <div class="card-content">
                     <div class="card-header">
-                        <span class="uuid">${session.uuid_short}</span>
                         <span class="status ${session.status}">${session.status}</span>
+                        <span class="uuid">${session.uuid_short}</span>
+                        <span class="elapsed">${session.elapsed}</span>
+                        ${session.pid ? `<span class="pid-info">${session.pid}</span>` : ''}
                         <button class="reboot-btn" onclick="event.stopPropagation(); openRebootPanel('${escapeHtml(projectName)}', '${escapeHtml(session.uuid)}')">Headspace</button>
                     </div>
                     <div class="activity-state ${session.activity_state}" onclick="event.stopPropagation(); focusWindow(${session.pid || 0})" title="Click to focus ${session.session_type === 'tmux' ? 'tmux session' : 'iTerm window'}">
@@ -61,10 +63,6 @@ function renderKanban(sessions, projects) {
                         `<div class="activity-summary">${escapeHtml(priorityInfo.activity_summary)}</div>` :
                         `<div class="task-summary">${escapeHtml(session.task_summary)}</div>`}
                     ${priorityHtml}
-                    <div class="card-footer">
-                        <span class="elapsed">${session.elapsed}</span>
-                        ${session.pid ? `<span class="pid-info">${session.pid}</span>` : ''}
-                    </div>
                 </div>
             </div>
         `;

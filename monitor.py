@@ -51,7 +51,7 @@ from lib.headspace import (
     get_headspace_history,
     update_priorities_cache,
 )
-from lib.iterm import focus_iterm_window_by_pid, get_pid_tty
+from lib.iterm import focus_iterm_window_by_pid, focus_iterm_window_by_tmux_session, get_pid_tty
 from lib.notifications import (
     check_state_changes_and_notify,
     is_notifications_enabled,
@@ -128,8 +128,31 @@ def api_sessions():
 
 @app.route("/api/focus/<int:pid>", methods=["POST"])
 def api_focus(pid: int):
-    """API endpoint to focus an iTerm window by PID."""
+    """API endpoint to focus an iTerm window by PID.
+
+    Note: For tmux sessions, this falls back to searching by session content
+    since the PID's TTY is the tmux pane TTY, not the iTerm window TTY.
+    """
+    # First try direct TTY matching (works for non-tmux sessions)
     success = focus_iterm_window_by_pid(pid)
+    if success:
+        return jsonify({"success": True})
+
+    # For tmux sessions, look up the session name and search by content
+    config = load_config()
+    sessions = scan_sessions(config)
+    for session in sessions:
+        if session.get("pid") == pid and session.get("tmux_session"):
+            success = focus_iterm_window_by_tmux_session(session["tmux_session"])
+            return jsonify({"success": success})
+
+    return jsonify({"success": False})
+
+
+@app.route("/api/focus/tmux/<session_name>", methods=["POST"])
+def api_focus_tmux(session_name: str):
+    """API endpoint to focus an iTerm window by tmux session name."""
+    success = focus_iterm_window_by_tmux_session(session_name)
     return jsonify({"success": success})
 
 
@@ -916,73 +939,6 @@ def api_output_from_session(session_id: str):
             "lines": lines,
             "note": "iTerm sessions have limited output capture (last ~5000 chars)"
         })
-
-
-# =============================================================================
-# Routes - Project tmux Configuration API
-# =============================================================================
-
-
-@app.route("/api/projects/<name>/tmux", methods=["GET"])
-def api_project_tmux_status(name: str):
-    """Get tmux status for a project."""
-    from lib.projects import get_project_tmux_status
-
-    status = get_project_tmux_status(name)
-    return jsonify({
-        "success": True,
-        "project": name,
-        **status
-    })
-
-
-@app.route("/api/projects/<name>/tmux/enable", methods=["POST"])
-def api_project_tmux_enable(name: str):
-    """Enable tmux for a project."""
-    from lib.projects import set_project_tmux_enabled, get_project_tmux_status
-    from lib.tmux import is_tmux_available
-
-    # Check if tmux is available
-    if not is_tmux_available():
-        return jsonify({
-            "success": False,
-            "error": "tmux is not installed. Install with: brew install tmux"
-        }), 400
-
-    # Enable tmux for the project
-    if set_project_tmux_enabled(name, True):
-        status = get_project_tmux_status(name)
-        return jsonify({
-            "success": True,
-            "project": name,
-            "message": f"tmux enabled for project '{name}'",
-            **status
-        })
-    else:
-        return jsonify({
-            "success": False,
-            "error": f"Project '{name}' not found in configuration"
-        }), 404
-
-
-@app.route("/api/projects/<name>/tmux/disable", methods=["POST"])
-def api_project_tmux_disable(name: str):
-    """Disable tmux for a project."""
-    from lib.projects import set_project_tmux_enabled, get_project_tmux_status
-
-    if set_project_tmux_enabled(name, False):
-        status = get_project_tmux_status(name)
-        return jsonify({
-            "success": True,
-            "project": name,
-            "message": f"tmux disabled for project '{name}'",
-            **status
-        })
-    else:
-        return jsonify({
-            "success": False,
-            "error": f"Project '{name}' not found in configuration"
-        }), 404
 
 
 # =============================================================================

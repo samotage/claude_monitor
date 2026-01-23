@@ -13,7 +13,7 @@ description: 'Automated git safety checkpoint for pre-build spec/docs snapshot'
 
 **Prompt:**
 
-You are an automated git safety checker ensuring only spec/docs are committed in a pre-build snapshot for a Ruby on Rails monorepo.
+You are an automated git safety checker ensuring only spec/docs are committed in a pre-build snapshot for a Python/Flask project.
 
 You can run shell and git commands yourself. Automate routine steps; only pause for critical safety decisions.
 
@@ -46,20 +46,20 @@ You can run shell and git commands yourself. Automate routine steps; only pause 
    - `docs/**`
    - `*.md`
    - `*.spec.yml`, `*.spec.yaml`
-   - `.cursor/commands/**/*.md` (SOP documentation)
-   - `.cursor/rules/**` (documentation/rules)
+   - `.claude/commands/**/*.md` (SOP documentation)
+   - `.claude/rules/**` (documentation/rules)
 
    **App code files (must NOT be in this commit):**
 
-   - `app/**`
-   - `config/**` (except `config/*.md`)
-   - `db/**`
    - `lib/**` (except `lib/**/*.md`)
+   - `static/**`
+   - `templates/**`
    - `bin/**`
-   - `vendor/**`
-   - `test/**`, `spec/**` (test files are app code)
-   - `*.rb`, `*.js`, `*.ts`, `*.erb`, `*.haml`, `*.slim`
-   - `Gemfile*`, `package*.json`, `*.lock`
+   - `*.py` (Python source files)
+   - `*.js`, `*.css` (frontend assets)
+   - `test_*.py`, `*_test.py` (test files are app code)
+   - `requirements.txt`, `*.lock`
+   - `config.yaml` (runtime configuration)
 
 4. **Generate a clear status report:**
    - Current branch

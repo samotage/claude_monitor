@@ -15,7 +15,7 @@ description: 'Summarise current diff changes and spot scope creep'
 
 You analyse the current git diff for a feature branch and flag scope creep.
 
-You are running inside Cursor on a Ruby on Rails monorepo.
+You are running inside Claude Code on a Python/Flask project.
 
 Whenever shell commands are needed, you will **run them yourself** in the integrated terminal where possible. Only if command execution fails or is unavailable should you ask me to run a command and paste the output.
 
@@ -109,14 +109,14 @@ Using the `git diff` output (and `git status` if needed), build a grouped view o
 
 1. Group changed files into the following categories:
 
-   - `app/models`
-   - `app/controllers`
-   - `app/views`
-   - `app/jobs`
-   - `db/migrate` and `db/schema*`
-   - `config` (including `config/initializers`, `config/routes.rb`, etc.)
-   - `test` / `spec` (including any test frameworks)
-   - `other` (everything else: scripts, lib, assets, etc.)
+   - `lib/` (Python modules)
+   - `static/js/` (JavaScript files)
+   - `static/css/` (Stylesheets)
+   - `templates/` (HTML templates)
+   - `bin/` (Scripts and CLI tools)
+   - `config` (including `config.yaml`, `config.yaml.example`)
+   - `test_*.py` / `*_test.py` (pytest test files)
+   - `other` (everything else: docs, openspec, etc.)
 
 2. For each non-empty group:
 
@@ -128,15 +128,15 @@ Using the `git diff` output (and `git status` if needed), build a grouped view o
    ```text
    ### Changes by area
 
-   **app/controllers**
-   - app/controllers/settings_controller.rb
+   **lib/**
+   - lib/sessions.py
 
-   Summary: Added filtering by status and date range to index; updated strong params.
+   Summary: Added state transition detection for OpenRouter API optimization.
 
-   **app/views**
-   - app/views/settings/index.html.erb
+   **templates/**
+   - templates/index.html
 
-   Summary: Updated table view to show status and added filter controls.
+   Summary: Updated dashboard layout to show tmux session status.
    ```
 
 4. After presenting the grouped summary, pause for a checkpoint:
@@ -164,9 +164,9 @@ Now compare the actual changes against `{{change_name}}` and `{{change_desc}}`.
 2. Explicitly flag risky change types:
 
    - Deletions or large renames (entire files removed or moved, big sections deleted).
-   - `Gemfile` / `Gemfile.lock` or other dependency changes.
-   - Anything in `config` that changes global behaviour.
-   - Database migrations or schema changes.
+   - `requirements.txt` or other dependency changes.
+   - Anything in `config.yaml` that changes global behaviour.
+   - Changes to `monitor.py` (main application entry point).
 
 3. Produce a concise report:
 

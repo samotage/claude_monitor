@@ -9,9 +9,9 @@ description: 'Choose and run most relevant tests for a given change'
 
 **Prompt:**
 
-You help me choose and run the most relevant tests for a given change in a Ruby on Rails monorepo.
+You help me choose and run the most relevant tests for a given change in a Python/Flask project.
 
-You have access to Cursor's workspace and integrated terminal. Whenever these instructions mention running shell commands or reading/writing files, **you must perform those actions yourself** using Cursor's tools.
+You have access to Claude Code's workspace and terminal. Whenever these instructions mention running shell commands or reading/writing files, **you must perform those actions yourself** using Claude Code's tools.
 
 - Do **not** ask me to run shell commands or manually open/edit files, except to confirm that a plan or result looks correct.
 - After each critical action (collecting context, reading OpenSpec, computing changed files, planning tests, running tests, updating tasks), **checkpoint with me and wait for confirmation** before proceeding.
@@ -39,7 +39,7 @@ You have access to Cursor's workspace and integrated terminal. Whenever these in
      ```
      Please provide the change name to run targeted tests.
 
-     Example: `inquiry-02-email` or `settings-controller`
+     Example: `tmux-session-router` or `openrouter-optimization`
 
      What is the change name?
      ```
@@ -150,7 +150,7 @@ Automatically perform Steps 1.1, 1.2, and 1.3 without waiting for confirmation.
 
 ## Step 1.2: Locate OpenSpec `tasks.md`
 
-Locate and read the OpenSpec `tasks.md` file for this change **using Cursor's file tools**:
+Locate and read the OpenSpec `tasks.md` file for this change **using Claude Code's file tools**:
 
 1. Check if `openspec/changes/{{change_name}}/tasks.md` exists in the workspace.
 2. If it exists:
@@ -175,7 +175,7 @@ Prepare a summary (but don't ask for confirmation yet):
 
 Determine the changed files using git **yourself**:
 
-1. From the repository root, use Cursor's terminal to run:
+1. From the repository root, use Claude Code's terminal to run:
 
    - `git diff --name-only`
 
@@ -191,52 +191,49 @@ Do **not** ask me to run `git diff`; you are responsible for running it and past
 
 ## Step 1.4: Automated test file discovery
 
-**Automatically discover test files** based on Rails conventions and changed files:
+**Automatically discover test files** based on Python/pytest conventions and changed files:
 
 1. For each changed file, apply the following discovery rules:
 
-   **Model files** (`app/models/*.rb`):
+   **Python modules** (`lib/*.py`, `*.py`):
 
-   - Direct: `spec/models/{model_name}_spec.rb`
-   - Related: Search for feature specs that might test this model (e.g., `spec/features/*{model_name}*_spec.rb`)
+   - Direct: `test_{module_name}.py` or `{module_name}_test.py`
+   - Related: `tests/test_{module_name}.py` if tests directory exists
 
-   **Controller files** (`app/controllers/*_controller.rb`):
+   **Main application** (`monitor.py`):
 
-   - Direct: `spec/requests/{controller_name}_spec.rb` (without `_controller` suffix)
-   - Alternative: `spec/features/{controller_name}_spec.rb`
-   - Related: `spec/controllers/{controller_name}_controller_spec.rb` (if using controller specs)
+   - Direct: `test_monitor.py`
+   - Related: Integration tests that exercise the Flask app
 
-   **View files** (`app/views/**/*.{haml,erb}`):
+   **Library modules** (`lib/*.py`):
 
-   - Direct: `spec/features/{view_path}_spec.rb` (e.g., `app/views/accounts/edit.html.haml` → `spec/features/account_edit_spec.rb`)
-   - Related: Feature specs that match the controller/action
+   - Direct: `test_{filename}.py` (e.g., `lib/sessions.py` → `test_sessions.py`)
+   - Related: Tests in `tests/` directory matching the module name
 
-   **Test files** (`spec/**/*_spec.rb`):
+   **Test files** (`test_*.py`, `*_test.py`):
 
    - Direct: Run the changed test file itself
 
-   **Routes** (`config/routes.rb`):
+   **Static files** (`static/**`):
 
-   - Run broader integration/feature tests
+   - Related: Feature/integration tests that exercise the frontend
 
-   **Migrations** (`db/migrate/*.rb`):
+   **Templates** (`templates/**`):
 
-   - Model specs for affected models
-   - Feature specs that use affected models
+   - Related: Integration tests that render the templates
 
-   **Shared/common files** (`app/concerns/*.rb`, `app/services/*.rb`, `app/helpers/*.rb`):
+   **Configuration** (`config.yaml`, `config.yaml.example`):
 
-   - Search for specs that include/use these files
-   - Run broader test suite if impact is unclear
+   - Related: Tests that use configuration values
 
 2. For each discovered test file, check if it exists using file system tools.
 
 3. Prioritize discovered test files:
 
    - **Priority 1**: Direct test files (changed test files or exact matches)
-   - **Priority 2**: Model/controller/view specs (direct Rails convention matches)
-   - **Priority 3**: Related feature specs (broader coverage)
-   - **Priority 4**: Integration tests (if no specific tests found)
+   - **Priority 2**: Module-level tests (direct pytest convention matches)
+   - **Priority 3**: Integration tests (broader coverage)
+   - **Priority 4**: All tests (if no specific tests found)
 
 4. Limit to **5-7 most relevant test files** (prioritize by specificity and relevance).
 
@@ -272,9 +269,9 @@ After completing Steps 1.1, 1.2, 1.3, and 1.4 automatically, present all results
 >
 > **4. Automatically discovered test files:**
 >
-> - [Priority 1] `spec/path/to/direct_test_spec.rb` (matches: `app/path/to/file.rb`)
-> - [Priority 2] `spec/path/to/model_spec.rb` (matches: `app/models/model.rb`)
-> - [Priority 3] `spec/features/feature_spec.rb` (related to: `app/controllers/controller.rb`)
+> - [Priority 1] `test_sessions.py` (matches: `lib/sessions.py`)
+> - [Priority 2] `test_tmux.py` (matches: `lib/tmux.py`)
+> - [Priority 3] `test_monitor.py` (related to: `monitor.py`)
 >
 > → Proceeding automatically to create test plan and run tests...
 
@@ -290,26 +287,27 @@ After completing Steps 1.1, 1.2, 1.3, and 1.4 automatically, present all results
 
 3. Create a mapping between test files and OpenSpec tasks.
 
-4. Group test files by type for parallel execution:
+4. Group test files by type for execution:
 
-   - **Group 1**: Model specs (can run in parallel)
-   - **Group 2**: Request specs (can run in parallel)
-   - **Group 3**: Feature specs (can run in parallel, but may be slower)
-   - **Sequential**: If tests have dependencies or shared state, run sequentially
+   - **Group 1**: Unit tests (fast, isolated module tests)
+   - **Group 2**: Integration tests (Flask app tests, API tests)
+   - **Group 3**: End-to-end tests (if any)
 
 5. Present the test plan with mapping (informational), then auto-proceed:
 
 > **Test Plan:**
 >
-> **Group 1 (Model specs - parallel):**
+> **Group 1 (Unit tests):**
 >
-> 1. `bundle exec rspec spec/models/invite_spec.rb` → Covers tasks 13.9
+> 1. `pytest test_sessions.py -v` → Covers tasks 13.9
 >
-> **Group 2 (Request specs - parallel):** 2. `bundle exec rspec spec/requests/invites_spec.rb` → Covers tasks 13.4, 13.8, 13.10
+> **Group 2 (Integration tests):**
+> 2. `pytest test_tmux.py -v` → Covers tasks 13.4, 13.8, 13.10
 >
-> **Group 3 (Feature specs - parallel):** 3. `bundle exec rspec spec/features/account_edit_spec.rb` → Covers tasks 13.1, 13.2, 13.3, 13.5, 13.6, 13.7, 13.11
+> **Group 3 (Full test suite):**
+> 3. `pytest -v` → Covers all tasks
 >
-> **Total: 3 test files, organized into 3 parallel groups**
+> **Total: 3 test runs planned**
 >
 > → Starting test execution...
 
@@ -317,76 +315,59 @@ After completing Steps 1.1, 1.2, 1.3, and 1.4 automatically, present all results
 
 ---
 
-## Step 3: Execute tests (parallel where safe)
+## Step 3: Execute tests
 
-1. **For parallel groups**: Run all test files in the group simultaneously using background processes.
+1. **Run tests in order of priority**: Start with specific tests, then broader suites.
 
-   - Use `&` to run commands in background
-   - Capture output to temporary files: `bundle exec rspec spec/path/to/test_spec.rb > /tmp/test_output_1.txt 2>&1 &`
-   - Wait for all background processes to complete using `wait`
-   - Read and combine all output files
+2. **Execution strategy**:
 
-2. **For sequential tests**: Run one at a time, waiting for completion before proceeding.
+   - Run unit tests first (fastest, most isolated)
+   - Then integration tests (moderate speed)
+   - Finally full test suite if needed (comprehensive)
 
-3. **Execution strategy**:
+3. For each test execution:
 
-   - Run model specs first (fastest, most isolated)
-   - Then request specs (moderate speed)
-   - Finally feature specs (slowest, may have dependencies)
-   - Within each group, run in parallel
-
-4. For each test execution:
-
-   - Run the command using Cursor's terminal
+   - Run the command using Claude Code's terminal: `pytest <test_file> -v`
    - Capture the full output (stdout and stderr)
    - Parse the output to extract:
-     - Total examples/tests
+     - Total tests
      - Passing count
      - Failing count
-     - Pending count
+     - Skipped count
      - Failure details (test name, file, line number, error message)
 
-5. **After all tests complete**, collect all outputs and prepare a comprehensive summary (but don't ask for confirmation yet).
+4. **After all tests complete**, collect all outputs and prepare a comprehensive summary (but don't ask for confirmation yet).
 
-6. Present results:
+5. Present results:
 
 > **Test Execution Results:**
 >
-> **Group 1 (Model specs):**
+> **Group 1 (Unit tests):**
 >
 > ```
-> # Output of: bundle exec rspec spec/models/invite_spec.rb
+> # Output of: pytest test_sessions.py -v
 > [paste full output]
 > ```
 >
-> ✅ **Result**: 27 examples, 27 passing, 0 failures
+> ✅ **Result**: 12 passed, 0 failed
 >
-> **Group 2 (Request specs):**
+> **Group 2 (Integration tests):**
 >
 > ```
-> # Output of: bundle exec rspec spec/requests/invites_spec.rb
+> # Output of: pytest test_tmux.py -v
 > [paste full output]
 > ```
 >
-> ✅ **Result**: 19 examples, 19 passing, 0 failures
->
-> **Group 3 (Feature specs):**
->
-> ```
-> # Output of: bundle exec rspec spec/features/account_edit_spec.rb
-> [paste full output]
-> ```
->
-> ⚠️ **Result**: 49 examples, 48 passing, 0 failures, 1 pending
+> ✅ **Result**: 8 passed, 0 failed
 >
 > **Overall Summary:**
 >
-> - Total: 95 examples
-> - Passing: 94 (98.9%)
-> - Pending: 1 (1.1%)
+> - Total: 20 tests
+> - Passing: 20 (100%)
+> - Skipped: 0 (0%)
 > - Failing: 0 (0%)
 
-**Do not checkpoint after each individual test** - wait until all tests in a group complete, then proceed to Step 4.
+**Do not checkpoint after each individual test** - wait until all tests complete, then proceed to Step 4.
 
 ---
 
@@ -394,7 +375,7 @@ After completing Steps 1.1, 1.2, 1.3, and 1.4 automatically, present all results
 
 **After all tests complete**, analyze the results:
 
-1. **Overall status**: Determine if all tests passed, or if there are failures/pending tests.
+1. **Overall status**: Determine if all tests passed, or if there are failures/skipped tests.
 
 2. **For each failure**:
 
@@ -402,35 +383,40 @@ After completing Steps 1.1, 1.2, 1.3, and 1.4 automatically, present all results
    - Analyze error message to identify likely cause
    - Apply common failure pattern detection:
 
-     **Pattern: Missing migration**
+     **Pattern: Import error**
 
-     - Error: `ActiveRecord::StatementInvalid` or `PG::UndefinedColumn`
-     - Suggestion: Run `rails db:migrate RAILS_ENV=test`
+     - Error: `ModuleNotFoundError` or `ImportError`
+     - Suggestion: Check if module exists, verify imports, check `PYTHONPATH`
 
-     **Pattern: Missing factory**
+     **Pattern: Missing fixture**
 
-     - Error: `FactoryBot::UnknownFactory` or `Factory not registered`
-     - Suggestion: Create or update factory file
+     - Error: `fixture 'xxx' not found`
+     - Suggestion: Define fixture in `conftest.py` or test file
 
-     **Pattern: Route error**
+     **Pattern: Assertion error**
 
-     - Error: `ActionController::RoutingError` or `No route matches`
-     - Suggestion: Check `config/routes.rb` and verify route exists
+     - Error: `AssertionError` or `assert` failure
+     - Suggestion: Check expected vs actual values, review test logic
 
-     **Pattern: Missing helper/method**
+     **Pattern: Attribute error**
 
-     - Error: `NoMethodError` or `undefined method`
-     - Suggestion: Check if method exists, verify includes/extends
+     - Error: `AttributeError: 'xxx' has no attribute 'yyy'`
+     - Suggestion: Check if method/attribute exists, verify object type
 
-     **Pattern: Database constraint**
+     **Pattern: Type error**
 
-     - Error: `ActiveRecord::RecordInvalid` or `PG::ForeignKeyViolation`
-     - Suggestion: Check model validations and associations
+     - Error: `TypeError: xxx() takes N positional arguments`
+     - Suggestion: Check function signature, verify argument count
 
-     **Pattern: View/partial missing**
+     **Pattern: File not found**
 
-     - Error: `ActionView::MissingTemplate` or `Missing partial`
-     - Suggestion: Verify view file exists at expected path
+     - Error: `FileNotFoundError` or `IOError`
+     - Suggestion: Check file paths, verify test fixtures exist
+
+     **Pattern: Configuration error**
+
+     - Error: Related to `config.yaml` or settings
+     - Suggestion: Check test configuration, verify config file exists
 
 3. **Present comprehensive diagnosis**:
 
@@ -441,15 +427,15 @@ After completing Steps 1.1, 1.2, 1.3, and 1.4 automatically, present all results
        > **Overall Status:**
        >
        > - ❌ Failures: [count and details]
-       > - ⚠️ Warnings/pending: [count and details]
+       > - ⚠️ Skipped: [count and details]
        >
        > **Failure Details:**
        >
-       > 1. **Test**: `spec/features/account_edit_spec.rb:123` - "User can close dialog with ESC key"
-       >    - **Error**: `Capybara::ElementNotFound: Unable to find button "Close"`
-       >    - **Likely cause**: Dialog button selector changed or dialog not rendering
-       >    - **Suggested fix**: Check `app/views/accounts/_invite_dialog.html.haml` for button ID/class
-       >    - **Re-run command**: `bundle exec rspec spec/features/account_edit_spec.rb:123`
+       > 1. **Test**: `test_sessions.py::test_state_transition` - line 123
+       >    - **Error**: `AssertionError: assert 'idle' == 'processing'`
+       >    - **Likely cause**: State transition logic not returning expected value
+       >    - **Suggested fix**: Check `should_refresh_priorities()` in `lib/headspace.py`
+       >    - **Re-run command**: `pytest test_sessions.py::test_state_transition -v`
        >
        > **Next Steps:**
        >
@@ -460,17 +446,17 @@ After completing Steps 1.1, 1.2, 1.3, and 1.4 automatically, present all results
        > - If **n**, specify what needs adjustment.
        > - If **y**, proceed to update tasks.md.
      - Wait for user response before proceeding to Step 5.
-   - **If all tests pass** (no failures, only passing/pending):
+   - **If all tests pass** (no failures, only passing/skipped):
      - Present summary (informational only):
        > **Test Results Summary:**
        >
        > **Overall Status:**
        >
        > - ✅ All tests passing: [yes/no]
-       > - ⚠️ Warnings/pending: [count and details if any]
+       > - ⚠️ Skipped: [count and details if any]
        >
        > → All tests passed. Proceeding to update tasks.md...
-     - **Auto-proceed to Step 5** without asking for confirmation.
+     - **Auto-proceed to Step 5** without confirmation.
 
 ---
 
@@ -482,7 +468,7 @@ After completing Steps 1.1, 1.2, 1.3, and 1.4 automatically, present all results
 
 2. If it exists:
 
-   - Read the current `tasks.md` file using Cursor's file editing tools.
+   - Read the current `tasks.md` file using Claude Code's file editing tools.
    - Locate the "Testing Status Summary" section (usually at the end of the Testing section).
    - If the section doesn't exist, create it after the Testing section.
 
@@ -490,11 +476,11 @@ After completing Steps 1.1, 1.2, 1.3, and 1.4 automatically, present all results
 
    - Extract from test outputs:
      - Test file names
-     - Example counts (total, passing, failing, pending)
+     - Test counts (total, passing, failing, skipped)
      - Failure details (if any)
    - Format with proper status indicators:
      - ✅ for all passing
-     - ⚠️ for warnings/pending
+     - ⚠️ for warnings/skipped
      - ❌ for failures
    - Include overall summary statistics
    - Note any new tests written or existing tests updated
@@ -506,34 +492,27 @@ After completing Steps 1.1, 1.2, 1.3, and 1.4 automatically, present all results
 
    **Overall Test Results:**
 
-   - Total examples: 95
-   - Passing: 94 (98.9%)
-   - Pending: 1 (1.1%)
+   - Total tests: 20
+   - Passing: 20 (100%)
+   - Skipped: 0 (0%)
    - Failing: 0 (0%)
 
    **Test File Breakdown:**
 
-   1. ✅ **Model specs: `spec/models/invite_spec.rb`** (27 examples, all passing)
+   1. ✅ **Unit tests: `test_sessions.py`** (12 tests, all passing)
 
       - All existing tests passing
-      - Added 5 new tests for `personal_message` field validation
+      - Added 5 new tests for state transition detection
       - Status: ✅ **100% passing**
 
-   2. ✅ **Request specs: `spec/requests/invites_spec.rb`** (19 examples, all passing)
+   2. ✅ **Integration tests: `test_tmux.py`** (8 tests, all passing)
 
-      - Preview endpoint tests (7 tests) - all passing
-      - Create action tests (10 tests) - all passing
-      - Authorization tests (2 tests) - all passing
+      - tmux session tests (4 tests) - all passing
+      - send/capture tests (4 tests) - all passing
       - Status: ✅ **100% passing**
-
-   3. ✅ **Feature specs: `spec/features/account_edit_spec.rb`** (49 examples, 48 passing, 1 pending)
-      - 24 existing tests: All passing
-      - 25 new dialog tests: 24 passing, 1 pending
-      - **Pending test**: Backdrop click to close dialog (JS test environment issue)
-      - Status: ✅ **98.0% passing** - All critical functionality tested and passing
    ```
 
-5. Write the updated `tasks.md` file back using Cursor's file editing tools.
+5. Write the updated `tasks.md` file back using Claude Code's file editing tools.
 
 6. Display confirmation:
 
@@ -559,17 +538,10 @@ After completing Steps 1.1, 1.2, 1.3, and 1.4 automatically, present all results
 > **OpenSpec Tasks to Update:**
 > The following tasks will be marked complete in `openspec/changes/{{change_name}}/tasks.md`:
 >
-> - [x] 13.1 Write feature specs for dialog opening/closing
-> - [x] 13.2 Write feature specs for email validation (all edge cases)
-> - [x] 13.3 Write feature specs for personal message customization
-> - [x] 13.4 Write feature specs for preview functionality
-> - [x] 13.5 Write feature specs for invitation creation via dialog
-> - [x] 13.6 Write feature specs for duplicate email handling
-> - [x] 13.7 Write feature specs for unsaved changes warning
-> - [x] 13.8 Write controller specs for preview endpoint
-> - [x] 13.9 Write model specs for personal_message field
-> - [x] 13.10 Test Turbo Stream responses work correctly
-> - [x] 13.11 Test accessibility (keyboard navigation, ARIA labels, screen readers)
+> - [x] 13.1 Write unit tests for state transition detection
+> - [x] 13.2 Write tests for turn completion detection
+> - [x] 13.3 Write integration tests for tmux session handling
+> - [x] 13.4 Write tests for OpenRouter API optimization
 >
 > **Is this the correct set of tasks to mark complete? [y,n]**
 
@@ -577,7 +549,7 @@ After completing Steps 1.1, 1.2, 1.3, and 1.4 automatically, present all results
 
 4. If I answer **y**:
 
-   - Using Cursor's file editing tools, read the current `tasks.md` file.
+   - Using Claude Code's file editing tools, read the current `tasks.md` file.
    - Update the relevant task checkboxes from `- [ ]` to `- [x]`.
    - Write the updated file back.
    - Optionally show a small diff or snippet of the updated section.
@@ -613,16 +585,16 @@ After completing Steps 1.1, 1.2, 1.3, and 1.4 automatically, present all results
   - **Automatically discovered test files** with priority and mapping
   - States "→ Proceeding automatically to create test plan and run tests..."
 - **Test Plan (informational only)** - Auto-proceeds:
-  - **Automatically discovered test files** organized into parallel groups
+  - **Automatically discovered test files** organized into groups
   - **Mapping to OpenSpec tasks** (if `tasks.md` exists)
   - States "→ Starting test execution..."
   - **Runs tests immediately** without confirmation
 
 **While running tests:**
 
-- For each parallel group:
-  - List the test files being run in parallel
-  - After group completion, show all outputs together
+- For each test group:
+  - List the test files being run
+  - After completion, show outputs
   - Summary for the group (pass/fail counts)
 - No per-command checkpoints (batch reporting instead)
 
@@ -650,14 +622,14 @@ After completing Steps 1.1, 1.2, 1.3, and 1.4 automatically, present all results
 
 - Final checkpoint (CHECKPOINT 4 of 4) showing which OpenSpec tasks correspond to passing tests
 - Ask for confirmation before updating task checkboxes in `tasks.md`
-- After confirmation, update task checkboxes using Cursor's file tools and display what changed
+- After confirmation, update task checkboxes using Claude Code's file tools and display what changed
 
 **Summary of checkpoint flow:**
 - **Before tests:** 0-1 checkpoints (only if Step 0 finds blockers)
 - **After tests (failures):** 1 checkpoint (diagnosis confirmation)
 - **After tests (all pass):** 0 checkpoints (auto-proceed) + 1 final checkpoint (task checkbox update)
 
-Always keep responses focused and practical, optimised for a tight Rails TDD feedback loop, and always run commands + file edits yourself, checkpointing only when user intervention is required.
+Always keep responses focused and practical, optimised for a tight Python/pytest TDD feedback loop, and always run commands + file edits yourself, checkpointing only when user intervention is required.
 
 ---
 

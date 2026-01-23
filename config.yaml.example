@@ -9,23 +9,17 @@
 # Add your projects below. Each project needs:
 #   - name: A display name for the dashboard
 #   - path: Absolute path to the project directory
-#   - tmux: (optional) Set to false to disable tmux and use iTerm mode
 #
-# tmux is ENABLED BY DEFAULT for all projects. This provides bidirectional
-# session control. Set tmux: false to use read-only iTerm mode instead.
-#
-# The monitor will scan these directories for .claude-monitor-*.json
-# state files created by the claude-monitor wrapper script.
+# Sessions are discovered automatically from tmux (claude-* sessions).
+# Use claude-monitor start in your project directory to launch sessions.
 
 projects:
   # Example projects - replace with your own
   - name: "my-project"
     path: "/Users/yourname/dev/my-project"
-    # tmux is enabled by default
 
   - name: "another-project"
     path: "/Users/yourname/dev/another-project"
-    tmux: false  # Disable tmux, use iTerm mode (read-only)
 
 # =============================================================================
 # Dashboard Settings

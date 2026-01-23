@@ -56,13 +56,15 @@ def is_turn_complete(content: str) -> bool:
     tail = content[-300:]
     return any(f"✻ {verb} for" in tail for verb in TURN_COMPLETE_VERBS)
 
-from lib.iterm import get_iterm_windows, get_pid_tty, is_claude_process
+from lib.iterm import get_pid_tty, focus_iterm_window_by_pid
 from lib.summarization import prepare_content_for_summary
 from lib.tmux import (
     capture_pane,
     get_session_info,
     is_tmux_available,
+    list_sessions as tmux_list_sessions,
     session_exists as tmux_session_exists,
+    slugify_project_name,
 )
 
 
@@ -119,6 +121,153 @@ def extract_last_message(content_tail: str, max_chars: int = 500) -> str:
         result = result[:max_chars].rsplit(' ', 1)[0] + '...'
 
     return result.strip()
+
+
+def parse_session_name(session_name: str) -> tuple[Optional[str], Optional[str]]:
+    """Parse a tmux session name into project slug and uuid8.
+
+    Session names follow the pattern: claude-{project-slug}-{uuid8}
+    Example: claude-claude-monitor-87c165e4
+
+    Args:
+        session_name: The tmux session name
+
+    Returns:
+        Tuple of (project_slug, uuid8), or (None, None) if parsing fails
+    """
+    if not session_name or not session_name.startswith("claude-"):
+        return None, None
+
+    # Remove "claude-" prefix
+    remainder = session_name[7:]  # len("claude-") = 7
+
+    # The uuid8 is the last 8 characters after the last hyphen
+    # But we need to be careful: project slugs can contain hyphens
+    # Pattern: claude-{project-slug}-{uuid8} where uuid8 is exactly 8 hex chars
+    parts = remainder.rsplit("-", 1)
+    if len(parts) != 2:
+        return None, None
+
+    project_slug = parts[0]
+    uuid8 = parts[1]
+
+    # Validate uuid8 is 8 hex characters
+    if len(uuid8) != 8 or not all(c in "0123456789abcdef" for c in uuid8.lower()):
+        # Maybe the entire remainder is the project slug with no uuid
+        return remainder, None
+
+    return project_slug, uuid8
+
+
+def match_project(slug: str, projects: list[dict]) -> Optional[dict]:
+    """Match a project slug to a config project.
+
+    Tries to match by:
+    1. Slugified project name
+    2. Slugified directory name
+
+    Args:
+        slug: The project slug from the session name
+        projects: List of project dicts from config
+
+    Returns:
+        Matched project dict, or None if no match
+    """
+    if not slug:
+        return None
+
+    for project in projects:
+        # Match by slugified project name
+        if slugify_project_name(project.get("name", "")) == slug:
+            return project
+        # Match by slugified directory name
+        dir_name = Path(project.get("path", "")).name
+        if slugify_project_name(dir_name) == slug:
+            return project
+
+    return None
+
+
+def scan_tmux_session_direct(
+    tmux_info: dict,
+    project: Optional[dict],
+    project_slug: str,
+    uuid8: Optional[str],
+) -> Optional[dict]:
+    """Scan a tmux session directly (without state file) and return session info.
+
+    This is the new tmux-first approach where we get session info directly
+    from tmux, not from state files.
+
+    Args:
+        tmux_info: Session info dict from get_session_info()
+        project: Matched project config from config.yaml (may be None)
+        project_slug: The project slug extracted from session name
+        uuid8: The short UUID extracted from session name (may be None)
+
+    Returns:
+        Session dict if session is active, None otherwise
+    """
+    session_name = tmux_info.get("name")
+    if not session_name:
+        return None
+
+    # Capture terminal content from tmux
+    content_tail = capture_pane(session_name, lines=200) or ""
+
+    # For tmux sessions, we don't have a window title like iTerm
+    window_title = ""
+
+    # Use tmux created time for elapsed calculation
+    created_timestamp = tmux_info.get("created", "")
+    try:
+        # tmux returns Unix timestamp
+        start_time = datetime.fromtimestamp(int(created_timestamp), tz=timezone.utc)
+        elapsed = datetime.now(timezone.utc) - start_time
+        elapsed_str = format_elapsed(elapsed.total_seconds())
+        started_at = start_time.isoformat()
+    except Exception:
+        elapsed_str = "unknown"
+        started_at = ""
+
+    # Extract activity state from content
+    activity_state, task_summary = parse_activity_state(window_title, content_tail)
+
+    # Prepare terminal content for AI summarization
+    content_snippet = prepare_content_for_summary(content_tail)
+
+    # Extract last message for tooltip display
+    last_message = extract_last_message(content_tail)
+
+    # Determine project info
+    if project:
+        project_name = project.get("name", project_slug)
+        project_dir = project.get("path", "")
+    else:
+        # Unknown project - use slug as name
+        project_name = project_slug or "Unknown"
+        project_dir = tmux_info.get("pane_path", "")
+
+    return {
+        "uuid": uuid8 or "unknown",
+        "uuid_short": uuid8 or "unknown",
+        "project_name": project_name,
+        "project_dir": project_dir,
+        "started_at": started_at,
+        "elapsed": elapsed_str,
+        "pid": tmux_info.get("pane_pid"),
+        "tty": tmux_info.get("pane_tty"),
+        "status": "active",
+        "activity_state": activity_state,
+        "window_title": window_title,
+        "task_summary": task_summary if task_summary else f"tmux: {session_name}",
+        "content_snippet": content_snippet,
+        "last_message": last_message,
+        # tmux-specific fields
+        "session_type": "tmux",
+        "tmux_session": session_name,
+        "tmux_attached": tmux_info.get("attached", False),
+    }
 
 
 def scan_tmux_session(
@@ -276,11 +425,54 @@ def scan_iterm_session(
     }
 
 
-def scan_sessions(config: dict) -> list[dict]:
-    """Scan all registered project directories for active sessions.
+def cleanup_stale_state_files(config: dict, active_session_names: set[str]) -> None:
+    """Clean up state files that reference non-existent tmux sessions.
 
-    Supports both iTerm and tmux session types. Session type is determined
-    by the 'session_type' field in the state file.
+    Also cleans up legacy iTerm-only state files (no tmux_session field)
+    since iTerm-only mode is deprecated.
+
+    Args:
+        config: Configuration dict with 'projects' list
+        active_session_names: Set of currently active tmux session names
+    """
+    for project in config.get("projects", []):
+        project_path = Path(project.get("path", ""))
+        if not project_path.exists():
+            continue
+
+        # Find all .claude-monitor-*.json files
+        for state_file in project_path.glob(".claude-monitor-*.json"):
+            try:
+                state = json.loads(state_file.read_text())
+                tmux_session_name = state.get("tmux_session")
+                session_type = state.get("session_type", "iterm")
+
+                should_delete = False
+
+                # Delete iTerm-only state files (deprecated)
+                if session_type == "iterm" or not tmux_session_name:
+                    should_delete = True
+                    logger.info(f"Cleaning up legacy iTerm state file: {state_file.name}")
+                # Delete tmux state files that reference non-existent sessions
+                elif tmux_session_name not in active_session_names:
+                    should_delete = True
+                    logger.info(f"Cleaning up stale tmux state file: {state_file.name}")
+
+                if should_delete:
+                    state_file.unlink()
+
+            except Exception as e:
+                logger.warning(f"Error processing state file {state_file}: {e}")
+
+
+def scan_sessions(config: dict) -> list[dict]:
+    """Scan for active Claude Code sessions using tmux as the source of truth.
+
+    This is the tmux-first approach: we discover sessions by querying tmux
+    directly, not by scanning for state files. State files are only used
+    for iTerm window focus, not for session discovery.
+
+    Stale state files (referencing dead tmux sessions) are automatically cleaned up.
 
     Args:
         config: Configuration dict with 'projects' list
@@ -289,29 +481,40 @@ def scan_sessions(config: dict) -> list[dict]:
         List of session dicts with status info
     """
     sessions = []
-    iterm_windows = get_iterm_windows()  # Returns {tty: {"title": str, "content_tail": str}}
+    projects = config.get("projects", [])
 
-    for project in config.get("projects", []):
-        project_path = Path(project["path"])
-        if not project_path.exists():
+    # Get all tmux sessions (source of truth)
+    if not is_tmux_available():
+        logger.warning("tmux not available - no sessions will be discovered")
+        return sessions
+
+    all_tmux_sessions = tmux_list_sessions()
+    active_session_names = {s.get("name", "") for s in all_tmux_sessions}
+
+    # Clean up stale state files
+    cleanup_stale_state_files(config, active_session_names)
+
+    # Filter to claude-* sessions only
+    claude_sessions = [s for s in all_tmux_sessions if s.get("name", "").startswith("claude-")]
+
+    for tmux_sess in claude_sessions:
+        session_name = tmux_sess.get("name", "")
+
+        # Parse session name to get project slug and uuid8
+        project_slug, uuid8 = parse_session_name(session_name)
+
+        # Match to config project
+        matched_project = match_project(project_slug, projects) if project_slug else None
+
+        # Get detailed session info from tmux
+        tmux_info = get_session_info(session_name)
+        if not tmux_info:
             continue
 
-        # Find all .claude-monitor-*.json files
-        for state_file in project_path.glob(".claude-monitor-*.json"):
-            try:
-                state = json.loads(state_file.read_text())
-                session_type = state.get("session_type", "iterm")
-
-                if session_type == "tmux":
-                    session = scan_tmux_session(state, project, iterm_windows)
-                else:
-                    session = scan_iterm_session(state, project, iterm_windows)
-
-                if session:
-                    sessions.append(session)
-
-            except Exception:
-                continue
+        # Build session info directly from tmux
+        session = scan_tmux_session_direct(tmux_info, matched_project, project_slug or "", uuid8)
+        if session:
+            sessions.append(session)
 
     return sessions
 

@@ -155,8 +155,9 @@
     display: flex;
     justify-content: flex-start;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     margin-bottom: 8px;
+    flex-wrap: wrap;
 }
 
 .uuid {
@@ -352,18 +353,9 @@
 .task-string { color: var(--green); }
 .task-number { color: var(--amber); }
 
-/* Card footer */
-.card-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    padding-top: 8px;
-    border-top: 1px solid var(--border);
-}
-
+/* Elapsed and PID info in card header */
 .elapsed {
+    font-size: 0.65rem;
     color: var(--amber);
     font-weight: 500;
 }
@@ -371,17 +363,18 @@
 .elapsed::before {
     content: 'uptime:';
     color: var(--text-muted);
-    margin-right: 6px;
+    margin-right: 4px;
     font-weight: 400;
 }
 
 .pid-info {
+    font-size: 0.65rem;
     color: var(--text-ghost);
 }
 
 .pid-info::before {
     content: 'pid:';
-    margin-right: 4px;
+    margin-right: 3px;
 }
 
 /* Empty states */

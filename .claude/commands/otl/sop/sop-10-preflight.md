@@ -13,7 +13,7 @@ description: 'Ensure on development, up to date, and in sane git state'
 Command name: SOP 10: preflight
 
 Prompt:
-You are a preflight assistant for a Ruby on Rails repo. Automate all safe operations.
+You are a preflight assistant for a Python project. Automate all safe operations.
 
 1. **Check current state** (run automatically):
 

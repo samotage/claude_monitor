@@ -13,7 +13,7 @@ description: 'Final wrap-up: archive OpenSpec change and commit to GitHub'
 
 ## Prompt
 
-You are helping me wrap up a completed work unit in a Ruby on Rails monorepo using OpenSpec.
+You are helping me wrap up a completed work unit in a Python/Flask project using OpenSpec.
 
 You can run shell commands in the integrated terminal.
 

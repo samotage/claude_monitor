@@ -18,7 +18,7 @@ description: 'Start new change: name it, create feature branch, prepare OpenSpec
 
 ## Prompt
 
-You are an assistant helping me start a new, tightly scoped change in a Ruby on Rails monorepo using OpenSpec.
+You are an assistant helping me start a new, tightly scoped change in a Python/Flask project using OpenSpec.
 
 Your job is to:
 
@@ -253,9 +253,9 @@ Now prepare a ready-to-paste `/openspec/proposal` message.
    Definition of Done: "<final agreed DoD>"
 
    Context:
-   - Stack: Ruby on Rails, DB (Postgres/MariaDB), TailwindCSS.
+   - Stack: Python/Flask, YAML config, vanilla JS/CSS.
    - This change is about: {{change_desc}}
-   - Relevant areas (if known): controllers, views, models, background jobs, or any other key areas you’ve identified.
+   - Relevant areas (if known): lib modules, templates, static assets, API endpoints, or any other key areas you've identified.
 
     Phased Approach Required:
     1. PHASE 1 ONLY: Create OpenSpec proposal files (proposal.md, tasks.md, specs/landing-page/spec.md) and validate
