@@ -17,8 +17,68 @@ import subprocess
 from functools import lru_cache
 from typing import Optional
 
+from lib.tmux_logging import create_tmux_log_entry, write_tmux_log_entry
+
 # Cache the tmux availability check (cleared on module reload)
 _tmux_available: Optional[bool] = None
+
+# Debug logging toggle - can be set by monitor.py from config
+_debug_logging_enabled: bool = False
+
+
+def set_debug_logging(enabled: bool) -> None:
+    """Set the debug logging mode for tmux operations.
+
+    Args:
+        enabled: If True, full payloads are logged. If False, only events.
+    """
+    global _debug_logging_enabled
+    _debug_logging_enabled = enabled
+
+
+def get_debug_logging() -> bool:
+    """Get the current debug logging mode.
+
+    Returns:
+        True if debug logging is enabled, False otherwise.
+    """
+    return _debug_logging_enabled
+
+
+def _log_tmux_event(
+    session_name: str,
+    direction: str,
+    event_type: str,
+    payload: Optional[str] = None,
+    correlation_id: Optional[str] = None,
+    success: bool = True,
+) -> None:
+    """Log a tmux operation event.
+
+    Args:
+        session_name: The tmux session name
+        direction: "in" or "out"
+        event_type: Type of operation
+        payload: Message content
+        correlation_id: Links related operations
+        success: Whether operation succeeded
+    """
+    # Extract session_id from tmux session name (e.g., claude-my-project -> my-project)
+    session_id = session_name
+    if session_name.startswith("claude-"):
+        session_id = session_name[7:]  # Remove "claude-" prefix
+
+    entry = create_tmux_log_entry(
+        session_id=session_id,
+        tmux_session_name=session_name,
+        direction=direction,
+        event_type=event_type,
+        payload=payload,
+        correlation_id=correlation_id,
+        success=success,
+        debug_enabled=_debug_logging_enabled,
+    )
+    write_tmux_log_entry(entry)
 
 
 def is_tmux_available() -> bool:
@@ -163,21 +223,43 @@ def kill_session(session_name: str) -> bool:
     return returncode == 0
 
 
-def send_keys(session_name: str, text: str, enter: bool = True) -> bool:
+def send_keys(
+    session_name: str,
+    text: str,
+    enter: bool = True,
+    correlation_id: Optional[str] = None,
+) -> bool:
     """Send text to a tmux session.
 
     Args:
         session_name: Target session name
         text: Text to send
         enter: If True, append Enter key after text
+        correlation_id: Optional ID to link with corresponding capture
 
     Returns:
         True if send successful, False otherwise
     """
     if not is_tmux_available():
+        _log_tmux_event(
+            session_name=session_name,
+            direction="out",
+            event_type="send_attempted",
+            payload=text,
+            correlation_id=correlation_id,
+            success=False,
+        )
         return False
 
     if not session_exists(session_name):
+        _log_tmux_event(
+            session_name=session_name,
+            direction="out",
+            event_type="send_attempted",
+            payload=text,
+            correlation_id=correlation_id,
+            success=False,
+        )
         return False
 
     args = ["send-keys", "-t", session_name, text]
@@ -185,13 +267,25 @@ def send_keys(session_name: str, text: str, enter: bool = True) -> bool:
         args.append("Enter")
 
     returncode, _, _ = _run_tmux(*args)
-    return returncode == 0
+    success = returncode == 0
+
+    _log_tmux_event(
+        session_name=session_name,
+        direction="out",
+        event_type="send_keys",
+        payload=text,
+        correlation_id=correlation_id,
+        success=success,
+    )
+
+    return success
 
 
 def capture_pane(
     session_name: str,
     lines: int = 100,
     start_line: Optional[int] = None,
+    correlation_id: Optional[str] = None,
 ) -> Optional[str]:
     """Capture the content of a tmux pane.
 
@@ -199,14 +293,29 @@ def capture_pane(
         session_name: Target session name
         lines: Number of lines to capture from scrollback (default 100)
         start_line: Optional start line (negative for scrollback)
+        correlation_id: Optional ID to link with corresponding send
 
     Returns:
         Captured text content, or None on failure
     """
     if not is_tmux_available():
+        _log_tmux_event(
+            session_name=session_name,
+            direction="in",
+            event_type="capture_attempted",
+            correlation_id=correlation_id,
+            success=False,
+        )
         return None
 
     if not session_exists(session_name):
+        _log_tmux_event(
+            session_name=session_name,
+            direction="in",
+            event_type="capture_attempted",
+            correlation_id=correlation_id,
+            success=False,
+        )
         return None
 
     # -p prints to stdout, -S specifies start line
@@ -222,7 +331,23 @@ def capture_pane(
     returncode, stdout, _ = _run_tmux(*args)
 
     if returncode != 0:
+        _log_tmux_event(
+            session_name=session_name,
+            direction="in",
+            event_type="capture_attempted",
+            correlation_id=correlation_id,
+            success=False,
+        )
         return None
+
+    _log_tmux_event(
+        session_name=session_name,
+        direction="in",
+        event_type="capture_pane",
+        payload=stdout,
+        correlation_id=correlation_id,
+        success=True,
+    )
 
     return stdout
 

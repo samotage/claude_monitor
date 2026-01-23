@@ -398,6 +398,50 @@ def api_logs_openrouter_stats():
     })
 
 
+@app.route("/api/logs/tmux")
+def api_logs_tmux():
+    """Get tmux session message logs.
+
+    Query params:
+        since: ISO timestamp to get logs after (optional)
+        search: Search query string (optional)
+        session_id: Filter by session ID (optional)
+    """
+    from lib.tmux_logging import read_tmux_logs, get_tmux_logs_since, search_tmux_logs
+
+    since = request.args.get("since")
+    search_query = request.args.get("search", "")
+    session_id = request.args.get("session_id")
+
+    # Get logs based on filters
+    if since:
+        logs = get_tmux_logs_since(since)
+    else:
+        logs = read_tmux_logs()
+
+    # Apply search and session_id filters
+    if search_query or session_id:
+        logs = search_tmux_logs(search_query, logs, session_id)
+
+    return jsonify({
+        "success": True,
+        "logs": logs,
+        "count": len(logs)
+    })
+
+
+@app.route("/api/logs/tmux/stats")
+def api_logs_tmux_stats():
+    """Get aggregate statistics for tmux session logs."""
+    from lib.tmux_logging import get_tmux_log_stats
+
+    stats = get_tmux_log_stats()
+    return jsonify({
+        "success": True,
+        "stats": stats
+    })
+
+
 # =============================================================================
 # Routes - Roadmap API
 # =============================================================================
@@ -977,6 +1021,16 @@ def main():
         print(f"Session sync enabled (interval: {interval}s)")
     else:
         print("Session sync disabled")
+
+    # Configure tmux debug logging from config
+    from lib.tmux import set_debug_logging
+    tmux_logging_config = config.get("tmux_logging", {})
+    debug_enabled = tmux_logging_config.get("debug_enabled", False)
+    set_debug_logging(debug_enabled)
+    if debug_enabled:
+        print("tmux debug logging enabled (full payloads)")
+    else:
+        print("tmux debug logging disabled (events only)")
 
     print(f"\nOpen http://localhost:5050 in your browser")
     print("Press Ctrl+C to stop\n")
