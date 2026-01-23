@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
 """
-dev-monitor: Wrapper script to launch Claude Code with monitoring support.
+claude-monitor: Wrapper script to launch Claude Code with monitoring support.
 
 Usage:
-    dev-monitor start    Launch Claude Code with a unique session UUID
+    claude-monitor start          Launch Claude Code in tmux (default)
+    claude-monitor start --iterm  Force iTerm mode (read-only, no tmux)
 """
 
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
+
+import yaml
 
 
 def get_project_name(project_dir: Path) -> str:
@@ -20,8 +26,87 @@ def get_project_name(project_dir: Path) -> str:
     return project_dir.name
 
 
-def create_state_file(session_uuid: str, project_dir: Path) -> Path:
-    """Create the .claude-monitor-<uuid>.json state file."""
+def slugify(name: str) -> str:
+    """Convert a project name to a slug for tmux session names."""
+    slug = name.lower()
+    slug = re.sub(r"[\s_]+", "-", slug)
+    slug = re.sub(r"[^a-z0-9-]", "", slug)
+    slug = re.sub(r"-+", "-", slug)
+    slug = slug.strip("-")
+    return slug or "unnamed"
+
+
+def get_monitor_config_path() -> Optional[Path]:
+    """Find the claude_monitor config.yaml file.
+
+    Looks for config.yaml relative to this script's location.
+    """
+    # This script is in bin/, config.yaml is in parent dir
+    script_dir = Path(__file__).resolve().parent
+    config_path = script_dir.parent / "config.yaml"
+    if config_path.exists():
+        return config_path
+    return None
+
+
+def load_monitor_config() -> dict:
+    """Load the claude_monitor configuration."""
+    config_path = get_monitor_config_path()
+    if config_path and config_path.exists():
+        return yaml.safe_load(config_path.read_text()) or {}
+    return {}
+
+
+def is_project_tmux_disabled(project_dir: Path) -> bool:
+    """Check if tmux is explicitly disabled for this project in the config.
+
+    Args:
+        project_dir: The project directory path
+
+    Returns:
+        True if tmux is explicitly disabled (tmux: false) for this project
+    """
+    config = load_monitor_config()
+    project_dir_str = str(project_dir)
+
+    for project in config.get("projects", []):
+        project_path = project.get("path", "")
+        if project_path == project_dir_str or Path(project_path).resolve() == project_dir:
+            # tmux is enabled by default, only return True if explicitly disabled
+            return project.get("tmux", True) is False
+
+    # Default: tmux is enabled
+    return False
+
+
+def is_tmux_available() -> bool:
+    """Check if tmux is installed."""
+    return shutil.which("tmux") is not None
+
+
+def tmux_session_exists(session_name: str) -> bool:
+    """Check if a tmux session exists."""
+    result = subprocess.run(
+        ["tmux", "has-session", "-t", session_name],
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
+def create_state_file(
+    session_uuid: str,
+    project_dir: Path,
+    tmux_session: Optional[str] = None,
+    session_type: str = "iterm",
+) -> Path:
+    """Create the .claude-monitor-<uuid>.json state file.
+
+    Args:
+        session_uuid: Unique session identifier
+        project_dir: Project directory path
+        tmux_session: tmux session name (if using tmux)
+        session_type: Either "tmux" or "iterm"
+    """
     state_file = project_dir / f".claude-monitor-{session_uuid}.json"
     state = {
         "uuid": session_uuid,
@@ -29,7 +114,12 @@ def create_state_file(session_uuid: str, project_dir: Path) -> Path:
         "project_name": get_project_name(project_dir),
         "started_at": datetime.now(timezone.utc).isoformat(),
         "pid": None,  # Will be updated after Claude Code launches
+        "session_type": session_type,
     }
+
+    if tmux_session:
+        state["tmux_session"] = tmux_session
+
     state_file.write_text(json.dumps(state, indent=2))
     return state_file
 
@@ -41,13 +131,11 @@ def update_state_pid(state_file: Path, pid: int) -> None:
     state_file.write_text(json.dumps(state, indent=2))
 
 
-def launch_claude_code(session_uuid: str) -> subprocess.Popen:
-    """Launch Claude Code in the background with the monitor UUID."""
+def launch_claude_code_direct(session_uuid: str) -> subprocess.Popen:
+    """Launch Claude Code directly in the current terminal."""
     env = os.environ.copy()
     env["CLAUDE_MONITOR_UUID"] = session_uuid
 
-    # Launch claude in the current terminal
-    # We use 'claude' assuming it's in PATH
     process = subprocess.Popen(
         ["claude"],
         env=env,
@@ -58,41 +146,186 @@ def launch_claude_code(session_uuid: str) -> subprocess.Popen:
     return process
 
 
-def cmd_start() -> None:
-    """Handle the 'start' command."""
+def launch_claude_code_tmux(
+    session_uuid: str,
+    session_name: str,
+    project_dir: Path,
+) -> Optional[int]:
+    """Launch Claude Code inside a tmux session.
+
+    Args:
+        session_uuid: Monitor session UUID
+        session_name: tmux session name
+        project_dir: Working directory
+
+    Returns:
+        PID of the tmux server process, or None on failure
+    """
+    env_str = f"CLAUDE_MONITOR_UUID={session_uuid}"
+
+    # Check if session already exists
+    if tmux_session_exists(session_name):
+        print(f"tmux session '{session_name}' already exists.")
+        print("Attaching to existing session...")
+        # Attach to existing session
+        subprocess.run(["tmux", "attach-session", "-t", session_name])
+        return None
+
+    # Create new tmux session with claude command
+    # -d creates detached, then we attach
+    result = subprocess.run(
+        [
+            "tmux", "new-session",
+            "-d",  # Detached initially
+            "-s", session_name,
+            "-c", str(project_dir),
+            f"env {env_str} claude",  # Run claude with our env var
+        ],
+        capture_output=True,
+    )
+
+    if result.returncode != 0:
+        print(f"Failed to create tmux session: {result.stderr.decode()}")
+        return None
+
+    # Enable mouse mode for natural scrolling and text selection
+    subprocess.run(
+        ["tmux", "set-option", "-t", session_name, "mouse", "on"],
+        capture_output=True,
+    )
+
+    # Enable automatic clipboard integration - selections copy to system clipboard
+    subprocess.run(
+        ["tmux", "set-option", "-t", session_name, "set-clipboard", "on"],
+        capture_output=True,
+    )
+
+    # Auto-copy to macOS clipboard when mouse selection ends (global binding)
+    subprocess.run(
+        [
+            "tmux", "bind-key", "-T", "copy-mode",
+            "MouseDragEnd1Pane", "send-keys", "-X", "copy-pipe-and-cancel", "pbcopy",
+        ],
+        capture_output=True,
+    )
+
+    # Get the PID of the shell running in the tmux session
+    pid_result = subprocess.run(
+        ["tmux", "list-panes", "-t", session_name, "-F", "#{pane_pid}"],
+        capture_output=True,
+        text=True,
+    )
+
+    pid = None
+    if pid_result.returncode == 0 and pid_result.stdout.strip():
+        try:
+            pid = int(pid_result.stdout.strip().split("\n")[0])
+        except ValueError:
+            pass
+
+    # Attach to the session (this will block until the session ends)
+    print(f"Attaching to tmux session: {session_name}")
+    subprocess.run(["tmux", "attach-session", "-t", session_name])
+
+    return pid
+
+
+def cmd_start(force_iterm: bool = False) -> None:
+    """Handle the 'start' command.
+
+    Args:
+        force_iterm: If True, force iTerm mode (skip tmux).
+    """
     project_dir = Path.cwd().resolve()
     session_uuid = str(uuid.uuid4())
+    project_name = get_project_name(project_dir)
 
-    print(f"Starting Claude Code session: {session_uuid[:8]}...")
+    # Determine whether to use tmux (default: yes)
+    if force_iterm:
+        use_tmux = False
+    elif is_project_tmux_disabled(project_dir):
+        # Config explicitly disables tmux for this project
+        use_tmux = False
+    else:
+        # Default: use tmux
+        use_tmux = True
 
-    # Create state file
-    state_file = create_state_file(session_uuid, project_dir)
-    print(f"Created state file: {state_file.name}")
+    # Check tmux availability if we want to use it
+    if use_tmux and not is_tmux_available():
+        print("Warning: tmux not found. Install with: brew install tmux")
+        print("Falling back to iTerm mode.")
+        use_tmux = False
 
-    # Launch Claude Code
-    process = launch_claude_code(session_uuid)
+    if use_tmux:
+        # tmux mode - include UUID in session name for uniqueness
+        # This allows multiple Claude sessions per project
+        tmux_session = f"claude-{slugify(project_name)}-{session_uuid[:8]}"
+        print(f"Starting Claude Code session: {session_uuid[:8]} (tmux: {tmux_session})")
 
-    # Update state with PID
-    update_state_pid(state_file, process.pid)
+        # Create state file
+        state_file = create_state_file(
+            session_uuid, project_dir,
+            tmux_session=tmux_session,
+            session_type="tmux",
+        )
+        print(f"Created state file: {state_file.name}")
 
-    # Wait for Claude Code to finish (it takes over the terminal)
-    try:
-        process.wait()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        # Clean up state file when session ends
-        if state_file.exists():
-            state_file.unlink()
-            print(f"\nSession {session_uuid[:8]} ended. State file removed.")
+        try:
+            # Launch in tmux (blocks until detach/exit)
+            pid = launch_claude_code_tmux(session_uuid, tmux_session, project_dir)
+            if pid:
+                update_state_pid(state_file, pid)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            # Clean up state file when session ends
+            if state_file.exists():
+                state_file.unlink()
+                print(f"\nSession {session_uuid[:8]} ended. State file removed.")
+    else:
+        # Direct mode (original behavior)
+        print(f"Starting Claude Code session: {session_uuid[:8]}...")
+
+        # Create state file
+        state_file = create_state_file(
+            session_uuid, project_dir,
+            session_type="iterm",
+        )
+        print(f"Created state file: {state_file.name}")
+
+        # Launch Claude Code
+        process = launch_claude_code_direct(session_uuid)
+
+        # Update state with PID
+        update_state_pid(state_file, process.pid)
+
+        # Wait for Claude Code to finish
+        try:
+            process.wait()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            # Clean up state file when session ends
+            if state_file.exists():
+                state_file.unlink()
+                print(f"\nSession {session_uuid[:8]} ended. State file removed.")
 
 
 def cmd_help() -> None:
     """Show help message."""
     print(__doc__)
     print("Commands:")
-    print("  start    Launch Claude Code with monitoring enabled")
-    print("  help     Show this help message")
+    print("  start          Launch Claude Code in tmux (default)")
+    print("  start --iterm  Force iTerm mode (read-only, no tmux)")
+    print("  help           Show this help message")
+    print()
+    print("tmux mode (default):")
+    print("  Sessions run inside a named tmux session (claude-<project-name>).")
+    print("  This enables bidirectional control of the session.")
+    print()
+    print("iTerm mode:")
+    print("  Sessions run directly in iTerm with read-only observation.")
+    print("  Use --iterm flag or set tmux: false in config.yaml to use this mode.")
 
 
 def main() -> None:
@@ -103,7 +336,10 @@ def main() -> None:
     command = sys.argv[1].lower()
 
     if command == "start":
-        cmd_start()
+        # Parse flags
+        force_iterm = "--iterm" in sys.argv
+
+        cmd_start(force_iterm=force_iterm)
     elif command in ("help", "-h", "--help"):
         cmd_help()
     else:

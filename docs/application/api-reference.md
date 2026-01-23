@@ -28,17 +28,23 @@ List all active Claude Code sessions.
       "task_summary": "Implementing user authentication",
       "elapsed": "15m",
       "pid": 12345,
-      "tty": "/dev/ttys003"
+      "tty": "/dev/ttys003",
+      "session_type": "tmux",
+      "tmux_session": "claude-my-app",
+      "tmux_attached": true
     }
   ],
   "projects": [
     {
       "name": "my-app",
-      "path": "/Users/me/dev/my-app"
+      "path": "/Users/me/dev/my-app",
+      "tmux": true
     }
   ]
 }
 ```
+
+Note: `session_type` is either `"tmux"` or `"iterm"`. The `tmux_session` and `tmux_attached` fields are only present for tmux sessions.
 
 ### POST /api/focus/\<pid\>
 
@@ -51,6 +57,156 @@ Focus an iTerm window by process ID.
 ```json
 {
   "success": true
+}
+```
+
+## tmux Session Control
+
+These endpoints enable bidirectional control of sessions running in tmux mode.
+
+### POST /api/send/\<session_id\>
+
+Send text to a tmux session.
+
+**Parameters:**
+- `session_id` (path) - Session UUID or short UUID
+
+**Request Body:**
+```json
+{
+  "text": "yes",
+  "enter": true
+}
+```
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `text` | Yes | - | Text to send to the session |
+| `enter` | No | true | Whether to press Enter after sending |
+
+**Response:**
+```json
+{
+  "success": true,
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "tmux_session": "claude-my-app"
+}
+```
+
+**Error (not a tmux session):**
+```json
+{
+  "success": false,
+  "error": "Send is only supported for tmux sessions. This session is using iTerm (read-only)."
+}
+```
+
+### GET /api/output/\<session_id\>
+
+Capture output from a session.
+
+**Parameters:**
+- `session_id` (path) - Session UUID or short UUID
+
+**Query Parameters:**
+- `lines` (optional) - Number of lines to capture (default: 100)
+
+**Response (tmux session):**
+```json
+{
+  "success": true,
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "session_type": "tmux",
+  "output": "Claude: I'll help you implement...\n...",
+  "lines": 100
+}
+```
+
+**Response (iTerm session):**
+```json
+{
+  "success": true,
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "session_type": "iterm",
+  "output": "...",
+  "lines": 100,
+  "note": "iTerm sessions have limited output capture (last ~5000 chars)"
+}
+```
+
+## Project tmux Configuration
+
+### GET /api/projects/\<name\>/tmux
+
+Get tmux status for a project.
+
+**Parameters:**
+- `name` (path) - Project name
+
+**Response:**
+```json
+{
+  "success": true,
+  "project": "my-app",
+  "enabled": true,
+  "available": true,
+  "status": "ready",
+  "session_name": "claude-my-app"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `enabled` | Whether tmux is enabled in config for this project |
+| `available` | Whether tmux is installed on the system |
+| `status` | One of: `ready`, `not_enabled`, `unavailable` |
+| `session_name` | The tmux session name that would be used |
+
+### POST /api/projects/\<name\>/tmux/enable
+
+Enable tmux for a project (updates config.yaml).
+
+**Parameters:**
+- `name` (path) - Project name
+
+**Response:**
+```json
+{
+  "success": true,
+  "project": "my-app",
+  "message": "tmux enabled for project 'my-app'",
+  "enabled": true,
+  "available": true,
+  "status": "ready",
+  "session_name": "claude-my-app"
+}
+```
+
+**Error (tmux not installed):**
+```json
+{
+  "success": false,
+  "error": "tmux is not installed. Install with: brew install tmux"
+}
+```
+
+### POST /api/projects/\<name\>/tmux/disable
+
+Disable tmux for a project (updates config.yaml).
+
+**Parameters:**
+- `name` (path) - Project name
+
+**Response:**
+```json
+{
+  "success": true,
+  "project": "my-app",
+  "message": "tmux disabled for project 'my-app'",
+  "enabled": false,
+  "available": true,
+  "status": "not_enabled",
+  "session_name": "claude-my-app"
 }
 ```
 
@@ -401,4 +557,18 @@ curl "http://localhost:5050/api/priorities?refresh=true"
 
 # Focus a session
 curl -X POST http://localhost:5050/api/focus/12345
+
+# tmux: Send text to a session
+curl -X POST http://localhost:5050/api/send/55440000 \
+  -H "Content-Type: application/json" \
+  -d '{"text": "yes", "enter": true}'
+
+# tmux: Capture session output
+curl "http://localhost:5050/api/output/55440000?lines=50"
+
+# tmux: Enable tmux for a project
+curl -X POST http://localhost:5050/api/projects/my-app/tmux/enable
+
+# tmux: Check tmux status
+curl http://localhost:5050/api/projects/my-app/tmux
 ```

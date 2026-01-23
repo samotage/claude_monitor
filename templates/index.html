@@ -321,6 +321,20 @@
     <!-- Config Tab -->
     <div id="config-tab" class="tab-content">
         <div class="settings-container">
+            <div class="settings-section reset-section">
+                <div class="settings-section-header">
+                    <h2>working_state</h2>
+                </div>
+                <div class="settings-section-body">
+                    <p class="settings-description">Reset all cached session state for a clean slate.</p>
+                    <div class="setting-row">
+                        <label>reset</label>
+                        <button id="reset-state-btn" class="btn-reset" onclick="resetWorkingState()">reset working state</button>
+                        <span id="reset-status" class="reset-status"></span>
+                    </div>
+                </div>
+            </div>
+
             <div class="settings-section">
                 <div class="settings-section-header">
                     <h2>monitored_projects</h2>

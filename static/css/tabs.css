@@ -295,7 +295,30 @@
 }
 
 /* ========================================
-   Mobile Responsive Styles
+   Dynamic Overflow-based Responsive Styles
+   ======================================== */
+
+/* Classes applied by JavaScript when tabs overflow */
+.tab-btn-group.nav-overflow-hidden {
+    display: none !important;
+}
+
+.hamburger-btn.nav-overflow-visible {
+    display: flex !important;
+}
+
+/* Force tabs visible when they fit (overrides media query) */
+.tab-btn-group.nav-overflow-visible {
+    display: flex !important;
+}
+
+/* Force hamburger hidden when tabs fit */
+.hamburger-btn.nav-overflow-hidden {
+    display: none !important;
+}
+
+/* ========================================
+   Mobile Responsive Styles (fallback)
    ======================================== */
 @media (max-width: 768px) {
     /* Show hamburger, hide tab buttons */

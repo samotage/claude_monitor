@@ -46,6 +46,7 @@ from lib.headspace import (
     is_priorities_enabled,
     load_headspace,
     parse_priority_response,
+    reset_priorities_cache,
     save_headspace,
     get_headspace_history,
     update_priorities_cache,
@@ -54,6 +55,7 @@ from lib.iterm import focus_iterm_window_by_pid, get_pid_tty
 from lib.notifications import (
     check_state_changes_and_notify,
     is_notifications_enabled,
+    reset_notification_state,
     send_macos_notification,
     set_notifications_enabled,
 )
@@ -174,6 +176,51 @@ def api_notifications_test_pid(pid: int):
         pid=pid
     )
     return jsonify({"success": success, "project": project, "task": task})
+
+
+# =============================================================================
+# Routes - Reset API
+# =============================================================================
+
+
+def reset_working_state() -> dict:
+    """Reset all in-memory working state.
+
+    Clears:
+    - Notification tracking state (previous session states)
+    - Priorities cache (AI-computed priorities)
+
+    Returns:
+        Dict with reset status information
+    """
+    reset_notification_state()
+    reset_priorities_cache()
+
+    return {
+        "notification_state": "cleared",
+        "priorities_cache": "cleared"
+    }
+
+
+@app.route("/api/reset", methods=["POST"])
+def api_reset():
+    """Reset all working state (sessions, priorities, notifications).
+
+    Clears in-memory state so sessions are rediscovered fresh.
+    """
+    try:
+        result = reset_working_state()
+        print("Working state reset via API")
+        return jsonify({
+            "success": True,
+            "message": "Working state reset successfully",
+            "details": result
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 
 # =============================================================================
@@ -718,6 +765,227 @@ def api_config_post():
 
 
 # =============================================================================
+# Routes - tmux Session Control API
+# =============================================================================
+
+
+@app.route("/api/send/<session_id>", methods=["POST"])
+def api_send_to_session(session_id: str):
+    """Send text to a tmux session.
+
+    Request body:
+        text: Text to send to the session
+        enter: Whether to press Enter after sending (default: true)
+
+    Only works with tmux sessions. iTerm sessions return an error.
+    """
+    from lib.tmux import send_keys, is_tmux_available
+
+    if not is_tmux_available():
+        return jsonify({
+            "success": False,
+            "error": "tmux is not available on this system"
+        }), 400
+
+    # Get request data
+    data = request.get_json() or {}
+    text = data.get("text", "")
+    enter = data.get("enter", True)
+
+    if not text:
+        return jsonify({
+            "success": False,
+            "error": "No text provided"
+        }), 400
+
+    # Find the session
+    config = load_config()
+    sessions = scan_sessions(config)
+
+    session = None
+    for s in sessions:
+        if s.get("uuid") == session_id or s.get("uuid_short") == session_id:
+            session = s
+            break
+
+    if not session:
+        return jsonify({
+            "success": False,
+            "error": f"Session '{session_id}' not found"
+        }), 404
+
+    # Check if it's a tmux session
+    if session.get("session_type") != "tmux":
+        return jsonify({
+            "success": False,
+            "error": "Send is only supported for tmux sessions. This session is using iTerm (read-only)."
+        }), 400
+
+    tmux_session = session.get("tmux_session")
+    if not tmux_session:
+        return jsonify({
+            "success": False,
+            "error": "tmux session name not found"
+        }), 400
+
+    # Send the text
+    success = send_keys(tmux_session, text, enter=enter)
+
+    if success:
+        return jsonify({
+            "success": True,
+            "session_id": session_id,
+            "tmux_session": tmux_session
+        })
+    else:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to send text to tmux session '{tmux_session}'"
+        }), 500
+
+
+@app.route("/api/output/<session_id>", methods=["GET"])
+def api_output_from_session(session_id: str):
+    """Capture output from a session.
+
+    Query params:
+        lines: Number of lines to capture (default: 100)
+
+    Works with both tmux and iTerm sessions.
+    """
+    from lib.tmux import capture_pane, is_tmux_available
+
+    # Get query params
+    try:
+        lines = int(request.args.get("lines", 100))
+    except ValueError:
+        lines = 100
+
+    # Find the session
+    config = load_config()
+    sessions = scan_sessions(config)
+
+    session = None
+    for s in sessions:
+        if s.get("uuid") == session_id or s.get("uuid_short") == session_id:
+            session = s
+            break
+
+    if not session:
+        return jsonify({
+            "success": False,
+            "error": f"Session '{session_id}' not found"
+        }), 404
+
+    # Get output based on session type
+    if session.get("session_type") == "tmux":
+        tmux_session = session.get("tmux_session")
+        if not tmux_session:
+            return jsonify({
+                "success": False,
+                "error": "tmux session name not found"
+            }), 400
+
+        if not is_tmux_available():
+            return jsonify({
+                "success": False,
+                "error": "tmux is not available on this system"
+            }), 400
+
+        output = capture_pane(tmux_session, lines=lines)
+        if output is None:
+            return jsonify({
+                "success": False,
+                "error": f"Failed to capture output from tmux session '{tmux_session}'"
+            }), 500
+
+        return jsonify({
+            "success": True,
+            "session_id": session_id,
+            "session_type": "tmux",
+            "output": output,
+            "lines": lines
+        })
+    else:
+        # iTerm session - use content_snippet from session data
+        return jsonify({
+            "success": True,
+            "session_id": session_id,
+            "session_type": "iterm",
+            "output": session.get("content_snippet", ""),
+            "lines": lines,
+            "note": "iTerm sessions have limited output capture (last ~5000 chars)"
+        })
+
+
+# =============================================================================
+# Routes - Project tmux Configuration API
+# =============================================================================
+
+
+@app.route("/api/projects/<name>/tmux", methods=["GET"])
+def api_project_tmux_status(name: str):
+    """Get tmux status for a project."""
+    from lib.projects import get_project_tmux_status
+
+    status = get_project_tmux_status(name)
+    return jsonify({
+        "success": True,
+        "project": name,
+        **status
+    })
+
+
+@app.route("/api/projects/<name>/tmux/enable", methods=["POST"])
+def api_project_tmux_enable(name: str):
+    """Enable tmux for a project."""
+    from lib.projects import set_project_tmux_enabled, get_project_tmux_status
+    from lib.tmux import is_tmux_available
+
+    # Check if tmux is available
+    if not is_tmux_available():
+        return jsonify({
+            "success": False,
+            "error": "tmux is not installed. Install with: brew install tmux"
+        }), 400
+
+    # Enable tmux for the project
+    if set_project_tmux_enabled(name, True):
+        status = get_project_tmux_status(name)
+        return jsonify({
+            "success": True,
+            "project": name,
+            "message": f"tmux enabled for project '{name}'",
+            **status
+        })
+    else:
+        return jsonify({
+            "success": False,
+            "error": f"Project '{name}' not found in configuration"
+        }), 404
+
+
+@app.route("/api/projects/<name>/tmux/disable", methods=["POST"])
+def api_project_tmux_disable(name: str):
+    """Disable tmux for a project."""
+    from lib.projects import set_project_tmux_enabled, get_project_tmux_status
+
+    if set_project_tmux_enabled(name, False):
+        status = get_project_tmux_status(name)
+        return jsonify({
+            "success": True,
+            "project": name,
+            "message": f"tmux disabled for project '{name}'",
+            **status
+        })
+    else:
+        return jsonify({
+            "success": False,
+            "error": f"Project '{name}' not found in configuration"
+        }), 404
+
+
+# =============================================================================
 # Application Entry Point
 # =============================================================================
 
@@ -728,6 +996,10 @@ def main():
     print(f"Claude Headspace starting...")
     print(f"Monitoring {len(config.get('projects', []))} projects")
     print(f"Refresh interval: {config.get('scan_interval', 2)}s")
+
+    # Reset working state on startup for clean slate
+    reset_working_state()
+    print("Working state reset (clean startup)")
 
     # Register all projects from config (creates YAML data files if missing)
     register_all_projects()

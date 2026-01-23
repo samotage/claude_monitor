@@ -28,6 +28,9 @@ python monitor.py
 # 2. In another terminal, start a monitored Claude session
 cd /path/to/your/project
 claude-monitor start
+
+# Or with tmux for bidirectional control
+claude-monitor start --tmux
 ```
 
 Open http://localhost:5050 in your browser.
@@ -60,6 +63,7 @@ When you have multiple sessions running, the AI analyses your headspace, project
 | **AI prioritisation** | Get recommendations on what to work on |
 | **Brain reboot** | Quickly reload context on stale projects |
 | **Project roadmaps** | Track where each project is heading |
+| **tmux integration** | Bidirectional session control via API |
 
 ## Requirements
 
@@ -68,6 +72,7 @@ When you have multiple sessions running, the AI analyses your headspace, project
 - **Python 3.10+**
 - **Claude Code CLI**
 - **Homebrew** (optional, for notifications)
+- **tmux** (optional, for bidirectional session control)
 
 ## Next Steps
 

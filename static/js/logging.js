@@ -175,11 +175,11 @@ function renderLogEntry(entry) {
             <div class="log-entry-body">
                 <div class="log-entry-section">
                     <div class="log-entry-section-label">Request</div>
-                    <div class="log-entry-section-content">${escapeHtml(requestContent)}</div>
+                    <div class="log-entry-section-content json-content">${formatJsonForHtml(requestContent)}</div>
                 </div>
                 <div class="log-entry-section">
                     <div class="log-entry-section-label">Response</div>
-                    <div class="log-entry-section-content">${escapeHtml(responseContent)}</div>
+                    <div class="log-entry-section-content json-content">${formatJsonForHtml(responseContent)}</div>
                 </div>
                 ${errorSection}
                 <div class="log-entry-token-breakdown">
@@ -496,6 +496,40 @@ function formatCost(cost) {
     }
 
     return '$' + cost.toFixed(2);
+}
+
+/**
+ * Format JSON string for HTML display, converting escaped sequences to actual characters
+ * This processes the JSON string to make embedded JSON readable in content fields
+ */
+function formatJsonForHtml(jsonString) {
+    if (!jsonString) return '';
+    
+    // Process BEFORE escaping HTML so we can match the JSON structure properly
+    // Find content fields with escaped JSON and convert \\n to actual newlines
+    let processed = jsonString.replace(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/g, function(match, content) {
+        // Check if content contains JSON-like patterns (has { and escaped sequences)
+        if (content.includes('{') && (content.includes('\\"') || /\\[ntr]/.test(content))) {
+            // Convert escaped sequences to actual characters
+            let processedContent = content
+                .replace(/\\n/g, '\n')        // \n -> actual newline
+                .replace(/\\t/g, '\t')        // \t -> actual tab
+                .replace(/\\r/g, '\r')        // \r -> carriage return
+                .replace(/\\"/g, '"');        // \" -> quote
+            
+            // Re-escape for JSON string format, but preserve newlines/tabs
+            processedContent = processedContent
+                .replace(/\\/g, '\\\\')       // Escape backslashes
+                .replace(/"/g, '\\"');         // Escape quotes
+            
+            return '"content": "' + processedContent + '"';
+        }
+        return match;
+    });
+    
+    // Now escape HTML to prevent XSS
+    // The newlines/tabs will be preserved and displayed by pre-wrap CSS
+    return escapeHtml(processed);
 }
 
 /**

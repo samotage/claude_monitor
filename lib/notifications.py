@@ -36,6 +36,16 @@ def set_notifications_enabled(enabled: bool) -> None:
     _notifications_enabled = enabled
 
 
+def reset_notification_state() -> None:
+    """Reset all notification tracking state.
+
+    Clears the previous states dictionary so sessions will be
+    re-discovered fresh on the next scan.
+    """
+    global _previous_states
+    _previous_states.clear()
+
+
 def send_macos_notification(
     title: str,
     message: str,

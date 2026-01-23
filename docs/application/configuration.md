@@ -16,9 +16,11 @@ Add your projects to be monitored:
 projects:
   - name: "my-app"
     path: "/Users/you/dev/my-app"
+    # tmux is enabled by default
 
   - name: "api-service"
     path: "/Users/you/dev/api-service"
+    tmux: false             # Disable tmux to use iTerm mode
 
   - name: "frontend"
     path: "/Users/you/dev/frontend"
@@ -28,6 +30,7 @@ projects:
 |-------|----------|-------------|
 | `name` | Yes | Display name shown in the dashboard |
 | `path` | Yes | Absolute path to the project directory |
+| `tmux` | No | Set to `false` to disable tmux and use iTerm mode (default: true) |
 
 ## Dashboard Settings
 
@@ -133,6 +136,52 @@ priorities:
 | `polling_interval` | 60 | Cache refresh interval |
 | `model` | (uses openrouter.model) | Can use a different model for prioritisation |
 
+## tmux Integration
+
+tmux is **enabled by default** for all sessions, providing bidirectional control. Sessions run inside named tmux sessions, allowing you to send commands and capture full output via the API.
+
+### Prerequisites
+
+Install tmux:
+```bash
+brew install tmux
+```
+
+### Configuration
+
+tmux is enabled by default. To disable it for a specific project, set `tmux: false`:
+
+```yaml
+projects:
+  - name: "my-app"
+    path: "/Users/you/dev/my-app"
+    tmux: false   # Use iTerm mode (read-only)
+```
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/send/<session_id>` | POST | Send text to a tmux session |
+| `/api/output/<session_id>` | GET | Capture session output |
+| `/api/projects/<name>/tmux` | GET | Check tmux status for project |
+| `/api/projects/<name>/tmux/enable` | POST | Enable tmux for project |
+| `/api/projects/<name>/tmux/disable` | POST | Disable tmux for project |
+
+### Session Types
+
+| Type | Read | Write | Notes |
+|------|------|-------|-------|
+| tmux | Yes | Yes | Default, requires tmux installed |
+| iTerm | Yes | No | Observation + window focus only |
+
+### Command Line Flags
+
+```bash
+claude-monitor start           # Default: runs in tmux
+claude-monitor start --iterm   # Force iTerm mode (read-only)
+```
+
 ## Complete Example
 
 ```yaml
@@ -140,8 +189,10 @@ priorities:
 projects:
   - name: "billing-api"
     path: "/Users/me/dev/billing-api"
+    # tmux is enabled by default
   - name: "frontend"
     path: "/Users/me/dev/frontend"
+    tmux: false           # Use iTerm mode for this project
   - name: "docs"
     path: "/Users/me/dev/docs"
 

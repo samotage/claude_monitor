@@ -277,3 +277,57 @@
 .settings-actions-global .btn {
     align-self: flex-start;
 }
+
+/* Reset working state button - prominent action style */
+.btn-reset {
+    background: var(--amber);
+    color: var(--bg-void);
+    border: none;
+    padding: 12px 24px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-transform: lowercase;
+}
+
+.btn-reset:hover {
+    background: var(--amber);
+    filter: brightness(1.15);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px var(--amber-dim);
+}
+
+.btn-reset:active {
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+.btn-reset:disabled {
+    background: var(--text-muted);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+    filter: none;
+}
+
+/* Reset section styling */
+.reset-section {
+    border-color: var(--amber-dim);
+}
+
+.reset-section .settings-section-header {
+    background: linear-gradient(135deg, var(--bg-elevated) 0%, rgba(224, 176, 115, 0.1) 100%);
+}
+
+.reset-section .settings-section-header h2::before {
+    color: var(--amber);
+}
+
+.reset-status {
+    font-size: 0.85rem;
+    margin-left: 12px;
+    transition: color 0.2s ease;
+}

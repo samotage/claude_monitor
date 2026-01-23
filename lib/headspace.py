@@ -24,7 +24,8 @@ HEADSPACE_DATA_PATH = Path(__file__).parent.parent / "data" / "headspace.yaml"
 # Defaults for priority configuration
 DEFAULT_PRIORITIES_POLLING_INTERVAL = 60  # seconds
 DEFAULT_PRIORITIES_MODEL = "anthropic/claude-3-haiku"
-DEFAULT_MAX_CACHE_AGE = 300  # 5 minutes - force refresh even if content unchanged
+# Note: We no longer use time-based cache expiration.
+# Cache only invalidates when session content actually changes.
 
 # In-memory cache for priorities
 _priorities_cache: dict = {
@@ -34,6 +35,10 @@ _priorities_cache: dict = {
     "error": None,
     "content_hash": None  # Hash of session content for change detection
 }
+
+# State transition tracking - only refresh on meaningful transitions
+# Maps session_id -> previous activity_state
+_previous_activity_states: dict[str, str] = {}
 
 
 # =============================================================================
@@ -229,9 +234,8 @@ def get_priorities_config() -> dict:
 def compute_sessions_hash(sessions: list[dict]) -> str:
     """Compute a hash of session data for change detection.
 
-    Uses only stable data (session IDs and activity states) to determine
-    if we need to re-prioritize. Terminal content changes constantly
-    but doesn't necessarily warrant a new API call.
+    Includes session IDs, activity states, and a hash of terminal content
+    to ensure AI summaries are refreshed when session activity changes.
 
     Args:
         sessions: List of session dicts
@@ -239,13 +243,16 @@ def compute_sessions_hash(sessions: list[dict]) -> str:
     Returns:
         MD5 hash string of session state
     """
-    # Build a string of stable data that affects prioritization
-    # Content changes constantly, but we only need to re-call AI when:
-    # - Sessions appear/disappear
-    # - Activity state changes (idle -> processing -> input_needed)
+    # Build a string of data that affects prioritization
+    # Include content_snippet so summaries refresh when terminal changes
     hash_parts = []
     for s in sorted(sessions, key=lambda x: x.get("session_id", "")):
-        part = f"{s.get('session_id', '')}|{s.get('activity_state', '')}"
+        # Include content_snippet hash to detect activity changes
+        content = s.get("content_snippet", "")
+        # Use first 500 chars of content for hash stability
+        # (full content changes too frequently with minor updates)
+        content_hash = hashlib.md5(content[:500].encode()).hexdigest()[:8]
+        part = f"{s.get('session_id', '')}|{s.get('activity_state', '')}|{content_hash}"
         hash_parts.append(part)
 
     hash_input = "||".join(hash_parts)
@@ -257,11 +264,20 @@ def is_cache_valid(current_sessions: list[dict] = None) -> bool:
 
     Cache is valid if:
     1. Cache exists
-    2. Content hash matches (nothing has changed)
-    3. Cache is not too old (max 5 minutes even if unchanged)
+    2. No meaningful state transitions occurred
+
+    State transitions that invalidate cache:
+    - processing -> idle/input_needed (turn completed)
+    - input_needed -> processing (user responded)
+    - New session appeared
+    - Session disappeared
+
+    This approach saves API costs by only calling OpenRouter when
+    Claude finishes a turn or user interaction changes, not on
+    every terminal content update during processing.
 
     Args:
-        current_sessions: Current session list to compare hash against
+        current_sessions: Current session list to check for transitions
 
     Returns:
         True if cache is valid and can be used
@@ -274,16 +290,10 @@ def is_cache_valid(current_sessions: list[dict] = None) -> bool:
     if _priorities_cache["timestamp"] is None:
         return False
 
-    # Always refresh if cache is too old (5 minutes max)
-    cache_age = (datetime.now(timezone.utc) - _priorities_cache["timestamp"]).total_seconds()
-    if cache_age > DEFAULT_MAX_CACHE_AGE:
-        return False
-
-    # If we have current sessions, check if content has changed
-    if current_sessions is not None and _priorities_cache["content_hash"] is not None:
-        current_hash = compute_sessions_hash(current_sessions)
-        if current_hash != _priorities_cache["content_hash"]:
-            return False  # Content changed, invalidate cache
+    # Only invalidate on meaningful state transitions
+    if current_sessions is not None:
+        if should_refresh_priorities(current_sessions):
+            return False  # State transition occurred, invalidate cache
 
     return True
 
@@ -332,6 +342,73 @@ def get_priorities_cache() -> dict:
         The raw priorities cache dict
     """
     return _priorities_cache
+
+
+def reset_priorities_cache() -> None:
+    """Reset the priorities cache to initial state.
+
+    Clears all cached priorities and content hashes so sessions
+    will be re-prioritized fresh on the next API call.
+    """
+    global _priorities_cache, _previous_activity_states
+    _priorities_cache["priorities"] = None
+    _priorities_cache["timestamp"] = None
+    _priorities_cache["pending_priorities"] = None
+    _priorities_cache["error"] = None
+    _priorities_cache["content_hash"] = None
+    _previous_activity_states = {}
+
+
+def should_refresh_priorities(sessions: list[dict]) -> bool:
+    """Determine if we should call OpenRouter based on state transitions.
+
+    Only triggers refresh on meaningful state changes to save API costs:
+    - processing -> idle/input_needed (turn completed)
+    - input_needed -> processing (user responded, new turn starting)
+    - New session appeared
+    - Session disappeared
+
+    Args:
+        sessions: Current session list with activity_state
+
+    Returns:
+        True if OpenRouter should be called, False otherwise
+    """
+    global _previous_activity_states
+
+    should_refresh = False
+    current_states: dict[str, str] = {}
+
+    # Build current state map
+    for session in sessions:
+        sid = session.get("session_id", "")
+        current_state = session.get("activity_state", "unknown")
+        current_states[sid] = current_state
+
+        previous_state = _previous_activity_states.get(sid)
+
+        # Check for meaningful transitions
+        if previous_state is None:
+            # New session appeared
+            should_refresh = True
+        elif previous_state == "processing" and current_state in ("idle", "input_needed"):
+            # Turn completed - Claude finished working
+            should_refresh = True
+        elif previous_state == "input_needed" and current_state == "processing":
+            # User responded, new turn starting
+            should_refresh = True
+
+    # Check for disappeared sessions
+    for sid in _previous_activity_states:
+        if sid not in current_states:
+            # Session disappeared
+            should_refresh = True
+            break
+
+    # Update state tracking for next call
+    _previous_activity_states = current_states
+
+    return should_refresh
 
 
 def apply_soft_transition(new_priorities: list[dict], sessions: list[dict]) -> tuple[list[dict], bool]:

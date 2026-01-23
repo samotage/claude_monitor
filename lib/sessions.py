@@ -1,18 +1,69 @@
 """Session scanning and activity state parsing for Claude Headspace.
 
 This module handles:
-- Scanning project directories for active Claude sessions
-- Parsing activity state from iTerm window titles
+- Scanning project directories for active Claude sessions (iTerm and tmux)
+- Parsing activity state from terminal window titles and content
 - Formatting session information
+- Turn completion detection for state transition tracking
 """
 
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
+
+# Debug logger for activity state detection
+logger = logging.getLogger(__name__)
+
+# Complete list of Claude Code spinner verbs (past tense for turn completion)
+# These appear as "✻ <Verb> for Xm Xs" when Claude finishes a turn
+# Source: Claude Code CLI internal verb list
+TURN_COMPLETE_VERBS = [
+    "Accomplished", "Actioned", "Actualized", "Baked", "Booped", "Brewed",
+    "Calculated", "Cerebrated", "Channelled", "Churned", "Clauded", "Coalesced",
+    "Cogitated", "Combobulated", "Computed", "Concocted", "Conjured", "Considered",
+    "Contemplated", "Cooked", "Crafted", "Created", "Crunched", "Deciphered",
+    "Deliberated", "Determined", "Discombobulated", "Divined", "Done", "Effected",
+    "Elucidated", "Enchanted", "Envisioned", "Finagled", "Flibbertigibbeted",
+    "Forged", "Formed", "Frolicked", "Generated", "Germinated", "Hatched",
+    "Herded", "Honked", "Hustled", "Ideated", "Imagined", "Incubated", "Inferred",
+    "Jived", "Manifested", "Marinated", "Meandered", "Moseyed", "Mulled",
+    "Mustered", "Mused", "Noodled", "Percolated", "Perused", "Philosophised",
+    "Pondered", "Pontificated", "Processed", "Puttered", "Puzzled", "Reticulated",
+    "Ruminated", "Sautéed", "Schemed", "Schlepped", "Shimmied", "Shucked", "Simmered",
+    "Smooshed", "Spelunked", "Spun", "Stewed", "Sussed", "Synthesized", "Thought",
+    "Tinkered", "Transmuted", "Unfurled", "Unravelled", "Vibed", "Wandered",
+    "Whirred", "Wibbled", "Whisked", "Wizarded", "Worked", "Wrangled"
+]
+
+
+def is_turn_complete(content: str) -> bool:
+    """Check if Claude's turn just completed based on completion marker.
+
+    Claude Code displays "✻ <Verb> for Xm Xs" when a turn completes.
+
+    Args:
+        content: Terminal content to check
+
+    Returns:
+        True if a turn completion marker is found in recent content
+    """
+    if not content:
+        return False
+    # Check last 300 chars for completion pattern
+    tail = content[-300:]
+    return any(f"✻ {verb} for" in tail for verb in TURN_COMPLETE_VERBS)
 
 from lib.iterm import get_iterm_windows, get_pid_tty, is_claude_process
 from lib.summarization import prepare_content_for_summary
+from lib.tmux import (
+    capture_pane,
+    get_session_info,
+    is_tmux_available,
+    session_exists as tmux_session_exists,
+)
 
 
 def extract_last_message(content_tail: str, max_chars: int = 500) -> str:
@@ -70,8 +121,166 @@ def extract_last_message(content_tail: str, max_chars: int = 500) -> str:
     return result.strip()
 
 
+def scan_tmux_session(
+    state: dict,
+    project: dict,
+    iterm_windows: dict,
+) -> Optional[dict]:
+    """Scan a tmux-based session and return session info.
+
+    Args:
+        state: State dict from the session state file
+        project: Project config from config.yaml
+        iterm_windows: Dict of iTerm windows by TTY (for fallback)
+
+    Returns:
+        Session dict if session is active, None otherwise
+    """
+    session_uuid = state.get("uuid", "").lower()
+    tmux_session_name = state.get("tmux_session")
+
+    if not tmux_session_name:
+        return None
+
+    # Check if tmux session still exists
+    if not is_tmux_available() or not tmux_session_exists(tmux_session_name):
+        return None
+
+    # Get tmux session info
+    tmux_info = get_session_info(tmux_session_name)
+    if not tmux_info:
+        return None
+
+    # Capture terminal content from tmux
+    content_tail = capture_pane(tmux_session_name, lines=200) or ""
+
+    # For tmux sessions, we don't have a window title like iTerm
+    # Try to extract activity state from content alone
+    # Use empty string for title, rely on content-based detection
+    window_title = ""  # tmux doesn't have window titles like iTerm
+
+    # Parse started_at
+    started_at = state.get("started_at", "")
+    try:
+        start_time = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+        elapsed = datetime.now(timezone.utc) - start_time
+        elapsed_str = format_elapsed(elapsed.total_seconds())
+    except Exception:
+        elapsed_str = "unknown"
+
+    # Extract activity state from content
+    activity_state, task_summary = parse_activity_state(window_title, content_tail)
+
+    # Prepare terminal content for AI summarization
+    content_snippet = prepare_content_for_summary(content_tail)
+
+    # Extract last message for tooltip display
+    last_message = extract_last_message(content_tail)
+
+    return {
+        "uuid": session_uuid,
+        "uuid_short": session_uuid[-8:] if session_uuid else "unknown",
+        "project_name": project["name"],
+        "project_dir": state.get("project_dir", project["path"]),
+        "started_at": started_at,
+        "elapsed": elapsed_str,
+        "pid": tmux_info.get("pane_pid"),
+        "tty": tmux_info.get("pane_tty"),
+        "status": "active",
+        "activity_state": activity_state,
+        "window_title": window_title,
+        "task_summary": task_summary if task_summary else f"tmux: {tmux_session_name}",
+        "content_snippet": content_snippet,
+        "last_message": last_message,
+        # tmux-specific fields
+        "session_type": "tmux",
+        "tmux_session": tmux_session_name,
+        "tmux_attached": tmux_info.get("attached", False),
+    }
+
+
+def scan_iterm_session(
+    state: dict,
+    project: dict,
+    iterm_windows: dict,
+) -> Optional[dict]:
+    """Scan an iTerm-based session and return session info.
+
+    Args:
+        state: State dict from the session state file
+        project: Project config from config.yaml
+        iterm_windows: Dict of iTerm windows by TTY
+
+    Returns:
+        Session dict if session is active, None otherwise
+    """
+    session_uuid = state.get("uuid", "").lower()
+    session_pid = state.get("pid")
+
+    # Check if session has an iTerm window by matching PID to TTY
+    window_info = None
+    session_tty = None
+    if session_pid:
+        # First verify this is actually a Claude process (prevents PID reuse issues)
+        if not is_claude_process(session_pid):
+            # PID was reused by another process - this session is dead
+            return None
+
+        session_tty = get_pid_tty(session_pid)
+        if session_tty:
+            window_info = iterm_windows.get(session_tty)
+
+    # Only show sessions that have an active iTerm window
+    # Sessions without windows are not displayed (window closed = session gone)
+    if not window_info:
+        return None
+
+    window_title = window_info.get("title", "")
+    content_tail = window_info.get("content_tail", "")
+
+    # Parse started_at
+    started_at = state.get("started_at", "")
+    try:
+        start_time = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+        elapsed = datetime.now(timezone.utc) - start_time
+        elapsed_str = format_elapsed(elapsed.total_seconds())
+    except Exception:
+        elapsed_str = "unknown"
+
+    # Extract activity state and task summary from window title + content
+    activity_state, task_summary = parse_activity_state(window_title, content_tail)
+
+    # Prepare terminal content for AI summarization
+    content_snippet = prepare_content_for_summary(content_tail)
+
+    # Extract last message for tooltip display
+    last_message = extract_last_message(content_tail)
+
+    return {
+        "uuid": session_uuid,
+        "uuid_short": session_uuid[-8:] if session_uuid else "unknown",
+        "project_name": project["name"],  # Use config name, not state file
+        "project_dir": state.get("project_dir", project["path"]),
+        "started_at": started_at,
+        "elapsed": elapsed_str,
+        "pid": session_pid,
+        "tty": session_tty,
+        "status": "active",
+        "activity_state": activity_state,
+        "window_title": window_title,
+        "task_summary": task_summary,
+        "content_snippet": content_snippet,
+        "last_message": last_message,
+        # iTerm-specific fields
+        "session_type": "iterm",
+    }
+
+
 def scan_sessions(config: dict) -> list[dict]:
     """Scan all registered project directories for active sessions.
+
+    Supports both iTerm and tmux session types. Session type is determined
+    by the 'session_type' field in the state file.
 
     Args:
         config: Configuration dict with 'projects' list
@@ -91,64 +300,16 @@ def scan_sessions(config: dict) -> list[dict]:
         for state_file in project_path.glob(".claude-monitor-*.json"):
             try:
                 state = json.loads(state_file.read_text())
-                session_uuid = state.get("uuid", "").lower()
-                session_pid = state.get("pid")
+                session_type = state.get("session_type", "iterm")
 
-                # Check if session has an iTerm window by matching PID to TTY
-                window_info = None
-                session_tty = None
-                if session_pid:
-                    # First verify this is actually a Claude process (prevents PID reuse issues)
-                    if not is_claude_process(session_pid):
-                        # PID was reused by another process - this session is dead
-                        continue
+                if session_type == "tmux":
+                    session = scan_tmux_session(state, project, iterm_windows)
+                else:
+                    session = scan_iterm_session(state, project, iterm_windows)
 
-                    session_tty = get_pid_tty(session_pid)
-                    if session_tty:
-                        window_info = iterm_windows.get(session_tty)
+                if session:
+                    sessions.append(session)
 
-                # Only show sessions that have an active iTerm window
-                # Sessions without windows are not displayed (window closed = session gone)
-                if not window_info:
-                    continue
-
-                window_title = window_info.get("title", "")
-                content_tail = window_info.get("content_tail", "")
-
-                # Parse started_at
-                started_at = state.get("started_at", "")
-                try:
-                    start_time = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
-                    elapsed = datetime.now(timezone.utc) - start_time
-                    elapsed_str = format_elapsed(elapsed.total_seconds())
-                except Exception:
-                    elapsed_str = "unknown"
-
-                # Extract activity state and task summary from window title + content
-                activity_state, task_summary = parse_activity_state(window_title, content_tail)
-
-                # Prepare terminal content for AI summarization
-                content_snippet = prepare_content_for_summary(content_tail)
-
-                # Extract last message for tooltip display
-                last_message = extract_last_message(content_tail)
-
-                sessions.append({
-                    "uuid": session_uuid,
-                    "uuid_short": session_uuid[-8:] if session_uuid else "unknown",
-                    "project_name": project["name"],  # Use config name, not state file
-                    "project_dir": state.get("project_dir", project["path"]),
-                    "started_at": started_at,
-                    "elapsed": elapsed_str,
-                    "pid": session_pid,
-                    "tty": session_tty,
-                    "status": "active",
-                    "activity_state": activity_state,
-                    "window_title": window_title,
-                    "task_summary": task_summary,
-                    "content_snippet": content_snippet,
-                    "last_message": last_message,
-                })
             except Exception:
                 continue
 
@@ -159,7 +320,7 @@ def parse_activity_state(window_title: str, content_tail: str = "") -> tuple[str
     """Parse Claude Code window title and terminal content to extract activity state.
 
     Args:
-        window_title: The iTerm window title
+        window_title: The iTerm window title (may be empty for tmux sessions)
         content_tail: The last ~5000 characters of terminal content
 
     Returns:
@@ -171,9 +332,6 @@ def parse_activity_state(window_title: str, content_tail: str = "") -> tuple[str
     - "idle": Session is idle, ready for new task
     - "unknown": Can't determine state
     """
-    if not window_title:
-        return ("unknown", "Unknown")
-
     # Braille spinner characters indicate processing (Claude's turn - working)
     # Full Unicode braille pattern range
     spinner_chars = set("⠁⠂⠃⠄⠅⠆⠇⠈⠉⠊⠋⠌⠍⠎⠏⠐⠑⠒⠓⠔⠕⠖⠗⠘⠙⠚⠛⠜⠝⠞⠟⠠⠡⠢⠣⠤⠥⠦⠧⠨⠩⠪⠫⠬⠭⠮⠯⠰⠱⠲⠳⠴⠵⠶⠷⠸⠹⠺⠻⠼⠽⠾⠿⡀⡄⡆⡇")
@@ -264,9 +422,36 @@ def parse_activity_state(window_title: str, content_tail: str = "") -> tuple[str
     # Get the first character to determine base state
     first_char = window_title[0] if window_title else ""
 
-    # Check content for input_needed patterns
-    content_lower = content_tail.lower()
-    is_input_needed = any(pattern.lower() in content_lower for pattern in input_needed_patterns)
+    # Check RECENT content for input_needed patterns (not entire history)
+    # Old questions/prompts in the terminal buffer can cause false positives
+    # Only check last ~1500 chars where current prompts would appear
+    recent_content = content_tail[-1500:].lower() if content_tail else ""
+    is_input_needed = any(pattern.lower() in recent_content for pattern in input_needed_patterns)
+
+    # For content-based detection, only check RECENT content (last ~1500 chars)
+    # to avoid false positives from old tool executions in history
+    recent_content_raw = content_tail[-1500:] if content_tail else ""
+
+    # ACTIVE processing indicators - must be in recent content with "esc to interrupt"
+    # These indicate Claude is CURRENTLY working, not just that it worked earlier
+    is_actively_processing = (
+        "(esc to interrupt" in recent_content_raw and
+        any(p in recent_content_raw for p in ["Running…", "Waiting…", "thinking"])
+    )
+
+    # COMPLETION indicators - "✻ Baked for", "✻ Brewed for" etc. mean Claude finished
+    # Use the complete TURN_COMPLETE_VERBS list
+    is_completed = is_turn_complete(recent_content_raw)
+
+    # Check last few lines for idle prompt (❯)
+    last_lines = content_tail.strip().split("\n")[-10:] if content_tail else []
+
+    # Look for ❯ prompt in any of the last lines (not just the absolute last)
+    # tmux may have status bars or empty lines after the prompt
+    has_idle_prompt = any(
+        line.strip().startswith("❯") or line.strip() == "❯"
+        for line in last_lines
+    )
 
     if first_char in spinner_chars:
         activity_state = "processing"
@@ -274,8 +459,18 @@ def parse_activity_state(window_title: str, content_tail: str = "") -> tuple[str
         # Check terminal content to distinguish input_needed vs idle
         activity_state = "input_needed" if is_input_needed else "idle"
     elif is_input_needed:
-        # Even if first char is unrecognized, if content shows input prompts, mark as input_needed
+        # If content shows input prompts, mark as input_needed
         activity_state = "input_needed"
+    elif not window_title and content_tail:
+        # For tmux sessions without window title, use content-based detection
+        # Priority: active processing > idle prompt
+        # Active processing = "(esc to interrupt" present AND no idle prompt after it
+        if is_actively_processing:
+            activity_state = "processing"
+        elif has_idle_prompt:
+            activity_state = "idle"
+        else:
+            activity_state = "unknown"
     else:
         activity_state = "unknown"
 

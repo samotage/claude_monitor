@@ -51,9 +51,10 @@ function renderKanban(sessions, projects) {
                         <span class="status ${session.status}">${session.status}</span>
                         <button class="reboot-btn" onclick="event.stopPropagation(); openRebootPanel('${escapeHtml(projectName)}', '${escapeHtml(session.uuid)}')">Headspace</button>
                     </div>
-                    <div class="activity-state ${session.activity_state}" onclick="event.stopPropagation(); focusWindow(${session.pid || 0})" title="Click to focus iTerm window">
+                    <div class="activity-state ${session.activity_state}" onclick="event.stopPropagation(); focusWindow(${session.pid || 0})" title="Click to focus ${session.session_type === 'tmux' ? 'tmux session' : 'iTerm window'}">
                         <span class="activity-icon">${activityInfo.icon}</span>
                         <span class="activity-label">${activityInfo.label}</span>
+                        ${session.session_type === 'tmux' ? `<span class="tmux-badge ${session.tmux_attached ? 'attached' : 'detached'}" title="tmux: ${escapeHtml(session.tmux_session || '')}${session.tmux_attached ? ' (attached)' : ' (detached)'}">tmux</span>` : ''}
                     </div>
                     ${isStale ? `<div class="stale-indicator"><span class="stale-icon">&#128347;</span> Stale - ${formatStaleness(stalenessHours)}</div>` : ''}
                     ${priorityInfo && priorityInfo.activity_summary ?

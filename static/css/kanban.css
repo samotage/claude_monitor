@@ -299,6 +299,29 @@
     flex: 1;
 }
 
+/* tmux session badge */
+.tmux-badge {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 2px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-left: auto;
+}
+
+.tmux-badge.attached {
+    background: rgba(0, 212, 170, 0.2);
+    color: var(--green);
+    border: 1px solid rgba(0, 212, 170, 0.3);
+}
+
+.tmux-badge.detached {
+    background: rgba(255, 180, 100, 0.15);
+    color: #ffb464;
+    border: 1px solid rgba(255, 180, 100, 0.3);
+}
+
 /* Task summary */
 .task-summary {
     font-size: 0.85rem;

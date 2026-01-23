@@ -59,7 +59,11 @@ pytest
 pytest --cov=.  # With coverage
 
 # Start a monitored Claude session (in your project directory)
+# Default: runs in tmux for bidirectional control
 claude-monitor start
+
+# Start in iTerm mode (read-only, no tmux)
+claude-monitor start --iterm
 ```
 
 ## Directory Structure
@@ -100,10 +104,66 @@ Edit `config.yaml` to configure monitored projects:
 projects:
   - name: "project_name"
     path: "/absolute/path/to/project"
+    # tmux: false           # Disable tmux to use iTerm mode (optional)
 
 scan_interval: 5          # Refresh interval in seconds
 iterm_focus_delay: 0.1    # Delay before focusing window
 ```
+
+## tmux Integration
+
+tmux is the **default mode** for Claude Code sessions, enabling:
+- **Send text/commands** to sessions via the API
+- **Capture full output** beyond iTerm's 5000 char limit
+- Enable **voice bridge** and **remote control** features
+
+### Requirements
+
+1. Install tmux: `brew install tmux`
+2. Start sessions with `claude-monitor start` (tmux is default)
+
+### Disabling tmux for a project
+
+To use iTerm mode (read-only) instead:
+
+**Option 1:** Use the `--iterm` flag:
+```bash
+claude-monitor start --iterm
+```
+
+**Option 2:** Set `tmux: false` in `config.yaml`:
+```yaml
+projects:
+  - name: "my-project"
+    path: "/path/to/project"
+    tmux: false  # Use iTerm mode
+```
+
+**Option 3:** Use the API:
+```bash
+curl -X POST http://localhost:5050/api/projects/my-project/tmux/disable
+```
+
+### Session Control API
+
+Send text to a tmux session:
+```bash
+curl -X POST http://localhost:5050/api/send/<session_id> \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello, Claude!", "enter": true}'
+```
+
+Capture session output:
+```bash
+curl http://localhost:5050/api/output/<session_id>?lines=100
+```
+
+### Session Types
+
+| Type | Read | Write | Notes |
+|------|------|-------|-------|
+| tmux | ✅ | ✅ | Default, full control, requires tmux installed |
+| iTerm | ✅ | ❌ | Read-only observation + window focus |
 
 ## How It Works
 
@@ -133,6 +193,11 @@ iterm_focus_delay: 0.1    # Delay before focusing window
 | `/` | GET | Main Kanban dashboard |
 | `/api/sessions` | GET | JSON list of all sessions |
 | `/api/focus/<pid>` | POST | Focus iTerm window by process ID |
+| `/api/send/<session_id>` | POST | Send text to a tmux session |
+| `/api/output/<session_id>` | GET | Capture session output |
+| `/api/projects/<name>/tmux` | GET | Get project tmux status |
+| `/api/projects/<name>/tmux/enable` | POST | Enable tmux for project |
+| `/api/projects/<name>/tmux/disable` | POST | Disable tmux for project |
 | `/api/config` | GET/POST | Read/write configuration |
 | `/api/notifications` | GET/POST | Notification enable/disable |
 | `/api/notifications/test` | POST | Send test notification |

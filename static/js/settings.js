@@ -270,3 +270,53 @@ function togglePasswordVisibility(inputId, btn) {
         btn.classList.remove('revealed');
     }
 }
+
+/* Reset working state */
+async function resetWorkingState() {
+    const btn = document.getElementById('reset-state-btn');
+    const statusEl = document.getElementById('reset-status');
+
+    // Disable button during operation
+    btn.disabled = true;
+    btn.textContent = 'resetting...';
+    statusEl.textContent = '';
+
+    try {
+        const result = await resetWorkingStateAPI();
+
+        if (result.success) {
+            statusEl.textContent = 'reset complete';
+            statusEl.style.color = 'var(--color-success)';
+
+            // Clear the fingerprint so next fetch triggers a full re-render
+            if (typeof lastFingerprint !== 'undefined') {
+                lastFingerprint = null;
+            }
+
+            // Refresh the dashboard immediately
+            if (typeof fetchSessions === 'function') {
+                fetchSessions();
+            }
+
+            // Switch to dashboard tab to show the refreshed state
+            if (typeof switchToTab === 'function') {
+                switchToTab('dashboard');
+            }
+
+            // Clear status after delay
+            setTimeout(() => {
+                statusEl.textContent = '';
+                statusEl.style.color = '';
+            }, 2000);
+        } else {
+            statusEl.textContent = 'error: ' + (result.error || 'unknown');
+            statusEl.style.color = 'var(--color-error)';
+        }
+    } catch (error) {
+        statusEl.textContent = 'error: ' + error.message;
+        statusEl.style.color = 'var(--color-error)';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'reset working state';
+    }
+}
