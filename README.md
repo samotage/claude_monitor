@@ -13,6 +13,7 @@ A Kanban-style dashboard for tracking Claude Code sessions across multiple proje
 - **Native notifications** - Get macOS alerts when input is needed or tasks complete
 - **Click-to-focus** - Jump to any session from the dashboard or notification
 - **Real-time updates** - Dashboard refreshes automatically
+- **tmux integration** - Bidirectional session control with send/capture APIs
 
 ## Quick Start
 
@@ -41,6 +42,7 @@ Open http://localhost:5050 in your browser.
 - **iTerm2** terminal
 - **Python 3.10+**
 - **Claude Code CLI**
+- **tmux** (default session mode, install with `brew install tmux`)
 - **Homebrew** (optional, for notifications)
 
 ## Installation
@@ -91,9 +93,11 @@ Edit `config.yaml` to add your projects:
 projects:
   - name: "my-app"
     path: "/Users/you/dev/my-app"
+    # tmux is enabled by default
 
   - name: "api-service"
     path: "/Users/you/dev/api-service"
+    tmux: false          # Disable tmux to use iTerm mode
 
 scan_interval: 5        # Dashboard refresh rate (seconds)
 iterm_focus_delay: 0.1  # Delay before focusing window
@@ -117,7 +121,8 @@ Instead of running `claude` directly, use the wrapper:
 
 ```bash
 cd /path/to/your/project
-claude-monitor start
+claude-monitor start           # Default: runs in tmux
+claude-monitor start --iterm   # Force iTerm mode (read-only)
 ```
 
 This creates a state file that the dashboard uses to track the session.
@@ -151,6 +156,40 @@ Click the notification to jump directly to that iTerm session.
 
 Enable/disable notifications in the Settings tab of the dashboard.
 
+### tmux Integration
+
+tmux is the **default session mode**, enabling bidirectional control of Claude Code sessions. You can send text to sessions and capture full output programmatically. This is the foundation for features like voice bridge and remote control.
+
+**Setup:**
+1. Install tmux: `brew install tmux`
+2. Run `claude-monitor start` (tmux is used by default)
+3. Sessions run inside named tmux sessions (`claude-<project-name>`)
+
+**Session Control APIs:**
+
+```bash
+# Send text to a session (tmux only)
+curl -X POST http://localhost:5050/api/send/<session_id> \
+  -H "Content-Type: application/json" \
+  -d '{"text": "yes", "enter": true}'
+
+# Capture session output (tmux or iTerm)
+curl http://localhost:5050/api/output/<session_id>?lines=100
+
+# Enable/disable tmux for a project
+curl -X POST http://localhost:5050/api/projects/my-app/tmux/enable
+curl -X POST http://localhost:5050/api/projects/my-app/tmux/disable
+```
+
+**Session Types:**
+
+| Type | Capabilities | Use Case |
+|------|-------------|----------|
+| tmux | Full read/write | Default, voice bridge, remote control |
+| iTerm | Read-only + focus | Simple observation (use `--iterm` flag) |
+
+Sessions show a "tmux" badge in the dashboard when running in tmux mode.
+
 ## How It Works
 
 ```
@@ -183,6 +222,11 @@ Enable/disable notifications in the Settings tab of the dashboard.
 | `/api/config` | GET/POST | Read/write configuration |
 | `/api/notifications` | GET/POST | Notification settings |
 | `/api/notifications/test` | POST | Send test notification |
+| `/api/send/<session_id>` | POST | Send text to tmux session |
+| `/api/output/<session_id>` | GET | Capture session output |
+| `/api/projects/<name>/tmux` | GET | Get project tmux status |
+| `/api/projects/<name>/tmux/enable` | POST | Enable tmux for project |
+| `/api/projects/<name>/tmux/disable` | POST | Disable tmux for project |
 
 ### Example: Get Sessions
 

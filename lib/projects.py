@@ -561,3 +561,83 @@ def get_all_project_states() -> dict:
         }
 
     return states
+
+
+# =============================================================================
+# tmux Configuration
+# =============================================================================
+
+
+def get_project_tmux_status(project_name: str) -> dict:
+    """Get the tmux readiness status for a project.
+
+    Args:
+        project_name: Name of the project
+
+    Returns:
+        Dict with:
+            - enabled: bool - whether tmux is enabled in config
+            - available: bool - whether tmux is installed on system
+            - status: str - "ready", "not_enabled", or "unavailable"
+            - session_name: str - the tmux session name that would be used
+    """
+    from lib.tmux import is_tmux_available, slugify_project_name
+
+    config = load_config()
+
+    # Check if tmux is enabled for this project
+    enabled = False
+    for project in config.get("projects", []):
+        if project.get("name") == project_name:
+            enabled = project.get("tmux", False)
+            break
+
+    # Check if tmux is available on system
+    available = is_tmux_available()
+
+    # Determine status
+    if not available:
+        status = "unavailable"
+    elif not enabled:
+        status = "not_enabled"
+    else:
+        status = "ready"
+
+    return {
+        "enabled": enabled,
+        "available": available,
+        "status": status,
+        "session_name": f"claude-{slugify_project_name(project_name)}",
+    }
+
+
+def set_project_tmux_enabled(project_name: str, enabled: bool) -> bool:
+    """Enable or disable tmux for a project.
+
+    Updates the config.yaml file.
+
+    Args:
+        project_name: Name of the project
+        enabled: Whether to enable tmux
+
+    Returns:
+        True if updated successfully
+    """
+    from config import save_config
+
+    config = load_config()
+    projects = config.get("projects", [])
+
+    # Find and update the project
+    found = False
+    for project in projects:
+        if project.get("name") == project_name:
+            project["tmux"] = enabled
+            found = True
+            break
+
+    if not found:
+        return False
+
+    # Save updated config
+    return save_config(config)

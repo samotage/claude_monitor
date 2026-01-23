@@ -8,6 +8,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize tab navigation
     initTabNavigation();
 
+    // Initialize responsive navigation (overflow detection)
+    initResponsiveNav();
+
     // Initialize panel event listeners
     initPanelEventListeners();
 

@@ -161,6 +161,7 @@ async function saveHeadspaceQuietly() {
 
         if (data.success) {
             currentHeadspace = data.data;
+            renderHeadspace();
             panel.classList.remove('saving');
             panel.classList.add('saved');
             setTimeout(() => panel.classList.remove('saved'), 1500);

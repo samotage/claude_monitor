@@ -4,6 +4,73 @@
 let helpInitialized = false;
 let loggingTabInitialized = false;
 
+/**
+ * Check if the navigation tabs overflow and need hamburger menu
+ * This runs on load and resize to dynamically show/hide the hamburger
+ */
+function checkNavOverflow() {
+    const tabNav = document.querySelector('.tab-nav');
+    const tabBtnGroup = document.querySelector('.tab-btn-group');
+    const hamburgerBtn = document.querySelector('.hamburger-btn');
+    const navBrand = document.querySelector('.nav-brand');
+    
+    if (!tabNav || !tabBtnGroup || !hamburgerBtn || !navBrand) return;
+    
+    // Temporarily force tab buttons visible to measure their width
+    // This overrides both our JS classes AND the CSS media query
+    tabBtnGroup.style.display = 'flex';
+    
+    // Remove all overflow classes temporarily for measurement
+    tabBtnGroup.classList.remove('nav-overflow-hidden', 'nav-overflow-visible');
+    hamburgerBtn.classList.remove('nav-overflow-hidden', 'nav-overflow-visible');
+    
+    // Force a reflow to get accurate measurements
+    tabBtnGroup.offsetWidth;
+    
+    // Calculate available width and required width
+    const navWidth = tabNav.offsetWidth;
+    const brandWidth = navBrand.offsetWidth;
+    const tabsWidth = tabBtnGroup.scrollWidth;
+    const padding = 20; // Safety margin
+    
+    // Check if tabs fit
+    const availableWidth = navWidth - brandWidth - padding;
+    const tabsFit = tabsWidth <= availableWidth;
+    
+    // Clear inline style - let CSS classes control display
+    tabBtnGroup.style.display = '';
+    
+    if (!tabsFit) {
+        // Tabs don't fit - show hamburger, hide tabs
+        tabBtnGroup.classList.add('nav-overflow-hidden');
+        tabBtnGroup.classList.remove('nav-overflow-visible');
+        hamburgerBtn.classList.add('nav-overflow-visible');
+        hamburgerBtn.classList.remove('nav-overflow-hidden');
+    } else {
+        // Tabs fit - show tabs, hide hamburger
+        tabBtnGroup.classList.add('nav-overflow-visible');
+        tabBtnGroup.classList.remove('nav-overflow-hidden');
+        hamburgerBtn.classList.add('nav-overflow-hidden');
+        hamburgerBtn.classList.remove('nav-overflow-visible');
+    }
+}
+
+/**
+ * Initialize responsive navigation
+ * Sets up resize listener and initial check
+ */
+function initResponsiveNav() {
+    // Check on load
+    checkNavOverflow();
+    
+    // Check on resize with debounce
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(checkNavOverflow, 100);
+    });
+}
+
 function initTabNavigation() {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {

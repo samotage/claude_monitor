@@ -96,6 +96,38 @@ When user says "STOP", "HANG ON", "WAIT", or similar:
 - Do NOT ask the user or wait for them to restart manually
 - This applies to any Python code changes, template changes, or configuration changes that affect the running server
 
+## UI Change Verification
+
+**For any HTML, CSS, or JavaScript changes, you MUST verify visually before claiming completion.**
+
+Flask caches templates aggressively. Browser caches static files. Telling the user "just refresh" is NOT verification.
+
+**Required workflow for UI changes:**
+1. Make the code change (HTML/CSS/JS)
+2. Restart the Flask server (`./restart_server.sh`)
+3. If agent-browser is connected: take a screenshot and verify the change is visible
+4. If agent-browser is NOT connected: tell the user you cannot verify and ask them to confirm
+5. Only after visual confirmation: report the change as complete
+
+**Never say:**
+- "Done. Just do a hard refresh."
+- "The CSS is correct, must be browser cache."
+- "I've verified the file has the right content."
+
+**Instead say:**
+- "Let me restart the server and verify with agent-browser."
+- "I cannot verify visually - can you confirm the change appears correctly?"
+
+File content verification (grep, cat) is NOT sufficient for UI changes. The rendered result is what matters.
+
+**Tailwind CSS Warning:**
+Tailwind is particularly problematic for verification. Its utility class approach:
+- Obfuscates styling - classes like `px-4 py-2 bg-blue-500` tell you nothing about actual rendered appearance
+- Creates a black box - utility classes may conflict, be purged, or not apply as expected
+- Cannot be reasoned about from code alone - you MUST verify visually
+
+For Tailwind projects: **ALWAYS take a screenshot after any styling change.** Never assume utility classes will produce the expected result. The gap between code and rendered output is larger than with traditional CSS.
+
 ## AppleScript Considerations
 
 This project uses osascript for iTerm integration:

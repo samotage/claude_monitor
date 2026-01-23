@@ -321,6 +321,14 @@
     word-break: break-word;
     max-height: 200px;
     overflow-y: auto;
+    line-height: 1.6;
+}
+
+.log-entry-section-content.json-content {
+    font-size: 11px;
+    line-height: 1.5;
+    tab-size: 2;
+    -moz-tab-size: 2;
 }
 
 .log-entry-section-content.error-content {

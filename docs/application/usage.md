@@ -24,10 +24,20 @@ Instead of running `claude` directly, use the wrapper script:
 
 ```bash
 cd /path/to/your/project
-claude-monitor start
+claude-monitor start           # Default: runs in tmux (bidirectional control)
+claude-monitor start --iterm   # Force iTerm mode (read-only observation)
 ```
 
 This creates a state file that the dashboard uses to track the session.
+
+### Session Types
+
+| Type | Capabilities | Use Case |
+|------|-------------|----------|
+| **tmux** | Full read/write control via API | Default, voice bridge, automation, remote control |
+| **iTerm** | Read-only observation + window focus | Simple monitoring (use `--iterm` flag) |
+
+Sessions running in tmux mode show a "tmux" badge in the dashboard.
 
 ## Dashboard Layout
 
@@ -179,6 +189,88 @@ Currently, all interactions are mouse-based. Keyboard shortcuts may be added in 
 3. Click **save_config**
 
 Note: This only removes the project from monitoring. Project data in `data/projects/` is preserved.
+
+## tmux Integration
+
+tmux is the **default session mode**, enabling bidirectional control of Claude Code sessions. You can send commands and capture full output programmatically. This is the foundation for features like voice bridge and remote control.
+
+### Installing tmux
+
+```bash
+brew install tmux
+```
+
+### Using tmux (Default)
+
+tmux is enabled by default. Just run:
+
+```bash
+claude-monitor start
+```
+
+### Disabling tmux for a Project
+
+To use iTerm mode (read-only) instead:
+
+**Option 1: Command line flag**
+
+```bash
+claude-monitor start --iterm
+```
+
+**Option 2: Via config.yaml**
+
+Set `tmux: false` in your project configuration:
+
+```yaml
+projects:
+  - name: "my-app"
+    path: "/Users/you/dev/my-app"
+    tmux: false
+```
+
+**Option 3: Via API**
+
+```bash
+curl -X POST http://localhost:5050/api/projects/my-app/tmux/disable
+```
+
+### Session Control via API
+
+Once running in tmux mode, you can control sessions programmatically:
+
+**Send text to a session:**
+```bash
+curl -X POST http://localhost:5050/api/send/<session_id> \
+  -H "Content-Type: application/json" \
+  -d '{"text": "yes", "enter": true}'
+```
+
+**Capture session output:**
+```bash
+curl http://localhost:5050/api/output/<session_id>?lines=100
+```
+
+The `session_id` can be found in the `/api/sessions` response (use `uuid` or `uuid_short`).
+
+### tmux Session Names
+
+Sessions run inside named tmux sessions following the pattern `claude-<project-slug>`:
+
+- Project "my-app" → tmux session `claude-my-app`
+- Project "API Service" → tmux session `claude-api-service`
+
+You can attach to these sessions directly with:
+```bash
+tmux attach-session -t claude-my-app
+```
+
+### Dashboard Indicators
+
+Sessions running in tmux mode show:
+- A **tmux** badge next to the activity state
+- Badge colour indicates attached (green) or detached (amber) state
+- Hover over the badge to see the tmux session name
 
 ## Tips
 

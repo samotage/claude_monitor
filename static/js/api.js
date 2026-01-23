@@ -92,3 +92,8 @@ async function saveRoadmapAPI(projectSlug, roadmapData) {
     });
     return await response.json();
 }
+
+async function resetWorkingStateAPI() {
+    const response = await fetch('/api/reset', { method: 'POST' });
+    return await response.json();
+}

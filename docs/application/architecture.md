@@ -27,6 +27,7 @@ graph TB
     
     subgraph Runtime ["Runtime State"]
         ITERM[iTerm Windows]
+        TMUX[tmux Sessions]
         STATE[Session State Files]
     end
     
@@ -41,10 +42,11 @@ graph TB
 
 | Location | Purpose |
 |----------|---------|
-| `config.yaml` | Your projects list and settings |
+| `config.yaml` | Your projects list and settings (including tmux config) |
 | `data/headspace.yaml` | Your current focus and objectives |
 | `data/projects/*.yaml` | Per-project data (roadmap, state, history) |
 | `.claude-monitor-*.json` | Transient session state files |
+| `lib/tmux.py` | tmux integration module |
 
 ## Data Schema
 
@@ -199,9 +201,10 @@ flowchart LR
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| **Project Data** | `lib/projects.py` | Load/save project YAML, roadmap management |
+| **Project Data** | `lib/projects.py` | Load/save project YAML, roadmap management, tmux config |
 | **Headspace** | `lib/headspace.py` | Focus management, AI prioritisation |
-| **Sessions** | `lib/sessions.py` | Scan iTerm, detect activity states |
+| **Sessions** | `lib/sessions.py` | Scan iTerm and tmux, detect activity states |
+| **tmux** | `lib/tmux.py` | tmux session management, send/capture APIs |
 | **Compression** | `lib/compression.py` | OpenRouter API client, history compression |
 | **Summarisation** | `lib/summarization.py` | Session summary generation |
 
@@ -211,7 +214,18 @@ flowchart LR
 |-------|---------|---------|
 | **Headspace** | `data/headspace.yaml` | "What am I trying to accomplish?" |
 | **Project Data** | `data/projects/*.yaml` | "What's each project doing?" |
-| **Config** | `config.yaml` | "What projects to monitor?" |
-| **Runtime** | iTerm + state files | "What's happening right now?" |
+| **Config** | `config.yaml` | "What projects to monitor? Which use tmux?" |
+| **Runtime** | iTerm + tmux + state files | "What's happening right now?" |
 
 The **AI Prioritisation** aggregates all of this and answers: **"Which session should I work on next?"**
+
+## Session Types
+
+Sessions can run in two modes:
+
+| Type | Read | Write | Source |
+|------|------|-------|--------|
+| **iTerm** | Via AppleScript | Window focus only | Default |
+| **tmux** | Via capture-pane | Via send-keys | When `tmux: true` in config |
+
+The session scanner (`lib/sessions.py`) handles both types transparently, merging them into a unified session list.

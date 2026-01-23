@@ -112,6 +112,59 @@ Common issues and how to resolve them.
    ./restart_server.sh
    ```
 
+## tmux Not Working
+
+### Symptoms
+- "tmux is not available on this system" error
+- Sessions not running in tmux mode
+- Send API returns errors
+
+### Solutions
+
+1. **Install tmux**
+   ```bash
+   brew install tmux
+   ```
+
+2. **Verify installation**
+   ```bash
+   which tmux
+   tmux -V
+   ```
+   Should show the tmux path and version.
+
+3. **Enable tmux for your project**
+   Add `tmux: true` to the project in config.yaml:
+   ```yaml
+   projects:
+     - name: "my-app"
+       path: "/Users/you/dev/my-app"
+       tmux: true
+   ```
+
+4. **Or force tmux via command line**
+   ```bash
+   claude-monitor start --tmux
+   ```
+
+5. **Check if session is running in tmux**
+   ```bash
+   tmux list-sessions
+   ```
+   You should see `claude-<project-name>` listed.
+
+### Send API Returns "Not a tmux session"
+
+The session is running in iTerm mode (default). Either:
+- Enable tmux in config.yaml for the project
+- Or restart the session with `--tmux` flag
+
+### tmux Session Already Exists
+
+If you see "tmux session 'claude-my-app' already exists":
+- The wrapper will attach to the existing session
+- To kill it and start fresh: `tmux kill-session -t claude-my-app`
+
 ## AI Features Not Working
 
 ### Symptoms
