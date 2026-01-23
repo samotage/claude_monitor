@@ -126,3 +126,16 @@ session_sync:
   # Higher = more context but more processing
   # Default: 20
   jsonl_tail_entries: 20
+
+# =============================================================================
+# tmux Debug Logging
+# =============================================================================
+# Log all messages sent to and received from Claude Code tmux sessions
+# Useful for debugging session state discrepancies
+
+tmux_logging:
+  # Enable full payload logging for tmux operations
+  # When false: only high-level events are logged (session_started, send_attempted, etc.)
+  # When true: full message payloads are logged (with 10KB truncation)
+  # Default: false
+  debug_enabled: false

@@ -169,11 +169,9 @@ The UI SHALL handle empty and error states gracefully.
 
 ---
 
-## MODIFIED Requirements
+### Requirement: send_keys Logging Integration
 
-### Requirement: tmux send_keys() Function
-
-The existing `send_keys()` function in `lib/tmux.py` SHALL be modified to support logging.
+The system SHALL log tmux send_keys operations for debugging.
 
 #### Scenario: send_keys with logging
 
@@ -191,9 +189,9 @@ The existing `send_keys()` function in `lib/tmux.py` SHALL be modified to suppor
 
 ---
 
-### Requirement: tmux capture_pane() Function
+### Requirement: capture_pane Logging Integration
 
-The existing `capture_pane()` function in `lib/tmux.py` SHALL be modified to support logging.
+The system SHALL log tmux capture_pane operations for debugging.
 
 #### Scenario: capture_pane with logging
 

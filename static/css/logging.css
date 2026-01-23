@@ -397,3 +397,112 @@
 .logging-entries::-webkit-scrollbar-thumb:hover {
     background: var(--border-bright);
 }
+
+/* =============================================================================
+   tmux Log Entry Styles
+   ============================================================================= */
+
+.log-entry.tmux-entry .log-entry-header {
+    gap: 12px;
+}
+
+.log-entry-session {
+    color: var(--cyan);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    flex-shrink: 0;
+    min-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.log-entry-direction {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    flex-shrink: 0;
+    min-width: 60px;
+}
+
+.log-entry-direction.direction-out {
+    color: var(--amber);
+}
+
+.log-entry-direction.direction-in {
+    color: var(--green);
+}
+
+.log-entry-direction .direction-icon {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.log-entry-direction .direction-text {
+    text-transform: uppercase;
+    font-size: 11px;
+}
+
+.log-entry-event-type {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* tmux entry metadata */
+.log-entry-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.log-entry-meta-label {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+}
+
+.log-entry-meta-value {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    word-break: break-all;
+}
+
+/* Payload content - preserve whitespace for human readability */
+.log-entry-section-content.payload-content {
+    white-space: pre-wrap;
+    font-size: 13px;
+    line-height: 1.5;
+    max-height: 300px;
+}
+
+.log-entry-section-content.payload-content.disabled {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* Truncation notice */
+.log-entry-truncation-notice {
+    margin-top: 8px;
+    padding: 6px 10px;
+    background: var(--amber-dim);
+    border: 1px solid var(--amber);
+    border-radius: 4px;
+    color: var(--amber);
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
