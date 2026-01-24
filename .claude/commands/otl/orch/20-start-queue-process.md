@@ -9,7 +9,7 @@ description: "Lightweight coordinator - orchestrates PRD processing by spawning 
 
 **Purpose:** Lightweight coordinator that orchestrates PRD processing by spawning dedicated sub-agents for each phase. Manages queue, mode selection, and sub-agent lifecycle.
 
-**This command stays lightweight - all heavy lifting is done by sub-agents with fresh context.** an implementation note... This was written using Claude code 2.0.50 and sub agent capability was limited, Resolve this the sub agents chain together in the next sub agent. Potentially a future iteration may create proper orchestration from the main agent.
+**This command stays lightweight - all heavy lifting is done by sub-agents with fresh context.** An implementation note: This was written using Claude Code 2.0.50 and sub-agent capability was limited. The sub-agents chain together to the next sub-agent. Potentially a future iteration may create proper orchestration from the main agent. (Last tested with Claude Code 2.1.19)
 
 ---
 
