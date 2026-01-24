@@ -401,8 +401,7 @@ Get current configuration.
   "projects": [
     {"name": "my-app", "path": "/Users/me/dev/my-app"}
   ],
-  "scan_interval": 5,
-  "iterm_focus_delay": 0.1
+  "scan_interval": 5
 }
 ```
 

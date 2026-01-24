@@ -30,11 +30,6 @@ projects:
 # Default: 5
 scan_interval: 5
 
-# Delay before focusing iTerm window (in seconds)
-# Increase if focus isn't working reliably
-# Default: 0.1
-iterm_focus_delay: 0.1
-
 # =============================================================================
 # Session Summarization
 # =============================================================================

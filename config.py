@@ -14,7 +14,6 @@ CONFIG_PATH = Path(__file__).parent / "config.yaml"
 DEFAULT_CONFIG = {
     "projects": [],
     "scan_interval": 2,
-    "iterm_focus_delay": 0.1,
     "idle_timeout_minutes": 60,
     "stale_threshold_hours": 4,
     "openrouter": {

@@ -37,15 +37,11 @@ projects:
 ```yaml
 # How often to refresh the dashboard (in seconds)
 scan_interval: 5
-
-# Delay before focusing iTerm window (in seconds)
-iterm_focus_delay: 0.1
 ```
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `scan_interval` | 5 | Dashboard refresh rate. Lower = more responsive but more CPU |
-| `iterm_focus_delay` | 0.1 | Delay before focusing window. Increase if focus is unreliable |
 
 ## Session Settings
 
@@ -198,7 +194,6 @@ projects:
 
 # Dashboard
 scan_interval: 5
-iterm_focus_delay: 0.1
 
 # Sessions
 idle_timeout_minutes: 60

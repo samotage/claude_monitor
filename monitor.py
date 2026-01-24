@@ -248,36 +248,6 @@ def api_reset():
 
 
 # =============================================================================
-# Routes - Debug API
-# =============================================================================
-
-
-@app.route("/api/debug/content/<int:pid>")
-def api_debug_content(pid: int):
-    """Debug endpoint to see terminal content for a specific PID."""
-    from lib.iterm import get_iterm_windows
-    from lib.sessions import parse_activity_state
-
-    tty = get_pid_tty(pid)
-    if not tty:
-        return jsonify({"error": "PID not found or no TTY"})
-
-    iterm_windows = get_iterm_windows()
-    window_info = iterm_windows.get(tty, {})
-
-    return jsonify({
-        "pid": pid,
-        "tty": tty,
-        "window_title": window_info.get("title", ""),
-        "content_tail": window_info.get("content_tail", "")[:500],  # First 500 chars for display
-        "detected_state": parse_activity_state(
-            window_info.get("title", ""),
-            window_info.get("content_tail", "")
-        )[0]
-    })
-
-
-# =============================================================================
 # Routes - README API
 # =============================================================================
 

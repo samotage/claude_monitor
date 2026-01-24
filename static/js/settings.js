@@ -27,7 +27,6 @@ async function saveSettingsQuietly() {
     const config = {
         projects: validProjects,
         scan_interval: parseInt(document.getElementById('scan-interval').value) || 2,
-        iterm_focus_delay: parseFloat(document.getElementById('focus-delay').value) || 0.1,
         idle_timeout_minutes: parseInt(document.getElementById('idle-timeout-minutes').value) || 60,
         stale_threshold_hours: parseFloat(document.getElementById('stale-threshold-hours').value) || 4,
         openrouter: {
@@ -99,7 +98,6 @@ async function loadSettings() {
 
         // Dashboard settings (existing)
         document.getElementById('scan-interval').value = config.scan_interval || 2;
-        document.getElementById('focus-delay').value = config.iterm_focus_delay || 0.1;
 
         // Session summarization
         document.getElementById('idle-timeout-minutes').value = config.idle_timeout_minutes || 60;
@@ -223,7 +221,6 @@ async function saveSettings() {
 
         // Dashboard settings
         scan_interval: parseInt(document.getElementById('scan-interval').value) || 2,
-        iterm_focus_delay: parseFloat(document.getElementById('focus-delay').value) || 0.1,
 
         // Session summarization
         idle_timeout_minutes: parseInt(document.getElementById('idle-timeout-minutes').value) || 60,

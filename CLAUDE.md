@@ -123,7 +123,6 @@ projects:
     # tmux: false           # Disable tmux to use iTerm mode (optional)
 
 scan_interval: 2          # Refresh interval in seconds (default)
-iterm_focus_delay: 0.1    # Delay before focusing window
 ```
 
 ## tmux Integration

@@ -100,7 +100,6 @@ projects:
     tmux: false          # Disable tmux to use iTerm mode
 
 scan_interval: 5        # Dashboard refresh rate (seconds)
-iterm_focus_delay: 0.1  # Delay before focusing window
 ```
 
 ## Usage

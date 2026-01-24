@@ -8,9 +8,27 @@ This module handles:
 
 import subprocess
 import tempfile
+import time
+from pathlib import Path
 from typing import Optional
 
 from lib.headspace import load_headspace, get_priorities_cache
+
+# Directory for notification AppleScript files
+_SCRIPT_DIR = Path(tempfile.gettempdir()) / "claude-monitor-scripts"
+
+
+def _cleanup_old_scripts(max_age_seconds: int = 3600) -> None:
+    """Remove script files older than max_age_seconds (default: 1 hour)."""
+    if not _SCRIPT_DIR.exists():
+        return
+    cutoff = time.time() - max_age_seconds
+    for f in _SCRIPT_DIR.glob("*.applescript"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink()
+        except Exception:
+            pass
 
 # Track session states for notifications
 _previous_states: dict[str, str] = {}
@@ -100,11 +118,12 @@ def send_macos_notification(
                 end if
             end tell
             '''
-            # Write script to temp file for execution on click
-            script_file = tempfile.NamedTemporaryFile(mode='w', suffix='.applescript', delete=False)
-            script_file.write(focus_script)
-            script_file.close()
-            cmd.extend(["-execute", f'osascript "{script_file.name}"'])
+            # Cleanup old scripts and write new one to dedicated directory
+            _cleanup_old_scripts()
+            _SCRIPT_DIR.mkdir(exist_ok=True)
+            script_path = _SCRIPT_DIR / f"focus-{pid}.applescript"
+            script_path.write_text(focus_script)
+            cmd.extend(["-execute", f'osascript "{script_path}"'])
 
         result = subprocess.run(
             cmd,

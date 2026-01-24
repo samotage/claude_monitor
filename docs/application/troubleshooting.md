@@ -58,12 +58,6 @@ Common issues and how to resolve them.
    ```
    If this fails, permissions are the issue.
 
-3. **Increase focus delay**
-   In config.yaml:
-   ```yaml
-   iterm_focus_delay: 0.3  # Try higher values
-   ```
-
 ## Notifications Not Appearing
 
 ### Symptoms
