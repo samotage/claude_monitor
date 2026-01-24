@@ -228,6 +228,7 @@ def send_keys(
     text: str,
     enter: bool = True,
     correlation_id: Optional[str] = None,
+    log_operation: bool = False,
 ) -> bool:
     """Send text to a tmux session.
 
@@ -236,30 +237,33 @@ def send_keys(
         text: Text to send
         enter: If True, append Enter key after text
         correlation_id: Optional ID to link with corresponding capture
+        log_operation: If True, log this operation (for user-initiated API calls)
 
     Returns:
         True if send successful, False otherwise
     """
     if not is_tmux_available():
-        _log_tmux_event(
-            session_name=session_name,
-            direction="out",
-            event_type="send_attempted",
-            payload=text,
-            correlation_id=correlation_id,
-            success=False,
-        )
+        if log_operation:
+            _log_tmux_event(
+                session_name=session_name,
+                direction="out",
+                event_type="send_attempted",
+                payload=text,
+                correlation_id=correlation_id,
+                success=False,
+            )
         return False
 
     if not session_exists(session_name):
-        _log_tmux_event(
-            session_name=session_name,
-            direction="out",
-            event_type="send_attempted",
-            payload=text,
-            correlation_id=correlation_id,
-            success=False,
-        )
+        if log_operation:
+            _log_tmux_event(
+                session_name=session_name,
+                direction="out",
+                event_type="send_attempted",
+                payload=text,
+                correlation_id=correlation_id,
+                success=False,
+            )
         return False
 
     args = ["send-keys", "-t", session_name, text]
@@ -269,14 +273,15 @@ def send_keys(
     returncode, _, _ = _run_tmux(*args)
     success = returncode == 0
 
-    _log_tmux_event(
-        session_name=session_name,
-        direction="out",
-        event_type="send_keys",
-        payload=text,
-        correlation_id=correlation_id,
-        success=success,
-    )
+    if log_operation:
+        _log_tmux_event(
+            session_name=session_name,
+            direction="out",
+            event_type="send_keys",
+            payload=text,
+            correlation_id=correlation_id,
+            success=success,
+        )
 
     return success
 
@@ -286,6 +291,7 @@ def capture_pane(
     lines: int = 100,
     start_line: Optional[int] = None,
     correlation_id: Optional[str] = None,
+    log_operation: bool = False,
 ) -> Optional[str]:
     """Capture the content of a tmux pane.
 
@@ -294,28 +300,31 @@ def capture_pane(
         lines: Number of lines to capture from scrollback (default 100)
         start_line: Optional start line (negative for scrollback)
         correlation_id: Optional ID to link with corresponding send
+        log_operation: If True, log this operation (for user-initiated API calls)
 
     Returns:
         Captured text content, or None on failure
     """
     if not is_tmux_available():
-        _log_tmux_event(
-            session_name=session_name,
-            direction="in",
-            event_type="capture_attempted",
-            correlation_id=correlation_id,
-            success=False,
-        )
+        if log_operation:
+            _log_tmux_event(
+                session_name=session_name,
+                direction="in",
+                event_type="capture_attempted",
+                correlation_id=correlation_id,
+                success=False,
+            )
         return None
 
     if not session_exists(session_name):
-        _log_tmux_event(
-            session_name=session_name,
-            direction="in",
-            event_type="capture_attempted",
-            correlation_id=correlation_id,
-            success=False,
-        )
+        if log_operation:
+            _log_tmux_event(
+                session_name=session_name,
+                direction="in",
+                event_type="capture_attempted",
+                correlation_id=correlation_id,
+                success=False,
+            )
         return None
 
     # -p prints to stdout, -S specifies start line
@@ -331,23 +340,25 @@ def capture_pane(
     returncode, stdout, _ = _run_tmux(*args)
 
     if returncode != 0:
+        if log_operation:
+            _log_tmux_event(
+                session_name=session_name,
+                direction="in",
+                event_type="capture_attempted",
+                correlation_id=correlation_id,
+                success=False,
+            )
+        return None
+
+    if log_operation:
         _log_tmux_event(
             session_name=session_name,
             direction="in",
-            event_type="capture_attempted",
+            event_type="capture_pane",
+            payload=stdout,
             correlation_id=correlation_id,
-            success=False,
+            success=True,
         )
-        return None
-
-    _log_tmux_event(
-        session_name=session_name,
-        direction="in",
-        event_type="capture_pane",
-        payload=stdout,
-        correlation_id=correlation_id,
-        success=True,
-    )
 
     return stdout
 

@@ -442,6 +442,45 @@ def api_logs_tmux_stats():
     })
 
 
+@app.route("/api/logs/tmux/debug", methods=["GET"])
+def api_logs_tmux_debug_get():
+    """Get tmux debug logging state."""
+    from lib.tmux import get_debug_logging
+
+    return jsonify({
+        "success": True,
+        "debug_enabled": get_debug_logging()
+    })
+
+
+@app.route("/api/logs/tmux/debug", methods=["POST"])
+def api_logs_tmux_debug_post():
+    """Set tmux debug logging state.
+
+    Request body:
+        enabled: boolean - whether to enable debug logging
+    """
+    from lib.tmux import set_debug_logging, get_debug_logging
+
+    data = request.get_json() or {}
+    enabled = data.get("enabled", False)
+
+    # Update in-memory state
+    set_debug_logging(enabled)
+
+    # Also update config file for persistence
+    config = load_config()
+    if "tmux_logging" not in config:
+        config["tmux_logging"] = {}
+    config["tmux_logging"]["debug_enabled"] = enabled
+    save_config(config)
+
+    return jsonify({
+        "success": True,
+        "debug_enabled": get_debug_logging()
+    })
+
+
 # =============================================================================
 # Routes - Roadmap API
 # =============================================================================
@@ -895,8 +934,8 @@ def api_send_to_session(session_id: str):
             "error": "tmux session name not found"
         }), 400
 
-    # Send the text
-    success = send_keys(tmux_session, text, enter=enter)
+    # Send the text (log_operation=True for user-initiated API calls)
+    success = send_keys(tmux_session, text, enter=enter, log_operation=True)
 
     if success:
         return jsonify({
@@ -959,7 +998,8 @@ def api_output_from_session(session_id: str):
                 "error": "tmux is not available on this system"
             }), 400
 
-        output = capture_pane(tmux_session, lines=lines)
+        # log_operation=True for user-initiated API calls
+        output = capture_pane(tmux_session, lines=lines, log_operation=True)
         if output is None:
             return jsonify({
                 "success": False,

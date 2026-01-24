@@ -453,7 +453,8 @@ class TestTmuxLoggingIntegration:
             from lib.tmux import send_keys, set_debug_logging
             set_debug_logging(True)
 
-            result = send_keys("claude-test", "Hello!", correlation_id="corr-123")
+            # log_operation=True to enable logging for this test
+            result = send_keys("claude-test", "Hello!", correlation_id="corr-123", log_operation=True)
 
             assert result is True
 
@@ -479,7 +480,8 @@ class TestTmuxLoggingIntegration:
             from lib.tmux import capture_pane, set_debug_logging
             set_debug_logging(True)
 
-            result = capture_pane("claude-test", correlation_id="corr-456")
+            # log_operation=True to enable logging for this test
+            result = capture_pane("claude-test", correlation_id="corr-456", log_operation=True)
 
             assert result == captured_output
 
@@ -503,7 +505,8 @@ class TestTmuxLoggingIntegration:
             from lib.tmux import send_keys, set_debug_logging
             set_debug_logging(False)
 
-            send_keys("claude-test", "Secret message")
+            # log_operation=True to enable logging for this test
+            send_keys("claude-test", "Secret message", log_operation=True)
 
             logs = read_tmux_logs()
             assert len(logs) == 1
@@ -524,8 +527,9 @@ class TestTmuxLoggingIntegration:
 
             corr_id = "my-correlation-id"
 
-            send_keys("claude-test", "Request", correlation_id=corr_id)
-            capture_pane("claude-test", correlation_id=corr_id)
+            # log_operation=True to enable logging for this test
+            send_keys("claude-test", "Request", correlation_id=corr_id, log_operation=True)
+            capture_pane("claude-test", correlation_id=corr_id, log_operation=True)
 
             logs = read_tmux_logs()
             assert len(logs) == 2

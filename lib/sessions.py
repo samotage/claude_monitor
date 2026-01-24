@@ -5,8 +5,10 @@ This module handles:
 - Parsing activity state from terminal window titles and content
 - Formatting session information
 - Turn completion detection for state transition tracking
+- Last activity tracking for session cards
 """
 
+import hashlib
 import json
 import logging
 import re
@@ -16,6 +18,11 @@ from typing import Optional
 
 # Debug logger for activity state detection
 logger = logging.getLogger(__name__)
+
+# Track last activity per session (content hash -> timestamp)
+# Key: session identifier (uuid or tmux_session_name)
+# Value: {"content_hash": str, "last_activity_at": str (ISO format)}
+_session_activity_cache: dict[str, dict] = {}
 
 # Complete list of Claude Code spinner verbs (past tense for turn completion)
 # These appear as "✻ <Verb> for Xm Xs" when Claude finishes a turn
@@ -66,6 +73,72 @@ from lib.tmux import (
     session_exists as tmux_session_exists,
     slugify_project_name,
 )
+
+
+def track_session_activity(session_id: str, content: str) -> str:
+    """Track last activity for a session by detecting content changes.
+
+    Updates the activity cache when content hash changes.
+
+    Args:
+        session_id: Unique session identifier (uuid or tmux_session_name)
+        content: Current terminal content
+
+    Returns:
+        ISO format timestamp of last activity
+    """
+    global _session_activity_cache
+
+    # Compute hash of content (use last 2000 chars for efficiency)
+    content_sample = content[-2000:] if content else ""
+    content_hash = hashlib.md5(content_sample.encode()).hexdigest()
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    if session_id not in _session_activity_cache:
+        # First time seeing this session
+        _session_activity_cache[session_id] = {
+            "content_hash": content_hash,
+            "last_activity_at": now,
+        }
+    elif _session_activity_cache[session_id]["content_hash"] != content_hash:
+        # Content changed - update timestamp
+        _session_activity_cache[session_id]["content_hash"] = content_hash
+        _session_activity_cache[session_id]["last_activity_at"] = now
+
+    return _session_activity_cache[session_id]["last_activity_at"]
+
+
+def format_time_ago(iso_timestamp: str) -> str:
+    """Format an ISO timestamp as human-readable time ago.
+
+    Args:
+        iso_timestamp: ISO 8601 format timestamp
+
+    Returns:
+        Human-readable string like "2m ago", "1h ago", "just now"
+    """
+    try:
+        dt = datetime.fromisoformat(iso_timestamp.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        delta = now - dt
+        seconds = delta.total_seconds()
+
+        if seconds < 10:
+            return "just now"
+        elif seconds < 60:
+            return f"{int(seconds)}s ago"
+        elif seconds < 3600:
+            minutes = int(seconds / 60)
+            return f"{minutes}m ago"
+        elif seconds < 86400:
+            hours = int(seconds / 3600)
+            return f"{hours}h ago"
+        else:
+            days = int(seconds / 86400)
+            return f"{days}d ago"
+    except Exception:
+        return "unknown"
 
 
 def extract_last_message(content_tail: str, max_chars: int = 500) -> str:
@@ -248,6 +321,11 @@ def scan_tmux_session_direct(
         project_name = project_slug or "Unknown"
         project_dir = tmux_info.get("pane_path", "")
 
+    # Track last activity (content change detection)
+    session_id = session_name  # Use tmux session name as identifier
+    last_activity_at = track_session_activity(session_id, content_tail)
+    last_activity_ago = format_time_ago(last_activity_at)
+
     return {
         "uuid": uuid8 or "unknown",
         "uuid_short": uuid8 or "unknown",
@@ -255,6 +333,8 @@ def scan_tmux_session_direct(
         "project_dir": project_dir,
         "started_at": started_at,
         "elapsed": elapsed_str,
+        "last_activity_at": last_activity_at,
+        "last_activity_ago": last_activity_ago,
         "pid": tmux_info.get("pane_pid"),
         "tty": tmux_info.get("pane_tty"),
         "status": "active",
@@ -326,6 +406,11 @@ def scan_tmux_session(
     # Extract last message for tooltip display
     last_message = extract_last_message(content_tail)
 
+    # Track last activity (content change detection)
+    session_id = tmux_session_name  # Use tmux session name as identifier
+    last_activity_at = track_session_activity(session_id, content_tail)
+    last_activity_ago = format_time_ago(last_activity_at)
+
     return {
         "uuid": session_uuid,
         "uuid_short": session_uuid[-8:] if session_uuid else "unknown",
@@ -333,6 +418,8 @@ def scan_tmux_session(
         "project_dir": state.get("project_dir", project["path"]),
         "started_at": started_at,
         "elapsed": elapsed_str,
+        "last_activity_at": last_activity_at,
+        "last_activity_ago": last_activity_ago,
         "pid": tmux_info.get("pane_pid"),
         "tty": tmux_info.get("pane_tty"),
         "status": "active",
@@ -405,6 +492,11 @@ def scan_iterm_session(
     # Extract last message for tooltip display
     last_message = extract_last_message(content_tail)
 
+    # Track last activity (content change detection)
+    session_id = session_uuid  # Use session UUID as identifier for iTerm
+    last_activity_at = track_session_activity(session_id, content_tail)
+    last_activity_ago = format_time_ago(last_activity_at)
+
     return {
         "uuid": session_uuid,
         "uuid_short": session_uuid[-8:] if session_uuid else "unknown",
@@ -412,6 +504,8 @@ def scan_iterm_session(
         "project_dir": state.get("project_dir", project["path"]),
         "started_at": started_at,
         "elapsed": elapsed_str,
+        "last_activity_at": last_activity_at,
+        "last_activity_ago": last_activity_ago,
         "pid": session_pid,
         "tty": session_tty,
         "status": "active",
@@ -635,26 +729,61 @@ def parse_activity_state(window_title: str, content_tail: str = "") -> tuple[str
     # to avoid false positives from old tool executions in history
     recent_content_raw = content_tail[-1500:] if content_tail else ""
 
-    # ACTIVE processing indicators - must be in recent content with "esc to interrupt"
-    # These indicate Claude is CURRENTLY working, not just that it worked earlier
-    is_actively_processing = (
-        "(esc to interrupt" in recent_content_raw and
-        any(p in recent_content_raw for p in ["Running…", "Waiting…", "thinking"])
-    )
+    # ACTIVE processing indicators in recent content
+    # These indicate Claude is CURRENTLY working
+    # Note: Claude Code UI shows the ❯ prompt BELOW the processing output,
+    # so we can't use line position to determine state.
+    #
+    # IMPORTANT distinctions:
+    # - "· thinking)" = ACTIVE (present tense)
+    # - "· thought for" = COMPLETED (past tense)
+    # - "⎿  Running…" = completed command showing output (NOT active)
+    # - "⏺ ... Running…" without ⎿ prefix = ACTIVE command
+
+    # Check for ACTIVE processing - must be currently happening
+    # "thinking)" without "thought for" means ongoing
+    has_active_thinking = "thinking)" in recent_content_raw and "thought for" not in recent_content_raw
+
+    # Check for active command execution
+    # "Running…" is active ONLY if it's not prefixed by ⎿ (which indicates completed output)
+    has_active_running = False
+    for line in recent_content_raw.split("\n"):
+        # Active running: line contains Running… but doesn't start with output prefix ⎿
+        if "Running…" in line and not line.strip().startswith("⎿"):
+            has_active_running = True
+            break
+
+    # Waiting indicator (rare but possible)
+    has_active_waiting = "Waiting…" in recent_content_raw and "thought for" not in recent_content_raw
+
+    is_actively_processing = has_active_thinking or has_active_running or has_active_waiting
 
     # COMPLETION indicators - "✻ Baked for", "✻ Brewed for" etc. mean Claude finished
     # Use the complete TURN_COMPLETE_VERBS list
     is_completed = is_turn_complete(recent_content_raw)
 
-    # Check last few lines for idle prompt (❯)
-    last_lines = content_tail.strip().split("\n")[-10:] if content_tail else []
+    # Check last few lines for idle state
+    # We're idle if the last meaningful content shows completion (✻ Verb for Xm Xs)
+    # and there's no active processing indicator
+    last_lines = content_tail.strip().split("\n") if content_tail else []
 
-    # Look for ❯ prompt in any of the last lines (not just the absolute last)
-    # tmux may have status bars or empty lines after the prompt
-    has_idle_prompt = any(
-        line.strip().startswith("❯") or line.strip() == "❯"
-        for line in last_lines
-    )
+    # Find if there's an idle prompt (❯) that represents waiting for NEW input
+    # This is only valid if there's NO active processing indicator
+    has_idle_prompt = False
+    if not is_actively_processing:
+        # Check if last few lines show the prompt with no processing after
+        for line in reversed(last_lines[-10:]):
+            stripped = line.strip()
+            # Skip empty lines and status bar lines
+            if not stripped or stripped.startswith("samotage@") or stripped.startswith("⏵"):
+                continue
+            # If we hit a prompt line first (before any processing), we're idle
+            if stripped.startswith("❯") or stripped == "❯":
+                has_idle_prompt = True
+                break
+            # If we hit processing output, not idle
+            if any(p in stripped for p in ["⏺", "⎿", "✢", "✻"]):
+                break
 
     if first_char in spinner_chars:
         activity_state = "processing"

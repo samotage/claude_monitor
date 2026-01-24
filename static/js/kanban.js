@@ -49,7 +49,8 @@ function renderKanban(sessions, projects) {
                     <div class="card-header">
                         <span class="status ${session.status}">${session.status}</span>
                         <span class="uuid">${session.uuid_short}</span>
-                        <span class="elapsed">${session.elapsed}</span>
+                        ${session.last_activity_ago ? `<span class="last-activity" title="Last activity: ${escapeHtml(session.last_activity_at || '')}">active ${escapeHtml(session.last_activity_ago)}</span>` : ''}
+                        <span class="elapsed" title="Session uptime">up ${session.elapsed}</span>
                         ${session.pid ? `<span class="pid-info">${session.pid}</span>` : ''}
                         <button class="reboot-btn" onclick="event.stopPropagation(); openRebootPanel('${escapeHtml(projectName)}', '${escapeHtml(session.uuid)}')">Headspace</button>
                     </div>

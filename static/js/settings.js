@@ -124,8 +124,58 @@ async function loadSettings() {
         document.getElementById('priorities-polling-interval').value = priorities.polling_interval || 60;
         document.getElementById('priorities-model').value = priorities.model || '';
 
+        // tmux Logging - load from dedicated endpoint for accurate in-memory state
+        await loadTmuxLoggingState();
+
     } catch (error) {
         console.error('Failed to load settings:', error);
+    }
+}
+
+/**
+ * Load tmux logging debug state from API
+ */
+async function loadTmuxLoggingState() {
+    try {
+        const response = await fetch('/api/logs/tmux/debug');
+        const data = await response.json();
+        if (data.success) {
+            setToggleState('tmux-logging-enabled-btn', data.debug_enabled);
+        }
+    } catch (error) {
+        console.error('Failed to load tmux logging state:', error);
+        setToggleState('tmux-logging-enabled-btn', false);
+    }
+}
+
+/**
+ * Toggle tmux debug logging
+ */
+async function toggleTmuxLogging() {
+    const btn = document.getElementById('tmux-logging-enabled-btn');
+    const currentState = btn?.dataset.state === 'on';
+    const newState = !currentState;
+
+    // Optimistically update UI
+    setToggleState('tmux-logging-enabled-btn', newState);
+
+    try {
+        const response = await fetch('/api/logs/tmux/debug', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: newState })
+        });
+        const data = await response.json();
+
+        if (!data.success) {
+            // Revert on failure
+            setToggleState('tmux-logging-enabled-btn', currentState);
+            console.error('Failed to toggle tmux logging:', data.error);
+        }
+    } catch (error) {
+        // Revert on error
+        setToggleState('tmux-logging-enabled-btn', currentState);
+        console.error('Failed to toggle tmux logging:', error);
     }
 }
 
