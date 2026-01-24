@@ -5,8 +5,10 @@ This module handles:
 - Live session context extraction from JSONL logs
 - Session end detection and summarization triggering
 - Project state updates with live activity data
+- Session state persistence across server restarts
 """
 
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -14,9 +16,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import yaml
+
 from config import load_config
 from lib.projects import load_project_data, save_project_data
-from lib.sessions import scan_sessions
+from lib.sessions import cleanup_stale_session_data, scan_sessions
 from lib.summarization import (
     find_session_log_file,
     get_claude_logs_directory,
@@ -31,6 +35,9 @@ from lib.summarization import (
 
 DEFAULT_SYNC_INTERVAL = 60  # seconds
 DEFAULT_JSONL_TAIL_ENTRIES = 20
+
+# Path to persist session state across restarts
+SESSION_STATE_FILE = Path(__file__).parent.parent / "data" / "session_state.yaml"
 
 
 # =============================================================================
@@ -71,6 +78,124 @@ class KnownSession:
 _sync_thread: Optional[threading.Thread] = None
 _sync_stop_event = threading.Event()
 _known_sessions: Dict[str, KnownSession] = {}
+
+
+# =============================================================================
+# Session State Persistence
+# =============================================================================
+
+
+def _is_process_alive(pid: int) -> bool:
+    """Check if a process with given PID is still running.
+
+    Args:
+        pid: Process ID to check
+
+    Returns:
+        True if process exists, False otherwise
+    """
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)  # Signal 0 doesn't kill, just checks existence
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # Process exists but we can't signal it
+        return True
+
+
+def _save_known_sessions() -> None:
+    """Persist known sessions to disk.
+
+    Saves current session tracking state so it can be restored
+    after a server restart.
+    """
+    global _known_sessions
+
+    if not _known_sessions:
+        # Delete state file if no sessions
+        if SESSION_STATE_FILE.exists():
+            try:
+                SESSION_STATE_FILE.unlink()
+            except Exception:
+                pass
+        return
+
+    # Ensure data directory exists
+    SESSION_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    data = {}
+    for uuid, ks in _known_sessions.items():
+        data[uuid] = {
+            "uuid": ks.uuid,
+            "project_name": ks.project_name,
+            "project_path": ks.project_path,
+            "pid": ks.pid,
+            "first_seen": ks.first_seen.isoformat(),
+            "last_seen": ks.last_seen.isoformat(),
+        }
+
+    try:
+        SESSION_STATE_FILE.write_text(
+            yaml.dump(data, default_flow_style=False, sort_keys=False)
+        )
+    except Exception as e:
+        print(f"Warning: Failed to save session state: {e}")
+
+
+def _load_known_sessions() -> None:
+    """Load known sessions from disk on startup.
+
+    Restores session tracking state from previous server run.
+    Cleans up sessions with dead PIDs.
+    """
+    global _known_sessions
+
+    if not SESSION_STATE_FILE.exists():
+        return
+
+    try:
+        data = yaml.safe_load(SESSION_STATE_FILE.read_text())
+        if not data:
+            return
+
+        loaded_count = 0
+        cleaned_count = 0
+
+        for uuid, session_data in data.items():
+            pid = session_data.get("pid", 0)
+
+            # Skip sessions with dead PIDs
+            if not _is_process_alive(pid):
+                cleaned_count += 1
+                continue
+
+            try:
+                first_seen = datetime.fromisoformat(session_data["first_seen"])
+                last_seen = datetime.fromisoformat(session_data["last_seen"])
+
+                _known_sessions[uuid] = KnownSession(
+                    uuid=session_data["uuid"],
+                    project_name=session_data["project_name"],
+                    project_path=session_data["project_path"],
+                    pid=pid,
+                    first_seen=first_seen,
+                    last_seen=last_seen,
+                )
+                loaded_count += 1
+            except (KeyError, ValueError) as e:
+                print(f"Warning: Invalid session state entry {uuid}: {e}")
+                continue
+
+        if loaded_count > 0:
+            print(f"Info: Restored {loaded_count} sessions from previous run")
+        if cleaned_count > 0:
+            print(f"Info: Cleaned up {cleaned_count} stale sessions")
+
+    except Exception as e:
+        print(f"Warning: Failed to load session state: {e}")
 
 
 # =============================================================================
@@ -445,6 +570,14 @@ def _perform_sync_cycle() -> None:
     if current_sessions:
         _update_project_states_with_live_data(current_sessions)
 
+    # 5. Clean up stale turn tracking data for ended sessions
+    cleaned = cleanup_stale_session_data(current_session_uuids)
+    if cleaned > 0:
+        print(f"Info: Cleaned up {cleaned} stale session tracking entries")
+
+    # 6. Persist session state to disk for restart resilience
+    _save_known_sessions()
+
 
 # =============================================================================
 # Thread Management
@@ -471,6 +604,9 @@ def _session_sync_worker() -> None:
 def start_session_sync_thread() -> bool:
     """Start the background session sync thread.
 
+    Loads any persisted session state from disk before starting,
+    allowing sessions to survive server restarts.
+
     Returns:
         True if thread was started, False if already running
     """
@@ -478,6 +614,9 @@ def start_session_sync_thread() -> bool:
 
     if _sync_thread is not None and _sync_thread.is_alive():
         return False  # Already running
+
+    # Load any persisted session state from previous run
+    _load_known_sessions()
 
     _sync_stop_event.clear()
     _sync_thread = threading.Thread(target=_session_sync_worker, daemon=True)

@@ -109,16 +109,28 @@ def encode_project_path(project_path: str) -> str:
 def get_claude_logs_directory(project_path: str) -> Optional[Path]:
     """Get the Claude Code logs directory for a project.
 
+    Tries multiple encoding strategies to find the logs directory,
+    since Claude Code's actual encoding may vary.
+
     Args:
         project_path: Absolute path to the project
 
     Returns:
         Path to the logs directory, or None if it doesn't exist
     """
-    encoded = encode_project_path(project_path)
-    logs_dir = CLAUDE_PROJECTS_DIR / encoded
-    if logs_dir.exists() and logs_dir.is_dir():
-        return logs_dir
+    path = Path(project_path).resolve()
+
+    # Try multiple encoding strategies
+    encodings = [
+        encode_project_path(project_path),  # Current approach: replace / and _ with -
+        str(path).replace("/", "-"),  # Without underscore replacement
+    ]
+
+    for encoded in encodings:
+        logs_dir = CLAUDE_PROJECTS_DIR / encoded
+        if logs_dir.exists() and logs_dir.is_dir():
+            return logs_dir
+
     return None
 
 

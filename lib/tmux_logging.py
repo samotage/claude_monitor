@@ -33,6 +33,10 @@ TMUX_LOG_FILE = os.path.join(LOG_DIR, "tmux.jsonl")
 # Maximum payload size before truncation (10KB)
 MAX_PAYLOAD_SIZE = 10 * 1024
 
+# Log rotation configuration
+MAX_LOG_SIZE_MB = 10  # Rotate when file exceeds this size
+MAX_LOG_FILES = 5  # Number of rotated files to keep
+
 
 @dataclass
 class TmuxLogEntry:
@@ -96,8 +100,45 @@ def truncate_payload(payload: str) -> tuple[str, bool, int]:
     return truncated_payload, True, original_size
 
 
+def _rotate_log_if_needed(log_file: str) -> None:
+    """Rotate log file if it exceeds max size.
+
+    Rotation scheme: file.jsonl -> file.jsonl.1 -> file.jsonl.2 -> ...
+    Oldest files beyond MAX_LOG_FILES are deleted.
+
+    Args:
+        log_file: Path to the log file to check
+    """
+    if not os.path.exists(log_file):
+        return
+
+    try:
+        size_mb = os.path.getsize(log_file) / (1024 * 1024)
+        if size_mb < MAX_LOG_SIZE_MB:
+            return
+
+        # Rotate existing backups (shift numbers up)
+        for i in range(MAX_LOG_FILES - 1, 0, -1):
+            old_name = f"{log_file}.{i}"
+            new_name = f"{log_file}.{i + 1}"
+            if os.path.exists(old_name):
+                if i + 1 >= MAX_LOG_FILES:
+                    os.remove(old_name)  # Delete oldest
+                else:
+                    os.rename(old_name, new_name)
+
+        # Rotate current log to .1
+        os.rename(log_file, f"{log_file}.1")
+        print(f"Info: Rotated log file {os.path.basename(log_file)} (exceeded {MAX_LOG_SIZE_MB}MB)")
+
+    except OSError as e:
+        print(f"Warning: Log rotation failed: {e}")
+
+
 def write_tmux_log_entry(entry: TmuxLogEntry) -> bool:
     """Write a log entry to the tmux log file.
+
+    Automatically rotates the log file if it exceeds MAX_LOG_SIZE_MB.
 
     Args:
         entry: TmuxLogEntry dataclass instance
@@ -106,6 +147,9 @@ def write_tmux_log_entry(entry: TmuxLogEntry) -> bool:
         True if write was successful
     """
     ensure_log_directory()
+
+    # Check if rotation is needed before writing
+    _rotate_log_if_needed(TMUX_LOG_FILE)
 
     try:
         entry_dict = asdict(entry)

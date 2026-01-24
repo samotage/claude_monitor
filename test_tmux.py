@@ -70,12 +70,27 @@ class TestGetSessionNameForProject:
     """Tests for getting tmux session names from project names."""
 
     def test_simple_project(self):
-        """Simple project name gets claude- prefix."""
-        assert get_session_name_for_project("myproject") == "claude-myproject"
+        """Simple project name gets claude- prefix with hash suffix."""
+        result = get_session_name_for_project("myproject")
+        assert result.startswith("claude-myproject-")
+        assert len(result) == len("claude-myproject-") + 4  # 4-char hash suffix
 
     def test_complex_project_name(self):
-        """Complex project name is slugified with claude- prefix."""
-        assert get_session_name_for_project("My Project Name") == "claude-my-project-name"
+        """Complex project name is slugified with claude- prefix and hash suffix."""
+        result = get_session_name_for_project("My Project Name")
+        assert result.startswith("claude-my-project-name-")
+        assert len(result) == len("claude-my-project-name-") + 4  # 4-char hash suffix
+
+    def test_collision_prevention(self):
+        """Different project names with same slug get different session names."""
+        # These would collide without hash suffix
+        name1 = get_session_name_for_project("My Project")
+        name2 = get_session_name_for_project("my_project")
+        name3 = get_session_name_for_project("MY PROJECT")
+        # All slugify to "my-project" but should have different hashes
+        assert name1 != name2
+        assert name2 != name3
+        assert name1 != name3
 
 
 # =============================================================================

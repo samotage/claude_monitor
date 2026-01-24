@@ -17,6 +17,11 @@ import yaml
 
 from config import load_config
 from lib.projects import get_all_project_roadmaps, get_all_project_states
+from lib.sessions import (
+    clear_previous_activity_states,
+    get_previous_activity_states,
+    set_previous_activity_states,
+)
 
 # Path to the headspace data file
 HEADSPACE_DATA_PATH = Path(__file__).parent.parent / "data" / "headspace.yaml"
@@ -35,9 +40,12 @@ _priorities_cache: dict = {
     "content_hash": None  # Hash of session content for change detection
 }
 
-# State transition tracking - only refresh on meaningful transitions
-# Maps session_id -> previous activity_state
-_previous_activity_states: dict[str, str] = {}
+# Event-driven invalidation tracking
+# When this timestamp changes, clients know to fetch fresh priorities
+_priorities_invalidated_at: Optional[datetime] = None
+
+# NOTE: Activity state tracking is now consolidated in lib/sessions.py
+# Use get_previous_activity_states(), set_previous_activity_states(), clear_previous_activity_states()
 
 
 # =============================================================================
@@ -132,6 +140,9 @@ def save_headspace(current_focus: str, constraints: Optional[str] = None) -> dic
     HEADSPACE_DATA_PATH.write_text(
         yaml.dump(new_data, default_flow_style=False, sort_keys=False, allow_unicode=True)
     )
+
+    # Signal that priorities should refresh due to headspace change
+    emit_priorities_invalidation(reason="headspace_update")
 
     return {
         "current_focus": current_focus,
@@ -258,7 +269,7 @@ def compute_sessions_hash(sessions: list[dict]) -> str:
     return hashlib.md5(hash_input.encode()).hexdigest()
 
 
-def is_cache_valid(current_sessions: list[dict] = None) -> bool:
+def is_cache_valid(current_sessions: list[dict] = None) -> tuple[bool, dict]:
     """Check if cached priorities are still valid.
 
     Cache is valid if:
@@ -279,42 +290,55 @@ def is_cache_valid(current_sessions: list[dict] = None) -> bool:
         current_sessions: Current session list to check for transitions
 
     Returns:
-        True if cache is valid and can be used
+        Tuple of (is_valid, new_states)
+        - is_valid: True if cache is valid and can be used
+        - new_states: Current states dict (pass to update_activity_states after refresh)
     """
     global _priorities_cache
 
     if _priorities_cache["priorities"] is None:
-        return False
+        new_states = {}
+        if current_sessions is not None:
+            _, new_states = should_refresh_priorities(current_sessions)
+        return False, new_states
 
     if _priorities_cache["timestamp"] is None:
-        return False
+        new_states = {}
+        if current_sessions is not None:
+            _, new_states = should_refresh_priorities(current_sessions)
+        return False, new_states
 
     # Only invalidate on meaningful state transitions
     if current_sessions is not None:
-        if should_refresh_priorities(current_sessions):
-            return False  # State transition occurred, invalidate cache
+        needs_refresh, new_states = should_refresh_priorities(current_sessions)
+        if needs_refresh:
+            return False, new_states  # State transition occurred, invalidate cache
+        return True, new_states
 
-    return True
+    return True, {}
 
 
-def get_cached_priorities(current_sessions: list[dict] = None) -> Optional[dict]:
+def get_cached_priorities(current_sessions: list[dict] = None) -> tuple[Optional[dict], dict]:
     """Get cached priorities if valid.
 
     Args:
         current_sessions: Current session list to compare hash against
 
     Returns:
-        Cached priority data or None if cache invalid
+        Tuple of (cached_priorities, new_states)
+        - cached_priorities: Cached priority data or None if cache invalid
+        - new_states: Current states dict (pass to update_activity_states after refresh)
     """
     global _priorities_cache
 
-    if is_cache_valid(current_sessions):
+    is_valid, new_states = is_cache_valid(current_sessions)
+    if is_valid:
         return {
             "priorities": _priorities_cache["priorities"],
             "timestamp": _priorities_cache["timestamp"].isoformat() if _priorities_cache["timestamp"] else None,
             "cache_hit": True,
-        }
-    return None
+        }, new_states
+    return None, new_states
 
 
 def update_priorities_cache(priorities: list[dict], sessions: list[dict] = None, error: str = None) -> None:
@@ -348,16 +372,52 @@ def reset_priorities_cache() -> None:
     Clears all cached priorities and content hashes so sessions
     will be re-prioritized fresh on the next API call.
     """
-    global _priorities_cache, _previous_activity_states
+    global _priorities_cache
     _priorities_cache["priorities"] = None
     _priorities_cache["timestamp"] = None
     _priorities_cache["error"] = None
     _priorities_cache["content_hash"] = None
-    _previous_activity_states = {}
+    clear_previous_activity_states()
 
 
-def should_refresh_priorities(sessions: list[dict]) -> bool:
+# =============================================================================
+# Event-Driven Priorities Invalidation
+# =============================================================================
+
+
+def emit_priorities_invalidation(reason: str = "unknown") -> None:
+    """Signal that priorities should be refreshed.
+
+    Called when events occur that affect priority rankings:
+    - Turn completion (processing -> idle/input_needed)
+    - Headspace update
+    - Session start/end
+
+    Clients can poll get_last_invalidation_time() to know when to fetch fresh data.
+
+    Args:
+        reason: Description of why invalidation occurred (for logging)
+    """
+    global _priorities_invalidated_at
+    _priorities_invalidated_at = datetime.now(timezone.utc)
+
+
+def get_last_invalidation_time() -> Optional[str]:
+    """Get the timestamp of the last priorities invalidation event.
+
+    Returns:
+        ISO format timestamp string, or None if no invalidation has occurred
+    """
+    if _priorities_invalidated_at is None:
+        return None
+    return _priorities_invalidated_at.isoformat()
+
+
+def should_refresh_priorities(sessions: list[dict]) -> tuple[bool, dict]:
     """Determine if we should call OpenRouter based on state transitions.
+
+    This is a PURE function that does NOT mutate global state.
+    Use update_activity_states() to commit the new state after cache refresh.
 
     Only triggers refresh on meaningful state changes to save API costs:
     - processing -> idle/input_needed (turn completed)
@@ -369,12 +429,15 @@ def should_refresh_priorities(sessions: list[dict]) -> bool:
         sessions: Current session list with activity_state
 
     Returns:
-        True if OpenRouter should be called, False otherwise
+        Tuple of (needs_refresh, new_states_dict)
+        - needs_refresh: True if OpenRouter should be called
+        - new_states_dict: The current state map (for passing to update_activity_states)
     """
-    global _previous_activity_states
-
     should_refresh = False
     current_states: dict[str, str] = {}
+
+    # Get previous states from the consolidated tracking in lib/sessions.py
+    previous_states = get_previous_activity_states()
 
     # Build current state map
     for session in sessions:
@@ -382,7 +445,7 @@ def should_refresh_priorities(sessions: list[dict]) -> bool:
         current_state = session.get("activity_state", "unknown")
         current_states[sid] = current_state
 
-        previous_state = _previous_activity_states.get(sid)
+        previous_state = previous_states.get(sid)
 
         # Check for meaningful transitions
         if previous_state is None:
@@ -396,16 +459,27 @@ def should_refresh_priorities(sessions: list[dict]) -> bool:
             should_refresh = True
 
     # Check for disappeared sessions
-    for sid in _previous_activity_states:
+    for sid in previous_states:
         if sid not in current_states:
             # Session disappeared
             should_refresh = True
             break
 
-    # Update state tracking for next call
-    _previous_activity_states = current_states
+    return should_refresh, current_states
 
-    return should_refresh
+
+def update_activity_states(new_states: dict) -> None:
+    """Explicitly update the activity states tracking after cache refresh.
+
+    Call this AFTER a successful priorities refresh to commit the new state.
+    This separation ensures is_cache_valid() is idempotent.
+
+    Uses the consolidated state tracking in lib/sessions.py.
+
+    Args:
+        new_states: The new states dict from should_refresh_priorities()
+    """
+    set_previous_activity_states(new_states)
 
 
 def build_prioritisation_prompt(context: dict) -> list[dict]:
@@ -612,18 +686,6 @@ def default_priority_order(sessions: list[dict]) -> list[dict]:
         "rationale": f"Default ordering by activity state ({s.get('activity_state', 'unknown')})",
         "activity_summary": ""  # No AI summary when using fallback
     } for i, s in enumerate(sorted_sessions)]
-
-
-def is_any_session_processing(sessions: list[dict]) -> bool:
-    """Check if any session is currently processing.
-
-    Args:
-        sessions: List of session dicts with activity_state
-
-    Returns:
-        True if any session has activity_state == "processing"
-    """
-    return any(s.get("activity_state") == "processing" for s in sessions)
 
 
 def get_sessions_with_activity() -> list[dict]:

@@ -11,6 +11,7 @@ unlocking features like voice bridge and remote control that aren't
 possible with iTerm AppleScript alone.
 """
 
+import hashlib
 import re
 import shutil
 import subprocess
@@ -464,10 +465,18 @@ def slugify_project_name(name: str) -> str:
 def get_session_name_for_project(project_name: str) -> str:
     """Get the tmux session name for a project.
 
+    Uses a hash suffix to prevent collisions when different project names
+    slugify to the same value (e.g., "My Project" and "my_project" would
+    both become "my-project" without the suffix).
+
     Args:
         project_name: Project name
 
     Returns:
-        tmux session name in format 'claude-<project-slug>'
+        tmux session name in format 'claude-<project-slug>-<hash>'
+        where hash is a 4-character suffix from the original name
     """
-    return f"claude-{slugify_project_name(project_name)}"
+    slug = slugify_project_name(project_name)
+    # Create a short hash from the original name for uniqueness
+    name_hash = hashlib.md5(project_name.encode()).hexdigest()[:4]
+    return f"claude-{slug}-{name_hash}"

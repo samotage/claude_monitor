@@ -28,6 +28,8 @@ DEFAULT_CONFIG = {
     },
     "priorities": {
         "enabled": True,
+        # DEPRECATED: polling_interval is ignored; priorities refresh is event-driven.
+        # Kept for backwards compatibility with existing config.yaml files.
         "polling_interval": 60,
         "model": "",
     },
@@ -35,6 +37,9 @@ DEFAULT_CONFIG = {
         "enabled": True,
         "interval": 60,
         "jsonl_tail_entries": 20,
+    },
+    "tmux_logging": {
+        "debug_enabled": False,
     },
 }
 

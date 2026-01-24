@@ -62,7 +62,7 @@ The developer immediately knows to focus on billing-api, understands why, and ca
 - **OpenRouter Integration**: Reuse existing client (from Sprint 4) to call ranking model
 - **Ranked Output**: Return ordered list with priority score (0-100) and reasoning per session
 - **Polling Configuration**: Configurable interval for automatic re-prioritisation
-- **Soft Transitions**: Delay reordering until sessions reach natural pause points
+- ~~**Soft Transitions**: Delay reordering until sessions reach natural pause points~~ (DEPRECATED)
 - **Graceful Degradation**: Handle missing headspace, offline sessions, API failures
 - **Response Caching**: Cache priorities within polling interval to avoid redundant API calls
 - **Configuration**: Enable/disable prioritisation, polling interval, model selection
@@ -89,7 +89,7 @@ The developer immediately knows to focus on billing-api, understands why, and ca
 3. **SC3**: Sessions most relevant to the current headspace rank highest
 4. **SC4**: Sessions with `input_needed` activity state receive priority boost (they need attention)
 5. **SC5**: Priorities automatically refresh on the configured interval
-6. **SC6**: Soft transitions prevent reordering while any session is actively processing
+6. ~~**SC6**: Soft transitions prevent reordering while any session is actively processing~~ (DEPRECATED - not implemented)
 7. **SC7**: When headspace is not set, prioritisation uses project roadmaps and activity states only
 8. **SC8**: When OpenRouter is unavailable, the endpoint returns sessions in default order with error indication
 
@@ -165,13 +165,18 @@ The developer immediately knows to focus on billing-api, understands why, and ca
 
 ### Soft Transitions
 
-**FR25**: The system tracks when priorities were last updated
+> **DEPRECATED (2026-01-24)**: Soft transitions feature has been deprecated. The implementation
+> complexity outweighed the benefits, and users preferred immediate priority updates. The
+> requirements below were never implemented and will not be built. Priority refresh now uses
+> an event-driven approach instead of polling with soft transitions.
 
-**FR26**: The system delays priority reordering if any session is actively processing
+**FR25**: ~~The system tracks when priorities were last updated~~
 
-**FR27**: When all sessions reach a natural pause (idle or input_needed), pending priority updates are applied
+**FR26**: ~~The system delays priority reordering if any session is actively processing~~
 
-**FR28**: The API response indicates if a soft transition is pending
+**FR27**: ~~When all sessions reach a natural pause (idle or input_needed), pending priority updates are applied~~
+
+**FR28**: ~~The API response indicates if a soft transition is pending~~
 
 ### Configuration
 

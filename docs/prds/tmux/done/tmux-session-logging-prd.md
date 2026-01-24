@@ -54,7 +54,7 @@ The developer notices the dashboard showing an incorrect session state. They ope
   - Direction (in/out)
   - Payload content
   - Correlation ID linking related send/capture pairs
-- Config toggle: `debug_tmux_logging: true|false`
+- Config toggle: `tmux_logging.debug_enabled: true|false`
   - Off: High-level events only (session_started, session_stopped, send_attempted, capture_attempted) without payload content
   - On: Full payload logging with truncation for large payloads
 - Payload truncation: Payloads exceeding 10KB are truncated with indicator
@@ -98,11 +98,11 @@ The developer notices the dashboard showing an incorrect session state. They ope
 
 ### Configuration
 
-**FR1:** A configuration option `debug_tmux_logging` controls logging verbosity with values `true` or `false`.
+**FR1:** A configuration option `tmux_logging.debug_enabled` controls logging verbosity with values `true` or `false`.
 
-**FR2:** When `debug_tmux_logging` is `false`, the system logs only high-level events: session_started, session_stopped, send_attempted, capture_attempted. No payload content is recorded.
+**FR2:** When `tmux_logging.debug_enabled` is `false`, the system logs only high-level events: session_started, session_stopped, send_attempted, capture_attempted. No payload content is recorded.
 
-**FR3:** When `debug_tmux_logging` is `true`, the system logs full payload content for all tmux operations.
+**FR3:** When `tmux_logging.debug_enabled` is `true`, the system logs full payload content for all tmux operations.
 
 **FR4:** Payloads exceeding 10KB in size are truncated, with an indicator showing the content was truncated and the original size.
 
@@ -236,7 +236,7 @@ Centered message: "No tmux logs yet. Logs will appear here when tmux session ope
 
 ### Debug Off Display
 
-When `debug_tmux_logging` is false, log entries show event type only:
+When `tmux_logging.debug_enabled` is false, log entries show event type only:
 
 ```
 ┌──────────────────────────────────────────────────┐
@@ -257,4 +257,4 @@ These are implementation hints for the development phase, not requirements:
 - **Hook points:** Instrument `send_keys()` and `capture_pane()` in `lib/tmux.py`
 - **Data structure:** Create a `TmuxLogEntry` dataclass following the `LogEntry` pattern
 - **Correlation ID flow:** Caller generates UUID before send, passes to both send and capture calls
-- **Config location:** Add `debug_tmux_logging` to `config.yaml` schema
+- **Config location:** Add `tmux_logging.debug_enabled` to `config.yaml` schema

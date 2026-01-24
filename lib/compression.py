@@ -7,6 +7,7 @@ This module handles:
 - Session-to-history compression
 """
 
+import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -26,6 +27,9 @@ OPENROUTER_TIMEOUT = 30  # seconds
 
 # Retry configuration
 RETRY_DELAYS = [60, 300, 1800]  # 1min, 5min, 30min
+
+# Rate limiting
+API_CALL_DELAY_SECONDS = 2  # Minimum delay between consecutive API calls
 
 # Background thread reference
 _compression_thread: Optional[threading.Thread] = None
@@ -144,6 +148,9 @@ def get_project_history(project_name: str) -> dict:
 def update_project_history(project_name: str, summary: str) -> bool:
     """Update the project's compressed history.
 
+    Preserves the previous summary for rollback capability in case
+    of bad AI output.
+
     Args:
         project_name: Name of the project
         summary: The new compressed summary
@@ -155,9 +162,14 @@ def update_project_history(project_name: str, summary: str) -> bool:
     if project_data is None:
         return False
 
+    existing_history = project_data.get("history", {})
+
     project_data["history"] = {
         "summary": summary,
-        "last_compressed_at": datetime.now(timezone.utc).isoformat()
+        "last_compressed_at": datetime.now(timezone.utc).isoformat(),
+        # Preserve previous summary for rollback
+        "previous_summary": existing_history.get("summary"),
+        "previous_compressed_at": existing_history.get("last_compressed_at"),
     }
 
     return save_project_data(project_name, project_data)
@@ -169,7 +181,10 @@ def update_project_history(project_name: str, summary: str) -> bool:
 
 
 def get_openrouter_config() -> dict:
-    """Get OpenRouter configuration from config.yaml.
+    """Get OpenRouter configuration.
+
+    The API key is loaded from environment variable OPENROUTER_API_KEY first,
+    falling back to config.yaml for backwards compatibility (with deprecation warning).
 
     Returns:
         Dict with 'api_key', 'model', 'compression_interval'
@@ -178,8 +193,16 @@ def get_openrouter_config() -> dict:
     config = load_config()
     openrouter = config.get("openrouter", {})
 
+    # Prefer environment variable for API key
+    api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    if not api_key:
+        # Fall back to config.yaml (deprecated)
+        api_key = openrouter.get("api_key", "")
+        if api_key:
+            print("Warning: OpenRouter API key in config.yaml is deprecated. Use OPENROUTER_API_KEY env var.")
+
     return {
-        "api_key": openrouter.get("api_key", ""),
+        "api_key": api_key,
         "model": openrouter.get("model", DEFAULT_OPENROUTER_MODEL),
         "compression_interval": openrouter.get("compression_interval", DEFAULT_COMPRESSION_INTERVAL)
     }
@@ -411,25 +434,66 @@ def _increment_retry_count(project_name: str, session_id: str) -> None:
     save_project_data(project_name, project_data)
 
 
+def _should_retry_now(session: dict) -> bool:
+    """Check if enough time has passed for retry based on exponential backoff.
+
+    Uses RETRY_DELAYS = [60, 300, 1800] (1min, 5min, 30min) schedule.
+
+    Args:
+        session: Queue entry dict with retry_count and last_retry_at
+
+    Returns:
+        True if session should be retried now, False if waiting
+    """
+    retry_count = session.get("retry_count", 0)
+    last_retry_at = session.get("last_retry_at")
+
+    if retry_count == 0 or not last_retry_at:
+        return True  # Never retried, try now
+
+    # Get delay for this retry attempt (cap at last entry)
+    delay_index = min(retry_count - 1, len(RETRY_DELAYS) - 1)
+    required_delay = RETRY_DELAYS[delay_index]
+
+    try:
+        last_retry = datetime.fromisoformat(last_retry_at.replace("Z", "+00:00"))
+        elapsed = (datetime.now(timezone.utc) - last_retry).total_seconds()
+        return elapsed >= required_delay
+    except (ValueError, AttributeError):
+        return True  # If we can't parse, try anyway
+
+
 def process_compression_queue(project_name: str) -> dict:
     """Process all pending compressions for a project.
 
-    Handles retries with exponential backoff.
+    Handles retries with exponential backoff and rate limiting between API calls.
+    Uses RETRY_DELAYS schedule: 1min, 5min, 30min between retry attempts.
 
     Args:
         project_name: Name of the project
 
     Returns:
-        Dict with 'processed', 'failed', 'remaining' counts
+        Dict with 'processed', 'failed', 'remaining', 'skipped' counts
     """
     pending = get_pending_compressions(project_name)
-    results = {"processed": 0, "failed": 0, "remaining": 0}
+    results = {"processed": 0, "failed": 0, "remaining": 0, "skipped": 0}
+    api_call_made = False
 
     for session in pending:
         session_id = session.get("session_id", "unknown")
         retry_count = session.get("retry_count", 0)
 
+        # Check exponential backoff - skip if not time yet
+        if not _should_retry_now(session):
+            results["skipped"] += 1
+            continue
+
+        # Rate limit: add delay between consecutive API calls
+        if api_call_made:
+            time.sleep(API_CALL_DELAY_SECONDS)
+
         success, error = compress_session(project_name, session)
+        api_call_made = True
 
         if success:
             remove_from_compression_queue(project_name, session_id)

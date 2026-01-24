@@ -64,7 +64,84 @@ _last_completed_turn: dict[str, dict] = {}
 # Track previous activity state per session for transition detection
 # Key: session_id
 # Value: previous activity_state string
+# NOTE: This is the single source of truth for activity state tracking.
+# lib/headspace.py imports accessor functions to use this state.
 _previous_activity_states: dict[str, str] = {}
+
+
+def get_previous_activity_states() -> dict[str, str]:
+    """Get a copy of the current activity states tracking dict.
+
+    Returns:
+        Copy of the session_id -> activity_state mapping
+    """
+    return _previous_activity_states.copy()
+
+
+def get_previous_activity_state(session_id: str) -> str | None:
+    """Get the previous activity state for a session.
+
+    Args:
+        session_id: The session identifier
+
+    Returns:
+        Previous activity state string, or None if not tracked
+    """
+    return _previous_activity_states.get(session_id)
+
+
+def set_previous_activity_states(states: dict[str, str]) -> None:
+    """Replace the entire activity states tracking dict.
+
+    Args:
+        states: New session_id -> activity_state mapping
+    """
+    global _previous_activity_states
+    _previous_activity_states = states
+
+
+def clear_previous_activity_states() -> None:
+    """Clear all tracked activity states."""
+    global _previous_activity_states
+    _previous_activity_states = {}
+
+
+def cleanup_stale_session_data(active_session_ids: set[str]) -> int:
+    """Remove tracking data for sessions that are no longer active.
+
+    This prevents unbounded growth of in-memory tracking dicts when
+    sessions end without explicit cleanup.
+
+    Args:
+        active_session_ids: Set of currently active session IDs
+
+    Returns:
+        Number of stale entries cleaned up
+    """
+    global _turn_tracking, _last_completed_turn, _previous_activity_states
+
+    cleaned_count = 0
+
+    # Clean up turn tracking
+    stale_turn_ids = [sid for sid in _turn_tracking if sid not in active_session_ids]
+    for sid in stale_turn_ids:
+        del _turn_tracking[sid]
+        cleaned_count += 1
+
+    # Clean up last completed turns
+    stale_completed_ids = [sid for sid in _last_completed_turn if sid not in active_session_ids]
+    for sid in stale_completed_ids:
+        del _last_completed_turn[sid]
+        cleaned_count += 1
+
+    # Clean up activity states
+    stale_state_ids = [sid for sid in _previous_activity_states if sid not in active_session_ids]
+    for sid in stale_state_ids:
+        del _previous_activity_states[sid]
+        cleaned_count += 1
+
+    return cleaned_count
+
 
 # Complete list of Claude Code spinner verbs (past tense for turn completion)
 # These appear as "✻ <Verb> for Xm Xs" when Claude finishes a turn
@@ -258,6 +335,10 @@ def track_turn_cycle(
 
             # Note: We keep turn_state in _turn_tracking until a genuinely NEW turn starts
             # This prevents state flicker from creating duplicate completion logs
+
+            # Emit priorities invalidation event (late import to avoid circular dependency)
+            from lib.headspace import emit_priorities_invalidation
+            emit_priorities_invalidation(reason="turn_completed")
 
             logger.debug(f"Turn completed for {session_id}: {duration_seconds:.1f}s, result={current_state} (turn_id={turn_state.turn_id[:8]})")
             return turn_data
@@ -638,9 +719,14 @@ def scan_tmux_session_direct(
     last_activity_at = track_session_activity(session_id, content_tail)
     last_activity_ago = format_time_ago(last_activity_at)
 
+    session_uuid = uuid8 or "unknown"
     return {
-        "uuid": uuid8 or "unknown",
-        "uuid_short": uuid8 or "unknown",
+        # Standardized session identifiers (preferred)
+        "session_id": session_uuid,
+        "session_id_short": session_uuid[-8:] if session_uuid != "unknown" else "unknown",
+        # Legacy fields (maintained for backwards compatibility)
+        "uuid": session_uuid,
+        "uuid_short": session_uuid[-8:] if session_uuid != "unknown" else "unknown",
         "project_name": project_name,
         "project_dir": project_dir,
         "started_at": started_at,
@@ -659,91 +745,6 @@ def scan_tmux_session_direct(
         # tmux-specific fields
         "session_type": "tmux",
         "tmux_session": session_name,
-        "tmux_attached": tmux_info.get("attached", False),
-    }
-
-
-def scan_tmux_session(
-    state: dict,
-    project: dict,
-    iterm_windows: dict,
-) -> Optional[dict]:
-    """Scan a tmux-based session and return session info.
-
-    Args:
-        state: State dict from the session state file
-        project: Project config from config.yaml
-        iterm_windows: Dict of iTerm windows by TTY (for fallback)
-
-    Returns:
-        Session dict if session is active, None otherwise
-    """
-    session_uuid = state.get("uuid", "").lower()
-    tmux_session_name = state.get("tmux_session")
-
-    if not tmux_session_name:
-        return None
-
-    # Check if tmux session still exists
-    if not is_tmux_available() or not tmux_session_exists(tmux_session_name):
-        return None
-
-    # Get tmux session info
-    tmux_info = get_session_info(tmux_session_name)
-    if not tmux_info:
-        return None
-
-    # Capture terminal content from tmux
-    content_tail = capture_pane(tmux_session_name, lines=200) or ""
-
-    # For tmux sessions, we don't have a window title like iTerm
-    # Try to extract activity state from content alone
-    # Use empty string for title, rely on content-based detection
-    window_title = ""  # tmux doesn't have window titles like iTerm
-
-    # Parse started_at
-    started_at = state.get("started_at", "")
-    try:
-        start_time = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
-        elapsed = datetime.now(timezone.utc) - start_time
-        elapsed_str = format_elapsed(elapsed.total_seconds())
-    except Exception:
-        elapsed_str = "unknown"
-
-    # Extract activity state from content
-    activity_state, task_summary = parse_activity_state(window_title, content_tail)
-
-    # Prepare terminal content for AI summarization
-    content_snippet = prepare_content_for_summary(content_tail)
-
-    # Extract last message for tooltip display
-    last_message = extract_last_message(content_tail)
-
-    # Track last activity (content change detection)
-    session_id = tmux_session_name  # Use tmux session name as identifier
-    last_activity_at = track_session_activity(session_id, content_tail)
-    last_activity_ago = format_time_ago(last_activity_at)
-
-    return {
-        "uuid": session_uuid,
-        "uuid_short": session_uuid[-8:] if session_uuid else "unknown",
-        "project_name": project["name"],
-        "project_dir": state.get("project_dir", project["path"]),
-        "started_at": started_at,
-        "elapsed": elapsed_str,
-        "last_activity_at": last_activity_at,
-        "last_activity_ago": last_activity_ago,
-        "pid": tmux_info.get("pane_pid"),
-        "tty": tmux_info.get("pane_tty"),
-        "status": "active",
-        "activity_state": activity_state,
-        "window_title": window_title,
-        "task_summary": task_summary if task_summary else f"tmux: {tmux_session_name}",
-        "content_snippet": content_snippet,
-        "last_message": last_message,
-        # tmux-specific fields
-        "session_type": "tmux",
-        "tmux_session": tmux_session_name,
         "tmux_attached": tmux_info.get("attached", False),
     }
 
@@ -811,6 +812,10 @@ def scan_iterm_session(
     last_activity_ago = format_time_ago(last_activity_at)
 
     return {
+        # Standardized session identifiers (preferred)
+        "session_id": session_uuid,
+        "session_id_short": session_uuid[-8:] if session_uuid else "unknown",
+        # Legacy fields (maintained for backwards compatibility)
         "uuid": session_uuid,
         "uuid_short": session_uuid[-8:] if session_uuid else "unknown",
         "project_name": project["name"],  # Use config name, not state file
@@ -1016,8 +1021,10 @@ def parse_activity_state(window_title: str, content_tail: str = "") -> tuple[str
 
     # Find if there's an idle prompt (❯) that represents waiting for NEW input
     # Check regardless of processing state - use completion marker as deciding factor
+    # Note: Claude Code UI has ~5-10 lines of chrome below the prompt (dividers, status bar)
+    # so we need to check more than 10 lines to reliably find the prompt
     has_idle_prompt = False
-    for line in reversed(last_lines[-10:]):
+    for line in reversed(last_lines[-25:]):
         stripped = line.strip()
         # Skip empty lines and status bar lines
         if not stripped or stripped.startswith("samotage@") or stripped.startswith("⏵"):

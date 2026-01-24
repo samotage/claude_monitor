@@ -39,6 +39,8 @@ from lib.headspace import (
     build_prioritisation_prompt,
     default_priority_order,
     get_cached_priorities,
+    get_headspace_history,
+    get_last_invalidation_time,
     get_priorities_config,
     get_sessions_with_activity,
     is_headspace_enabled,
@@ -47,7 +49,7 @@ from lib.headspace import (
     parse_priority_response,
     reset_priorities_cache,
     save_headspace,
-    get_headspace_history,
+    update_activity_states,
     update_priorities_cache,
 )
 from lib.iterm import focus_iterm_window_by_pid, focus_iterm_window_by_tmux_session, get_pid_tty
@@ -699,28 +701,29 @@ def compute_priorities(force_refresh: bool = False) -> dict:
 
     # Check cache unless forced refresh
     # Pass sessions so cache can check if content has changed
-    if not force_refresh:
-        cached = get_cached_priorities(sessions)
-        if cached:
-            # Get session states for filtering
-            session_states = {s["session_id"]: s["activity_state"] for s in sessions}
+    # get_cached_priorities returns (cached_data, new_states) tuple
+    cached, new_states = get_cached_priorities(sessions)
+    if not force_refresh and cached:
+        # Get session states for filtering
+        session_states = {s["session_id"]: s["activity_state"] for s in sessions}
 
-            # Only include priorities for sessions that still exist
-            valid_priorities = []
-            for p in cached["priorities"]:
-                if p["session_id"] in session_states:
-                    p["activity_state"] = session_states[p["session_id"]]
-                    valid_priorities.append(p)
+        # Only include priorities for sessions that still exist
+        valid_priorities = []
+        for p in cached["priorities"]:
+            if p["session_id"] in session_states:
+                p["activity_state"] = session_states[p["session_id"]]
+                valid_priorities.append(p)
 
-            return {
-                "success": True,
-                "priorities": valid_priorities,
-                "metadata": {
-                    "timestamp": cached["timestamp"],
-                    "headspace_summary": None,  # Not fetched for cache hit
-                    "cache_hit": True,
-                }
+        return {
+            "success": True,
+            "priorities": valid_priorities,
+            "metadata": {
+                "timestamp": cached["timestamp"],
+                "headspace_summary": None,  # Not fetched for cache hit
+                "cache_hit": True,
+                "last_invalidated": get_last_invalidation_time(),
             }
+        }
 
     if not sessions:
         return {
@@ -730,6 +733,7 @@ def compute_priorities(force_refresh: bool = False) -> dict:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "headspace_summary": context.get("headspace", {}).get("current_focus") if context.get("headspace") else None,
                 "cache_hit": False,
+                "last_invalidated": get_last_invalidation_time(),
             }
         }
 
@@ -743,6 +747,8 @@ def compute_priorities(force_refresh: bool = False) -> dict:
         # Fallback to default ordering
         priorities = default_priority_order(sessions)
         update_priorities_cache(priorities, sessions=sessions, error=error)
+        # Commit the activity state changes after cache update
+        update_activity_states(new_states)
 
         # Add activity_state
         session_states = {s["session_id"]: s["activity_state"] for s in sessions}
@@ -756,7 +762,8 @@ def compute_priorities(force_refresh: bool = False) -> dict:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "headspace_summary": context.get("headspace", {}).get("current_focus") if context.get("headspace") else None,
                 "cache_hit": False,
-                "error": f"AI unavailable ({error}), using default ordering"
+                "error": f"AI unavailable ({error}), using default ordering",
+                "last_invalidated": get_last_invalidation_time(),
             }
         }
 
@@ -765,6 +772,8 @@ def compute_priorities(force_refresh: bool = False) -> dict:
 
     # Update cache with content hash for change detection
     update_priorities_cache(priorities, sessions=sessions)
+    # Commit the activity state changes after cache update
+    update_activity_states(new_states)
 
     # Add activity_state to each priority
     session_states = {s["session_id"]: s["activity_state"] for s in sessions}
@@ -781,6 +790,7 @@ def compute_priorities(force_refresh: bool = False) -> dict:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "headspace_summary": headspace_summary,
             "cache_hit": False,
+            "last_invalidated": get_last_invalidation_time(),
         }
     }
 
@@ -902,7 +912,7 @@ def api_send_to_session(session_id: str):
 
     session = None
     for s in sessions:
-        if s.get("uuid") == session_id or s.get("uuid_short") == session_id:
+        if s.get("session_id") == session_id or s.get("uuid") == session_id or s.get("uuid_short") == session_id:
             session = s
             break
 
@@ -965,7 +975,7 @@ def api_output_from_session(session_id: str):
 
     session = None
     for s in sessions:
-        if s.get("uuid") == session_id or s.get("uuid_short") == session_id:
+        if s.get("session_id") == session_id or s.get("uuid") == session_id or s.get("uuid_short") == session_id:
             session = s
             break
 

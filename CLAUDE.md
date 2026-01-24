@@ -75,9 +75,25 @@ claude_monitor/
 ├── restart_server.sh    # Script to restart the Flask server
 ├── config.yaml.example  # Configuration template
 ├── config.yaml          # User configuration (gitignored)
+├── .env                 # Environment variables (gitignored, contains API keys)
+├── .env.example         # Environment template
 ├── requirements.txt     # Python dependencies
 ├── bin/
 │   └── claude-monitor   # Session wrapper script
+├── lib/                 # Python modules
+│   ├── sessions.py      # Session scanning and tracking
+│   ├── headspace.py     # Headspace and priorities
+│   ├── compression.py   # Session summarization
+│   ├── tmux.py          # tmux integration
+│   └── ...              # Other modules
+├── data/                # Application data
+│   ├── projects/        # Project YAML data files
+│   │   └── <project>.yaml
+│   ├── logs/            # Application logs
+│   │   ├── openrouter.jsonl  # OpenRouter API call logs
+│   │   └── tmux.jsonl        # tmux session message logs
+│   ├── headspace.yaml   # Current focus and constraints
+│   └── session_state.yaml  # Persisted session tracking
 ├── venv/                # Python virtual environment
 ├── orch/                # PRD orchestration Ruby scripts
 │   ├── orchestrator.rb  # Main dispatcher
@@ -106,7 +122,7 @@ projects:
     path: "/absolute/path/to/project"
     # tmux: false           # Disable tmux to use iTerm mode (optional)
 
-scan_interval: 5          # Refresh interval in seconds
+scan_interval: 2          # Refresh interval in seconds (default)
 iterm_focus_delay: 0.1    # Delay before focusing window
 ```
 
@@ -178,13 +194,18 @@ curl http://localhost:5050/api/output/<session_id>?lines=100
 
 | Function | Purpose |
 |----------|---------|
-| `scan_sessions()` | Scan all project directories for session state files |
+| `scan_sessions()` | Scan tmux sessions for active Claude Code sessions |
 | `get_iterm_windows()` | Get iTerm sessions mapped by TTY via AppleScript |
 | `get_pid_tty()` | Get the TTY for a given process ID |
 | `parse_activity_state()` | Determine if session is processing/input_needed/idle |
 | `focus_iterm_window_by_pid()` | Bring iTerm window to foreground by matching PID to TTY |
 | `send_macos_notification()` | Send notification via terminal-notifier |
 | `check_state_changes_and_notify()` | Track state changes and trigger notifications |
+| `track_turn_cycle()` | Track user command → Claude response cycle (tmux only) |
+| `compute_priorities()` | Calculate AI-ranked session priorities |
+| `aggregate_priority_context()` | Gather context for prioritization prompt |
+| `call_openrouter()` | Make API call to OpenRouter |
+| `emit_priorities_invalidation()` | Signal that priorities should refresh |
 
 ## API Endpoints
 
@@ -201,6 +222,15 @@ curl http://localhost:5050/api/output/<session_id>?lines=100
 | `/api/config` | GET/POST | Read/write configuration |
 | `/api/notifications` | GET/POST | Notification enable/disable |
 | `/api/notifications/test` | POST | Send test notification |
+| `/api/priorities` | GET | Get AI-ranked session priorities |
+| `/api/logs/tmux` | GET | Get tmux session logs |
+| `/api/logs/tmux/debug` | GET/POST | Get/set tmux debug logging state |
+| `/api/session/<id>/summarise` | POST | Manually trigger session summarization |
+| `/api/project/<name>/roadmap` | GET/POST | Get/update project roadmap |
+| `/api/project/<permalink>/brain-refresh` | GET | Get brain reboot briefing |
+| `/api/headspace` | GET/POST | Get/set current headspace |
+| `/api/headspace/history` | GET | Get headspace history |
+| `/api/reset` | POST | Reset all working state |
 
 ## Notes for AI Assistants
 
@@ -208,7 +238,18 @@ curl http://localhost:5050/api/output/<session_id>?lines=100
 - **macOS-only:** AppleScript integration requires macOS with iTerm2
 - **State files:** Created by `claude-monitor start` wrapper, not this application
 - **No database:** All state is read from filesystem and iTerm at request time
-- **Notifications:** Require terminal-notifier to be installed via Homebrew
+- **API Keys:** OpenRouter API key should be in `.env` file, not config.yaml
+
+### Notifications
+
+Notifications require `terminal-notifier` installed via Homebrew:
+```bash
+brew install terminal-notifier
+```
+
+Notifications can be enabled/disabled via:
+- **API:** `POST /api/notifications` with `{"enabled": true/false}`
+- **Dashboard:** Toggle in settings panel
 
 ### Development Tips
 

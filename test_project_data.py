@@ -64,7 +64,6 @@ from lib.headspace import (
     build_prioritisation_prompt,
     parse_priority_response,
     is_cache_valid,
-    is_any_session_processing,
     default_priority_order as _default_priority_order,
     _priorities_cache,
     update_priorities_cache,
@@ -1143,7 +1142,8 @@ class TestCacheValidity:
             "pending_priorities": None,
             "error": None
         })
-        assert is_cache_valid() is False
+        is_valid, _ = is_cache_valid()
+        assert is_valid is False
 
     def test_cache_valid_within_interval(self, monkeypatch):
         """Test cache is valid within polling interval."""
@@ -1156,27 +1156,9 @@ class TestCacheValidity:
             "error": None
         })
         monkeypatch.setattr("lib.headspace.get_priorities_config", lambda: {"polling_interval": 60})
-        assert is_cache_valid() is True
+        is_valid, _ = is_cache_valid()
+        assert is_valid is True
 
-
-class TestSoftTransitions:
-    """Tests for soft transition detection and handling."""
-
-    def test_is_any_session_processing_true(self):
-        """Test detecting processing session."""
-        sessions = [
-            {"activity_state": "idle"},
-            {"activity_state": "processing"},
-        ]
-        assert is_any_session_processing(sessions) is True
-
-    def test_is_any_session_processing_false(self):
-        """Test no processing sessions."""
-        sessions = [
-            {"activity_state": "idle"},
-            {"activity_state": "input_needed"},
-        ]
-        assert is_any_session_processing(sessions) is False
 
 class TestComputePriorities:
     """Tests for compute_priorities integration."""
@@ -1194,7 +1176,8 @@ class TestComputePriorities:
         """Test compute handles no active sessions."""
         # Must patch at the monitor module level since that's where compute_priorities imports from
         monkeypatch.setattr("monitor.is_priorities_enabled", lambda: True)
-        monkeypatch.setattr("monitor.get_cached_priorities", lambda: None)
+        # get_cached_priorities now returns (cached_data, new_states) tuple
+        monkeypatch.setattr("monitor.get_cached_priorities", lambda sessions: (None, {}))
         monkeypatch.setattr("monitor.aggregate_priority_context", lambda: {
             "headspace": None,
             "roadmaps": {},
@@ -1211,7 +1194,8 @@ class TestComputePriorities:
         import lib.headspace
         # Must patch at the monitor module level since that's where compute_priorities imports from
         monkeypatch.setattr("monitor.is_priorities_enabled", lambda: True)
-        monkeypatch.setattr("monitor.get_cached_priorities", lambda: None)
+        # get_cached_priorities now returns (cached_data, new_states) tuple
+        monkeypatch.setattr("monitor.get_cached_priorities", lambda sessions: (None, {}))
         monkeypatch.setattr("lib.headspace._priorities_cache", {
             "priorities": None,
             "timestamp": None,
@@ -1225,7 +1209,7 @@ class TestComputePriorities:
             "sessions": [{"project_name": "test", "session_id": "1", "activity_state": "idle", "task_summary": ""}]
         })
         monkeypatch.setattr("monitor.get_priorities_config", lambda: {"model": "test"})
-        monkeypatch.setattr("monitor.call_openrouter", lambda m, model: (None, "API error"))
+        monkeypatch.setattr("monitor.call_openrouter", lambda m, model=None, caller=None: (None, "API error"))
 
         result = compute_priorities(force_refresh=True)
         assert result["success"] is True  # Still succeeds with fallback
@@ -1379,7 +1363,7 @@ class TestFullPipelineIntegration:
         # Step 4: Mock OpenRouter and process compression
         monkeypatch.setattr(
             "lib.compression.call_openrouter",
-            lambda msgs, model=None: ("Compressed: Initial session established project baseline.", None)
+            lambda msgs, model=None, caller=None: ("Compressed: Initial session established project baseline.", None)
         )
 
         results = process_compression_queue(project_name)
@@ -1429,7 +1413,7 @@ class TestFullPipelineIntegration:
         # Mock rate limited response
         monkeypatch.setattr(
             "lib.compression.call_openrouter",
-            lambda msgs, model=None: (None, "rate_limited")
+            lambda msgs, model=None, caller=None: (None, "rate_limited")
         )
 
         # Process - should fail but remain in queue for retry
