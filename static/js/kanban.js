@@ -1,5 +1,66 @@
 /* Kanban Rendering Functions */
 
+/**
+ * Get hybrid activity summary for display.
+ *
+ * Hybrid approach:
+ * - Processing: Show deterministic "Processing: {turn_command}" (user's command)
+ * - Input needed: Show "Waiting for input" or AI description of what's waiting
+ * - Idle: Show AI-generated summary of what was completed
+ *
+ * @param {Object} session - Session data including turn_command
+ * @param {Object|null} priorityInfo - AI-generated priority data including activity_summary
+ * @returns {string} HTML for the summary div
+ */
+function getHybridSummary(session, priorityInfo) {
+    const state = session.activity_state;
+    const turnCommand = session.turn_command;  // Current command (processing) or last completed (idle)
+    const aiSummary = priorityInfo?.activity_summary;
+    const taskSummary = session.task_summary;
+
+    let summaryText = '';
+    let cssClass = 'activity-summary';
+
+    if (state === 'processing') {
+        // Deterministic: show what the user asked
+        if (turnCommand) {
+            // Truncate long commands
+            const displayCommand = turnCommand.length > 60
+                ? turnCommand.substring(0, 57) + '...'
+                : turnCommand;
+            summaryText = `Processing: ${displayCommand}`;
+            cssClass = 'activity-summary processing-summary';
+        } else {
+            summaryText = 'Processing...';
+            cssClass = 'activity-summary processing-summary';
+        }
+    } else if (state === 'input_needed') {
+        // Show AI summary if available, otherwise generic
+        summaryText = aiSummary || 'Waiting for input';
+        cssClass = 'activity-summary input-needed-summary';
+    } else {
+        // Idle: prefer AI summary, then turn_command context, then task_summary
+        if (aiSummary) {
+            summaryText = aiSummary;
+        } else if (turnCommand) {
+            // Show what was just completed
+            const displayCommand = turnCommand.length > 50
+                ? turnCommand.substring(0, 47) + '...'
+                : turnCommand;
+            summaryText = `Completed: ${displayCommand}`;
+        } else {
+            summaryText = taskSummary || 'Ready for task';
+        }
+        cssClass = 'activity-summary idle-summary';
+    }
+
+    if (!summaryText) {
+        return '';
+    }
+
+    return `<div class="${cssClass}">${escapeHtml(summaryText)}</div>`;
+}
+
 function renderKanban(sessions, projects) {
     const kanban = document.getElementById('kanban');
 
@@ -60,9 +121,7 @@ function renderKanban(sessions, projects) {
                         ${session.session_type === 'tmux' ? `<span class="tmux-badge ${session.tmux_attached ? 'attached' : 'detached'}" title="tmux: ${escapeHtml(session.tmux_session || '')}${session.tmux_attached ? ' (attached)' : ' (detached)'}">tmux</span>` : ''}
                     </div>
                     ${isStale ? `<div class="stale-indicator"><span class="stale-icon">&#128347;</span> Stale - ${formatStaleness(stalenessHours)}</div>` : ''}
-                    ${priorityInfo && priorityInfo.activity_summary ?
-                        `<div class="activity-summary">${escapeHtml(priorityInfo.activity_summary)}</div>` :
-                        `<div class="task-summary">${escapeHtml(session.task_summary)}</div>`}
+                    ${getHybridSummary(session, priorityInfo)}
                     ${priorityHtml}
                 </div>
             </div>

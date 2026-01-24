@@ -36,7 +36,6 @@ from lib.compression import (
 )
 from lib.headspace import (
     aggregate_priority_context,
-    apply_soft_transition,
     build_prioritisation_prompt,
     default_priority_order,
     get_cached_priorities,
@@ -720,7 +719,6 @@ def compute_priorities(force_refresh: bool = False) -> dict:
                     "timestamp": cached["timestamp"],
                     "headspace_summary": None,  # Not fetched for cache hit
                     "cache_hit": True,
-                    "soft_transition_pending": cached["soft_transition_pending"]
                 }
             }
 
@@ -732,7 +730,6 @@ def compute_priorities(force_refresh: bool = False) -> dict:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "headspace_summary": context.get("headspace", {}).get("current_focus") if context.get("headspace") else None,
                 "cache_hit": False,
-                "soft_transition_pending": False
             }
         }
 
@@ -759,16 +756,12 @@ def compute_priorities(force_refresh: bool = False) -> dict:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "headspace_summary": context.get("headspace", {}).get("current_focus") if context.get("headspace") else None,
                 "cache_hit": False,
-                "soft_transition_pending": False,
                 "error": f"AI unavailable ({error}), using default ordering"
             }
         }
 
     # Parse response
     priorities = parse_priority_response(response_text, sessions)
-
-    # Apply soft transitions
-    priorities, soft_pending = apply_soft_transition(priorities, sessions)
 
     # Update cache with content hash for change detection
     update_priorities_cache(priorities, sessions=sessions)
@@ -788,7 +781,6 @@ def compute_priorities(force_refresh: bool = False) -> dict:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "headspace_summary": headspace_summary,
             "cache_hit": False,
-            "soft_transition_pending": soft_pending
         }
     }
 

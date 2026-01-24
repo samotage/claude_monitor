@@ -5,6 +5,18 @@ This module handles:
 - Reading/writing tmux session logs from JSONL file
 - Filtering and searching log entries
 - Payload truncation for large messages
+- Turn pair retrieval (turn_start + turn_complete linked by correlation_id)
+
+Event types:
+- send_keys: Text sent to tmux session (direction=out)
+- capture_pane: Pane content captured (direction=in)
+- session_started: Session lifecycle event
+- turn_start: User command sent to Claude (direction=out)
+  - Payload: {turn_id, command, started_at}
+  - correlation_id: turn_id (links to turn_complete)
+- turn_complete: Claude response finished (direction=in)
+  - Payload: {turn_id, command, result_state, completion_marker, duration_seconds, started_at, response_summary}
+  - correlation_id: turn_id (links to turn_start)
 """
 
 import json
@@ -289,3 +301,110 @@ def get_tmux_log_stats() -> dict:
 
     stats["unique_sessions"] = len(sessions)
     return stats
+
+
+def get_turn_pairs(
+    logs: Optional[list[dict]] = None,
+    session_id: Optional[str] = None,
+) -> list[dict]:
+    """Retrieve matched turn_start/turn_complete pairs from logs.
+
+    Turn pairs are linked by their correlation_id (which equals turn_id).
+    Each pair represents a complete user command → Claude response cycle.
+
+    Args:
+        logs: Optional list of logs to search. If None, reads all logs.
+        session_id: Optional filter by session_id
+
+    Returns:
+        List of turn pair dicts, newest first. Each dict contains:
+        - turn_id: The unique identifier linking the pair
+        - start: The turn_start log entry (or None if missing)
+        - complete: The turn_complete log entry (or None if missing)
+        - command: User's command (from start or complete payload)
+        - duration_seconds: Turn duration (from complete payload, or None)
+        - response_summary: Claude's response summary (from complete payload, or None)
+    """
+    if logs is None:
+        logs = read_tmux_logs()
+
+    # Filter by session_id if provided
+    if session_id:
+        logs = [entry for entry in logs if entry.get("session_id") == session_id]
+
+    # Filter to turn events only
+    turn_logs = [
+        entry for entry in logs
+        if entry.get("event_type") in ("turn_start", "turn_complete")
+    ]
+
+    # Group by correlation_id (turn_id)
+    turns_by_id: dict[str, dict] = {}
+
+    for entry in turn_logs:
+        turn_id = entry.get("correlation_id")
+        if not turn_id:
+            continue
+
+        if turn_id not in turns_by_id:
+            turns_by_id[turn_id] = {
+                "turn_id": turn_id,
+                "start": None,
+                "complete": None,
+            }
+
+        event_type = entry.get("event_type")
+        if event_type == "turn_start":
+            turns_by_id[turn_id]["start"] = entry
+        elif event_type == "turn_complete":
+            turns_by_id[turn_id]["complete"] = entry
+
+    # Build result list with extracted fields
+    result = []
+    for turn_id, pair in turns_by_id.items():
+        # Extract command from either start or complete
+        command = None
+        if pair["start"]:
+            try:
+                payload = json.loads(pair["start"].get("payload", "{}"))
+                command = payload.get("command")
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        if not command and pair["complete"]:
+            try:
+                payload = json.loads(pair["complete"].get("payload", "{}"))
+                command = payload.get("command")
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # Extract duration and response_summary from complete
+        duration_seconds = None
+        response_summary = None
+        if pair["complete"]:
+            try:
+                payload = json.loads(pair["complete"].get("payload", "{}"))
+                duration_seconds = payload.get("duration_seconds")
+                response_summary = payload.get("response_summary")
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        result.append({
+            "turn_id": turn_id,
+            "start": pair["start"],
+            "complete": pair["complete"],
+            "command": command,
+            "duration_seconds": duration_seconds,
+            "response_summary": response_summary,
+        })
+
+    # Sort by timestamp of complete (or start if no complete), newest first
+    def get_timestamp(pair: dict) -> str:
+        if pair["complete"]:
+            return pair["complete"].get("timestamp", "")
+        if pair["start"]:
+            return pair["start"].get("timestamp", "")
+        return ""
+
+    result.sort(key=get_timestamp, reverse=True)
+    return result

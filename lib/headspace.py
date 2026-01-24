@@ -31,7 +31,6 @@ DEFAULT_PRIORITIES_MODEL = "anthropic/claude-3-haiku"
 _priorities_cache: dict = {
     "priorities": None,
     "timestamp": None,
-    "pending_priorities": None,  # For soft transitions
     "error": None,
     "content_hash": None  # Hash of session content for change detection
 }
@@ -314,7 +313,6 @@ def get_cached_priorities(current_sessions: list[dict] = None) -> Optional[dict]
             "priorities": _priorities_cache["priorities"],
             "timestamp": _priorities_cache["timestamp"].isoformat() if _priorities_cache["timestamp"] else None,
             "cache_hit": True,
-            "soft_transition_pending": _priorities_cache["pending_priorities"] is not None
         }
     return None
 
@@ -353,7 +351,6 @@ def reset_priorities_cache() -> None:
     global _priorities_cache, _previous_activity_states
     _priorities_cache["priorities"] = None
     _priorities_cache["timestamp"] = None
-    _priorities_cache["pending_priorities"] = None
     _priorities_cache["error"] = None
     _priorities_cache["content_hash"] = None
     _previous_activity_states = {}
@@ -411,39 +408,6 @@ def should_refresh_priorities(sessions: list[dict]) -> bool:
     return should_refresh
 
 
-def apply_soft_transition(new_priorities: list[dict], sessions: list[dict]) -> tuple[list[dict], bool]:
-    """Apply soft transition logic for priority updates.
-
-    If any session is processing, store new priorities as pending and return cached.
-
-    Args:
-        new_priorities: Newly computed priorities
-        sessions: Current sessions with activity states
-
-    Returns:
-        Tuple of (priorities_to_return, soft_transition_pending)
-    """
-    global _priorities_cache
-
-    # Check if any session is processing
-    is_processing = any(s.get("activity_state") == "processing" for s in sessions)
-
-    if is_processing:
-        # Store as pending, return cached (if available) or new
-        _priorities_cache["pending_priorities"] = new_priorities
-        if _priorities_cache["priorities"]:
-            return _priorities_cache["priorities"], True
-        return new_priorities, True
-
-    # No session processing - apply any pending priorities
-    if _priorities_cache["pending_priorities"]:
-        priorities_to_apply = _priorities_cache["pending_priorities"]
-        _priorities_cache["pending_priorities"] = None
-        return priorities_to_apply, False
-
-    return new_priorities, False
-
-
 def build_prioritisation_prompt(context: dict) -> list[dict]:
     """Build a token-efficient prompt for AI session prioritisation.
 
@@ -482,10 +446,11 @@ Output format (JSON only, no markdown):
 }
 
 Activity summary guidelines:
-- Describe the CURRENT action based on terminal content
-- Use present continuous tense: "Reading...", "Writing...", "Waiting for..."
+- For PROCESSING sessions with turn_command: leave activity_summary EMPTY (UI will show the command)
+- For IDLE sessions: describe what was just completed based on terminal content
+- For INPUT_NEEDED sessions: describe what question/decision is waiting
+- Use past tense for completed work: "Fixed auth bug", "Added dark mode"
 - Be specific: mention file names, features, or tasks when visible
-- If session is idle, describe what was just completed or is ready
 - Keep under 100 characters"""
 
     # Build user prompt with context
@@ -507,6 +472,7 @@ Activity summary guidelines:
         state = session["activity_state"]
         task = session.get("task_summary", "")
         content = session.get("content_snippet", "")
+        turn_command = session.get("turn_command", "")
 
         # Add roadmap context for this project
         roadmap = roadmaps.get(proj, {})
@@ -520,6 +486,8 @@ Activity summary guidelines:
         session_line = f"- {proj} (id:{sid}, state:{state})"
         if task:
             session_line += f" - {task}"
+        if turn_command:
+            session_line += f" [turn_command: {turn_command[:80]}]"
         if next_up_title:
             session_line += f" [next_up: {next_up_title}]"
         if summary:
@@ -706,7 +674,8 @@ def aggregate_priority_context() -> dict:
         "uuid_short": s.get("uuid_short", ""),
         "activity_state": s.get("activity_state", "unknown"),
         "task_summary": s.get("task_summary", ""),
-        "content_snippet": s.get("content_snippet", "")  # Terminal content for AI summarization
+        "content_snippet": s.get("content_snippet", ""),  # Terminal content for AI summarization
+        "turn_command": s.get("turn_command", ""),  # User's command that started current turn (if processing)
     } for s in sessions]
 
     return {

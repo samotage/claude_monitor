@@ -249,17 +249,3 @@
     background: var(--cyan);
     color: var(--bg-void);
 }
-
-.soft-transition-indicator {
-    display: none;
-    align-items: center;
-    gap: 6px;
-    color: var(--amber);
-    font-size: 0.75rem;
-    margin-left: auto;
-    animation: pulse-soft 2s ease-in-out infinite;
-}
-
-.soft-transition-indicator.visible {
-    display: flex;
-}

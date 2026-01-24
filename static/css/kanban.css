@@ -348,6 +348,17 @@
     font-style: normal;
 }
 
+/* Processing summary shows user's command - not italic, cyan accent */
+.activity-summary.processing-summary {
+    font-style: normal;
+    color: var(--cyan);
+}
+
+.activity-summary.processing-summary::before {
+    content: "⏳ ";
+    color: var(--amber);
+}
+
 /* Syntax highlighting for task summary */
 .task-keyword { color: var(--cyan); }
 .task-string { color: var(--green); }

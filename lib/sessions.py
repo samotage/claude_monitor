@@ -6,12 +6,15 @@ This module handles:
 - Formatting session information
 - Turn completion detection for state transition tracking
 - Last activity tracking for session cards
+- Turn cycle logging for tracking user commands and Claude responses
 """
 
 import hashlib
 import json
 import logging
 import re
+import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -23,6 +26,45 @@ logger = logging.getLogger(__name__)
 # Key: session identifier (uuid or tmux_session_name)
 # Value: {"content_hash": str, "last_activity_at": str (ISO format)}
 _session_activity_cache: dict[str, dict] = {}
+
+
+# =============================================================================
+# Turn Cycle Tracking
+# =============================================================================
+
+@dataclass
+class TurnState:
+    """Track the state of a turn (user command → Claude response cycle).
+
+    A turn starts when the user sends a command (activity_state transitions TO processing)
+    and ends when Claude finishes (activity_state transitions FROM processing).
+
+    The turn_id links the turn_start and turn_complete log entries together.
+    The logged_* flags prevent duplicate log entries from state flickering.
+    """
+    turn_id: str              # UUID linking start/complete log entries
+    command: str              # User's command that started the turn
+    started_at: datetime      # When processing began
+    previous_state: str       # State before processing started (idle/input_needed)
+    logged_start: bool = False       # Prevent duplicate start logs
+    logged_completion: bool = False  # Prevent duplicate completion logs
+
+
+# Track turn state per session
+# Key: session_id (tmux_session_name or uuid)
+# Value: TurnState or None if not in a turn
+_turn_tracking: dict[str, Optional[TurnState]] = {}
+
+# Track the most recently completed turn per session
+# This allows us to tell the AI what command was just completed when session is idle
+# Key: session_id
+# Value: dict with command, result_state, completion_marker, duration_seconds
+_last_completed_turn: dict[str, dict] = {}
+
+# Track previous activity state per session for transition detection
+# Key: session_id
+# Value: previous activity_state string
+_previous_activity_states: dict[str, str] = {}
 
 # Complete list of Claude Code spinner verbs (past tense for turn completion)
 # These appear as "✻ <Verb> for Xm Xs" when Claude finishes a turn
@@ -59,9 +101,266 @@ def is_turn_complete(content: str) -> bool:
     """
     if not content:
         return False
-    # Check last 300 chars for completion pattern
-    tail = content[-300:]
+    # Check last 800 chars for completion pattern (status bar can be 300+ chars)
+    tail = content[-800:]
     return any(f"✻ {verb} for" in tail for verb in TURN_COMPLETE_VERBS)
+
+
+def extract_turn_command(content: str, max_chars: int = 100) -> str:
+    """Extract the user's command from terminal content.
+
+    Looks for the most recent line after the ❯ prompt that represents
+    what the user typed to start this turn.
+
+    Args:
+        content: Terminal content to search
+        max_chars: Maximum characters to return
+
+    Returns:
+        The extracted command, truncated if needed, or empty string if not found
+    """
+    if not content:
+        return ""
+
+    lines = content.strip().split("\n")
+
+    # Search backwards for the last ❯ prompt line with content after it
+    for i, line in enumerate(reversed(lines)):
+        # Check if line starts with or contains ❯ prompt
+        if "❯" in line:
+            # Extract text after the prompt
+            prompt_idx = line.rfind("❯")
+            command = line[prompt_idx + 1:].strip()
+
+            # If there's content on the same line, that's the command
+            if command:
+                if len(command) > max_chars:
+                    return command[:max_chars] + "..."
+                return command
+
+    return ""
+
+
+def extract_completion_marker(content: str) -> str:
+    """Extract the completion marker from terminal content.
+
+    Looks for patterns like "✻ Baked for 2m 30s" in recent content.
+
+    Args:
+        content: Terminal content to search
+
+    Returns:
+        The completion marker string (e.g., "✻ Baked for 2m 30s") or empty string
+    """
+    if not content:
+        return ""
+
+    # Check last 300 chars
+    tail = content[-300:]
+
+    # Build pattern to match "✻ Verb for Xm Xs" or "✻ Verb for Xs"
+    for verb in TURN_COMPLETE_VERBS:
+        pattern = f"✻ {verb} for"
+        if pattern in tail:
+            # Find the full marker (includes time)
+            start = tail.find(pattern)
+            # Extract until end of line or next newline
+            end = tail.find("\n", start)
+            if end == -1:
+                return tail[start:].strip()
+            return tail[start:end].strip()
+
+    return ""
+
+
+def track_turn_cycle(
+    session_id: str,
+    tmux_session_name: str,
+    current_state: str,
+    content: str,
+) -> Optional[dict]:
+    """Track turn cycle transitions and log atomic turn pairs.
+
+    Logs two linked entries per turn:
+    - turn_start (direction=out) when user sends command
+    - turn_complete (direction=in) when Claude finishes, with response summary
+
+    Both entries share the same turn_id via correlation_id field.
+    Duplicate prevention: logged_completion flag prevents re-logging on state flicker.
+
+    Args:
+        session_id: Session identifier
+        tmux_session_name: The tmux session name for logging
+        current_state: Current activity state (processing/idle/input_needed)
+        content: Terminal content for extracting command/completion marker
+
+    Returns:
+        Turn data dict if a turn just completed, None otherwise
+    """
+    global _turn_tracking, _previous_activity_states
+
+    previous_state = _previous_activity_states.get(session_id, "unknown")
+    _previous_activity_states[session_id] = current_state
+
+    # Turn START: transition TO processing (genuine new turn)
+    if current_state == "processing" and previous_state in ("idle", "input_needed", "unknown"):
+        # Extract the command that started this turn
+        command = extract_turn_command(content)
+
+        # Generate unique turn_id for linking start/complete entries
+        turn_id = str(uuid.uuid4())
+
+        turn_state = TurnState(
+            turn_id=turn_id,
+            command=command,
+            started_at=datetime.now(timezone.utc),
+            previous_state=previous_state,
+            logged_start=False,
+            logged_completion=False,
+        )
+        _turn_tracking[session_id] = turn_state
+
+        # Log turn start immediately
+        _log_turn_start(session_id, tmux_session_name, turn_state)
+        turn_state.logged_start = True
+
+        logger.debug(f"Turn started for {session_id}: '{command[:50]}...' (turn_id={turn_id[:8]})")
+        return None
+
+    # Turn END: transition FROM processing
+    if previous_state == "processing" and current_state in ("idle", "input_needed"):
+        turn_state = _turn_tracking.get(session_id)
+        if turn_state and not turn_state.logged_completion:
+            # Calculate duration
+            duration_seconds = (datetime.now(timezone.utc) - turn_state.started_at).total_seconds()
+            completion_marker = extract_completion_marker(content)
+
+            # Extract response summary from Claude's output
+            response_summary = extract_last_message(content)
+
+            # Build turn data for logging
+            turn_data = {
+                "command": turn_state.command,
+                "result_state": current_state,
+                "completion_marker": completion_marker,
+                "duration_seconds": round(duration_seconds, 1),
+                "started_at": turn_state.started_at.isoformat(),
+            }
+
+            # Store as last completed turn (for AI context when idle)
+            _last_completed_turn[session_id] = turn_data
+
+            # Log the turn completion with response summary
+            _log_turn_completion(session_id, tmux_session_name, turn_state, turn_data, response_summary)
+
+            # Mark as logged to prevent duplicates on state flicker
+            turn_state.logged_completion = True
+
+            # Note: We keep turn_state in _turn_tracking until a genuinely NEW turn starts
+            # This prevents state flicker from creating duplicate completion logs
+
+            logger.debug(f"Turn completed for {session_id}: {duration_seconds:.1f}s, result={current_state} (turn_id={turn_state.turn_id[:8]})")
+            return turn_data
+
+    return None
+
+
+def get_last_completed_turn(session_id: str) -> Optional[dict]:
+    """Get the most recently completed turn for a session.
+
+    This is useful for providing context to the AI when describing
+    what a session just completed.
+
+    Args:
+        session_id: Session identifier
+
+    Returns:
+        Dict with command, result_state, completion_marker, etc. or None
+    """
+    return _last_completed_turn.get(session_id)
+
+
+def _log_turn_start(session_id: str, tmux_session_name: str, turn_state: TurnState) -> None:
+    """Log a turn start to the tmux log file.
+
+    Creates a log entry with event_type="turn_start" and direction="out" (user command).
+    The turn_id in correlation_id links this to the corresponding turn_complete entry.
+
+    Args:
+        session_id: Session identifier
+        tmux_session_name: The tmux session name
+        turn_state: TurnState with turn_id, command, started_at
+    """
+    from lib.tmux_logging import create_tmux_log_entry, write_tmux_log_entry
+
+    payload = {
+        "turn_id": turn_state.turn_id,
+        "command": turn_state.command,
+        "started_at": turn_state.started_at.isoformat(),
+    }
+
+    entry = create_tmux_log_entry(
+        session_id=session_id,
+        tmux_session_name=tmux_session_name,
+        direction="out",  # User command is outgoing
+        event_type="turn_start",
+        payload=json.dumps(payload),
+        correlation_id=turn_state.turn_id,
+        debug_enabled=True,  # Always log turn data
+    )
+
+    write_tmux_log_entry(entry)
+
+
+def _log_turn_completion(session_id: str, tmux_session_name: str, turn_state: TurnState, turn_data: dict, response_summary: str) -> None:
+    """Log a turn completion to the tmux log file.
+
+    Creates a log entry with event_type="turn_complete" and direction="in" (Claude response).
+    The turn_id in correlation_id links this to the corresponding turn_start entry.
+
+    Args:
+        session_id: Session identifier
+        tmux_session_name: The tmux session name
+        turn_state: TurnState with turn_id for correlation
+        turn_data: Dict with command, result_state, completion_marker, duration_seconds, started_at
+        response_summary: Summary of Claude's response (extracted from terminal content)
+    """
+    from lib.tmux_logging import create_tmux_log_entry, write_tmux_log_entry
+
+    # Add turn_id and response_summary to payload
+    payload = {
+        "turn_id": turn_state.turn_id,
+        **turn_data,
+        "response_summary": response_summary,
+    }
+
+    entry = create_tmux_log_entry(
+        session_id=session_id,
+        tmux_session_name=tmux_session_name,
+        direction="in",  # Claude's response is incoming
+        event_type="turn_complete",
+        payload=json.dumps(payload),
+        correlation_id=turn_state.turn_id,
+        debug_enabled=True,  # Always log turn data
+    )
+
+    write_tmux_log_entry(entry)
+
+
+def get_current_turn_command(session_id: str) -> Optional[str]:
+    """Get the command for the current in-progress turn.
+
+    Args:
+        session_id: Session identifier
+
+    Returns:
+        The command string if a turn is in progress, None otherwise
+    """
+    turn_state = _turn_tracking.get(session_id)
+    if turn_state:
+        return turn_state.command
+    return None
+
 
 from lib.iterm import get_pid_tty, focus_iterm_window_by_pid
 from lib.summarization import prepare_content_for_summary
@@ -306,6 +605,19 @@ def scan_tmux_session_direct(
     # Extract activity state from content
     activity_state, task_summary = parse_activity_state(window_title, content_tail)
 
+    # Track turn cycle (logs when turn completes, returns turn data)
+    # Use session_name as the session_id for consistency
+    track_turn_cycle(session_name, session_name, activity_state, content_tail)
+
+    # Get turn command for display:
+    # - If processing: show the current turn's command
+    # - If idle: show the last completed turn's command (for AI context)
+    if activity_state == "processing":
+        turn_command = get_current_turn_command(session_name)
+    else:
+        last_turn = get_last_completed_turn(session_name)
+        turn_command = last_turn.get("command") if last_turn else None
+
     # Prepare terminal content for AI summarization
     content_snippet = prepare_content_for_summary(content_tail)
 
@@ -343,6 +655,7 @@ def scan_tmux_session_direct(
         "task_summary": task_summary if task_summary else f"tmux: {session_name}",
         "content_snippet": content_snippet,
         "last_message": last_message,
+        "turn_command": turn_command,  # Current turn's user command (if processing)
         # tmux-specific fields
         "session_type": "tmux",
         "tmux_session": session_name,
@@ -642,78 +955,22 @@ def parse_activity_state(window_title: str, content_tail: str = "") -> tuple[str
     permission_chars = set("?❓⚠️🔒⏸")
 
     # Patterns in terminal content that indicate Claude is waiting for user input
-    # These appear when Claude asks a question or needs permission
+    # ONLY specific Claude Code UI elements - nothing that could appear in response text
     input_needed_patterns = [
-        # Claude Code built-in UI patterns
-        "Esc to cancel",
-        "Tab to add additional instructions",
-        "Do you want to proceed?",
+        # Claude Code permission dialog - ONLY these exact UI strings
         "Yes, and don't ask again",
         "Yes, and always allow",
         "Allow once",
         "Allow for this session",
-        "❯ 1.",  # Numbered choice prompt
+        # Claude Code choice selector (with prompt character)
         "❯ Yes",
         "❯ No",
-        # AskUserQuestion tool patterns
+        "❯ 1.",
+        "❯ 2.",
+        "❯ 3.",
+        # AskUserQuestion tool UI
         "Enter to select",
-        "to navigate",
-        "Type something",
-        # Yes/no prompt variations
-        "[y/n]",
-        "[Y/n]",
-        "[y/N]",
-        "(y/n)",
-        "(Y/n)",
-        "(y/N)",
-        "[yes/no]",
-        "(yes/no)",
-        "yes or no",
-        "y or n?",
-        # Proceed/continue prompts
-        "proceed?",
-        "continue?",
-        "should I proceed",
-        "should I continue",
-        "shall I proceed",
-        "shall I continue",
-        "want me to proceed",
-        "want me to continue",
-        "ready to proceed",
-        # Confirmation prompts
-        "confirm?",
-        "is this correct",
-        "is that correct",
-        "does this look",
-        "sound good?",
-        "look good?",
-        "looks good?",
-        "make sense?",
-        "what do you think",
-        # Choice/selection prompts
-        "which option",
-        "which approach",
-        "what would you prefer",
-        "would you prefer",
-        "please choose",
-        "please select",
-        "your choice",
-        # Permission prompts
-        "may I",
-        "can I proceed",
-        "shall I",
-        "would you like me to",
-        "do you want me to",
-        # Waiting for input
-        "waiting for your",
-        "let me know",
-        "please respond",
-        "your input",
-        "your feedback",
-        "awaiting your",
-        # Checkpoint patterns (like the example)
-        "CHECKPOINT:",
-        "checkpoint:",
+        "↑↓ to navigate",
     ]
 
     # Get the first character to determine base state
@@ -741,49 +998,43 @@ def parse_activity_state(window_title: str, content_tail: str = "") -> tuple[str
     # - "⏺ ... Running…" without ⎿ prefix = ACTIVE command
 
     # Check for ACTIVE processing - must be currently happening
-    # "thinking)" without "thought for" means ongoing
-    has_active_thinking = "thinking)" in recent_content_raw and "thought for" not in recent_content_raw
+    # The "(esc to interrupt)" indicator appears ABOVE the prompt and status bar
+    # Status bar + prompt can be 400+ chars, so check last 800 chars
+    tail_content = content_tail[-800:] if content_tail else ""
+    has_esc_to_interrupt = "(esc to interrupt" in tail_content
 
-    # Check for active command execution
-    # "Running…" is active ONLY if it's not prefixed by ⎿ (which indicates completed output)
-    has_active_running = False
-    for line in recent_content_raw.split("\n"):
-        # Active running: line contains Running… but doesn't start with output prefix ⎿
-        if "Running…" in line and not line.strip().startswith("⎿"):
-            has_active_running = True
-            break
+    # If "(esc to interrupt)" is in the tail, Claude is actively processing
+    is_actively_processing = has_esc_to_interrupt
 
-    # Waiting indicator (rare but possible)
-    has_active_waiting = "Waiting…" in recent_content_raw and "thought for" not in recent_content_raw
-
-    is_actively_processing = has_active_thinking or has_active_running or has_active_waiting
-
-    # COMPLETION indicators - "✻ Baked for", "✻ Brewed for" etc. mean Claude finished
-    # Use the complete TURN_COMPLETE_VERBS list
+    # COMPLETION indicators override processing - if turn is complete, not processing
+    # "✻ Baked for", "✻ Brewed for" etc. mean Claude finished
     is_completed = is_turn_complete(recent_content_raw)
 
     # Check last few lines for idle state
     # We're idle if the last meaningful content shows completion (✻ Verb for Xm Xs)
-    # and there's no active processing indicator
     last_lines = content_tail.strip().split("\n") if content_tail else []
 
     # Find if there's an idle prompt (❯) that represents waiting for NEW input
-    # This is only valid if there's NO active processing indicator
+    # Check regardless of processing state - use completion marker as deciding factor
     has_idle_prompt = False
-    if not is_actively_processing:
-        # Check if last few lines show the prompt with no processing after
-        for line in reversed(last_lines[-10:]):
-            stripped = line.strip()
-            # Skip empty lines and status bar lines
-            if not stripped or stripped.startswith("samotage@") or stripped.startswith("⏵"):
-                continue
-            # If we hit a prompt line first (before any processing), we're idle
-            if stripped.startswith("❯") or stripped == "❯":
-                has_idle_prompt = True
-                break
-            # If we hit processing output, not idle
-            if any(p in stripped for p in ["⏺", "⎿", "✢", "✻"]):
-                break
+    for line in reversed(last_lines[-10:]):
+        stripped = line.strip()
+        # Skip empty lines and status bar lines
+        if not stripped or stripped.startswith("samotage@") or stripped.startswith("⏵"):
+            continue
+        # If we hit a prompt line first (before any processing), we're idle
+        if stripped.startswith("❯") or stripped == "❯":
+            has_idle_prompt = True
+            break
+        # If we hit processing output, not idle
+        if any(p in stripped for p in ["⏺", "⎿", "✢", "✻"]):
+            break
+
+    # Override processing detection if turn is completed
+    # If we see a completion marker (✻ Baked for...) in recent content,
+    # old "thinking)" or "Running…" patterns are from completed work, not active
+    if is_completed:
+        is_actively_processing = False
 
     if first_char in spinner_chars:
         activity_state = "processing"
@@ -795,11 +1046,10 @@ def parse_activity_state(window_title: str, content_tail: str = "") -> tuple[str
         activity_state = "input_needed"
     elif not window_title and content_tail:
         # For tmux sessions without window title, use content-based detection
-        # Priority: active processing > idle prompt
-        # Active processing = "(esc to interrupt" present AND no idle prompt after it
+        # Priority: active processing > completed turn > idle prompt
         if is_actively_processing:
             activity_state = "processing"
-        elif has_idle_prompt:
+        elif is_completed or has_idle_prompt:
             activity_state = "idle"
         else:
             activity_state = "unknown"

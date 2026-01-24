@@ -13,7 +13,6 @@ let currentSessions = null;
 // Priority dashboard state
 let prioritiesData = null;
 let prioritiesAvailable = false;
-let softTransitionPending = false;
 let sortMode = localStorage.getItem('sortMode') || 'priority';
 let contextPanelSessionPid = null;
 
@@ -39,6 +38,10 @@ let lastFingerprint = '';
 
 // Flag to track if a render was deferred due to blocking UI state
 let renderDeferred = false;
+
+// Track previous activity states per session for transition detection
+// When processing → idle/input_needed, we need fresh AI summaries
+let previousActivityStates = {};
 
 // Cache DOM element references
 let inputNeededCountEl;

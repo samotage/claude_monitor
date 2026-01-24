@@ -68,7 +68,6 @@ from lib.headspace import (
     default_priority_order as _default_priority_order,
     _priorities_cache,
     update_priorities_cache,
-    apply_soft_transition,
 )
 
 # Main app functions
@@ -1179,41 +1178,6 @@ class TestSoftTransitions:
         ]
         assert is_any_session_processing(sessions) is False
 
-    def test_apply_soft_transition_with_processing(self, monkeypatch):
-        """Test soft transition stores pending when processing."""
-        import lib.headspace
-        monkeypatch.setattr("lib.headspace._priorities_cache", {
-            "priorities": [{"old": "data"}],
-            "timestamp": datetime.now(timezone.utc),
-            "pending_priorities": None,
-            "error": None
-        })
-
-        new_priorities = [{"new": "data"}]
-        sessions = [{"activity_state": "processing"}]
-
-        result, pending = apply_soft_transition(new_priorities, sessions)
-        assert pending is True
-        assert result[0]["old"] == "data"  # Returns old
-
-    def test_apply_soft_transition_no_processing(self, monkeypatch):
-        """Test soft transition applies immediately when not processing."""
-        import lib.headspace
-        monkeypatch.setattr("lib.headspace._priorities_cache", {
-            "priorities": None,
-            "timestamp": None,
-            "pending_priorities": None,
-            "error": None
-        })
-
-        new_priorities = [{"new": "data"}]
-        sessions = [{"activity_state": "idle"}]
-
-        result, pending = apply_soft_transition(new_priorities, sessions)
-        assert pending is False
-        assert result[0]["new"] == "data"
-
-
 class TestComputePriorities:
     """Tests for compute_priorities integration."""
 
@@ -1303,7 +1267,6 @@ class TestApiPrioritiesEndpoint:
                 "timestamp": "2024-01-01T00:00:00Z",
                 "headspace_summary": "Focus",
                 "cache_hit": False,
-                "soft_transition_pending": False
             }
         })
 

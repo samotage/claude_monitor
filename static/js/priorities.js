@@ -36,11 +36,9 @@ async function fetchPriorities(forceRefresh = false) {
 
         prioritiesData = data;
         prioritiesAvailable = true;
-        softTransitionPending = data.metadata?.soft_transition_pending || false;
 
         showPriorityUI();
         updateRecommendedNextPanel();
-        updateSoftTransitionIndicator();
 
         // Re-render kanban if in priority mode to update badges
         // But skip if user has blocking UI state (e.g., editing roadmap)
@@ -89,12 +87,16 @@ function updateRecommendedNextPanel() {
     scoreEl.textContent = topSession.priority_score;
     uuidEl.textContent = topSession.uuid_short || '';
     nameEl.textContent = topSession.project_name;
-    stateEl.textContent = formatActivityState(topSession.activity_state);
-    stateEl.className = 'recommended-next-state ' + topSession.activity_state;
 
-    // Find the matching session from currentSessions to get last_message
+    // Find the matching session from currentSessions for FRESH data
     const sessionPid = topSession.session_id;
     const matchingSession = currentSessions?.find(s => String(s.pid) === String(sessionPid));
+
+    // Use FRESH activity_state from currentSessions, not stale prioritiesData
+    const freshActivityState = matchingSession?.activity_state || topSession.activity_state;
+    stateEl.textContent = formatActivityState(freshActivityState);
+    stateEl.className = 'recommended-next-state ' + freshActivityState;
+
     const lastMessage = matchingSession?.last_message || '';
 
     // Add tooltip with last message if available
@@ -111,8 +113,30 @@ function updateRecommendedNextPanel() {
         stateEl.onclick = null;
     }
 
-    // Show activity summary if available, otherwise fall back to rationale
-    rationaleEl.textContent = topSession.activity_summary || topSession.rationale || 'Top priority session';
+    // Apply HYBRID SUMMARY logic - same as session cards
+    // This ensures Recommended Next shows fresh/deterministic content, not stale AI
+    const turnCommand = matchingSession?.turn_command || '';
+    let summaryText;
+
+    if (freshActivityState === 'processing') {
+        // Deterministic: show user's command
+        summaryText = turnCommand
+            ? `Processing: ${turnCommand.length > 50 ? turnCommand.substring(0, 47) + '...' : turnCommand}`
+            : 'Processing...';
+    } else if (freshActivityState === 'input_needed') {
+        summaryText = topSession.activity_summary || 'Waiting for input';
+    } else {
+        // Idle: prefer AI summary, then turn_command context, then rationale
+        if (topSession.activity_summary) {
+            summaryText = topSession.activity_summary;
+        } else if (turnCommand) {
+            summaryText = `Completed: ${turnCommand.length > 50 ? turnCommand.substring(0, 47) + '...' : turnCommand}`;
+        } else {
+            summaryText = topSession.rationale || 'Ready for task';
+        }
+    }
+
+    rationaleEl.textContent = summaryText;
 }
 
 function focusRecommendedSession() {
@@ -122,15 +146,6 @@ function focusRecommendedSession() {
     const topSession = prioritiesData.priorities[0];
     if (topSession.session_id) {
         focusWindow(parseInt(topSession.session_id));
-    }
-}
-
-function updateSoftTransitionIndicator() {
-    const indicator = document.getElementById('soft-transition-indicator');
-    if (softTransitionPending) {
-        indicator.classList.add('visible');
-    } else {
-        indicator.classList.remove('visible');
     }
 }
 

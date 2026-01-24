@@ -65,9 +65,57 @@ async function fetchSessions() {
 
         updateStats(data.sessions);
         updateRefreshIndicator();
+
+        // Update Recommended Next panel with fresh session data
+        // This ensures activity_state and hybrid summary stay in sync
+        if (typeof updateRecommendedNextPanel === 'function') {
+            updateRecommendedNextPanel();
+        }
+
+        // Check for state transitions that require fresh AI summaries
+        // When processing → idle/input_needed, a turn completed - get new AI summary
+        const shouldRefreshPriorities = detectStateTransitions(data.sessions);
+        if (shouldRefreshPriorities && typeof fetchPriorities === 'function') {
+            console.log('State transition detected - refreshing priorities for fresh AI summary');
+            fetchPriorities(true);  // force refresh
+        }
     } catch (error) {
         console.error('Failed to fetch sessions:', error);
     }
+}
+
+/**
+ * Detect state transitions that require a priority refresh.
+ * Returns true if any session transitioned from processing → idle/input_needed
+ * (indicating a turn completed and we need fresh AI summary).
+ */
+function detectStateTransitions(sessions) {
+    let needsRefresh = false;
+
+    for (const session of sessions) {
+        const sessionId = String(session.pid);
+        const currentState = session.activity_state;
+        const previousState = previousActivityStates[sessionId];
+
+        // Turn completed: processing → idle or input_needed
+        if (previousState === 'processing' && (currentState === 'idle' || currentState === 'input_needed')) {
+            console.log(`Turn completed for session ${sessionId}: ${previousState} → ${currentState}`);
+            needsRefresh = true;
+        }
+
+        // Update tracking
+        previousActivityStates[sessionId] = currentState;
+    }
+
+    // Clean up sessions that no longer exist
+    const currentSessionIds = new Set(sessions.map(s => String(s.pid)));
+    for (const sessionId of Object.keys(previousActivityStates)) {
+        if (!currentSessionIds.has(sessionId)) {
+            delete previousActivityStates[sessionId];
+        }
+    }
+
+    return needsRefresh;
 }
 
 function updateStats(sessions) {
