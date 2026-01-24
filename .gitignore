@@ -39,3 +39,6 @@ orch/working/
 # Project data files (user-specific, use project.yaml.example as template)
 data/projects/*
 !data/projects/project.yaml.example
+
+# Headspace state (runtime)
+data/headspace.yaml
