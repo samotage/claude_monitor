@@ -106,7 +106,9 @@ function getActivityInfo(state) {
 }
 
 function getSessionFingerprint(sessions) {
-    return sessions.map(s => `${s.uuid}:${s.activity_state}:${s.status}:${s.elapsed}`).join('|');
+    // Include last_activity_at so content changes trigger re-renders even when
+    // activity_state stays the same (critical for WezTerm where elapsed is static)
+    return sessions.map(s => `${s.uuid}:${s.activity_state}:${s.status}:${s.elapsed}:${s.last_activity_at || ''}`).join('|');
 }
 
 /**

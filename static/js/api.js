@@ -10,6 +10,11 @@ async function focusWindowAPI(pid) {
     return await response.json();
 }
 
+async function focusSessionAPI(sessionName) {
+    const response = await fetch(`/api/focus/session/${encodeURIComponent(sessionName)}`, { method: 'POST' });
+    return await response.json();
+}
+
 async function fetchNotificationStatusAPI() {
     const response = await fetch('/api/notifications');
     return await response.json();

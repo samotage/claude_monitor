@@ -62,7 +62,7 @@ Both entries share a `correlation_id` = `turn_id` for linking.
 **Priority:** Critical
 **Location:** `lib/sessions.py:610`
 
-`track_turn_cycle()` is ONLY called from `scan_tmux_session_direct()` (the new tmux-first approach).
+`track_turn_cycle()` is ONLY called from `scan_backend_session()` (the new tmux-first approach).
 
 **NOT called from:**
 - `scan_tmux_session()` (legacy state-file approach, lines 666-748)
@@ -481,7 +481,7 @@ PRD says `commands_run (count)` but code sometimes uses int, sometimes list stru
 **Priority:** High
 **Location:** `lib/sessions.py:666-832`
 
-`scan_tmux_session()` and `scan_iterm_session()` exist but are never called. `scan_sessions()` only uses `scan_tmux_session_direct()`.
+`scan_tmux_session()` and `scan_iterm_session()` exist but are never called. `scan_sessions()` only uses `scan_backend_session()`.
 
 **Impact:** Code maintenance burden, confusion.
 

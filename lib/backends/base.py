@@ -26,6 +26,7 @@ class SessionInfo:
     pane_pid: Optional[int]  # PID of process in pane
     pane_tty: Optional[str]  # TTY path (e.g., /dev/ttys001)
     pane_path: Optional[str]  # Current working directory
+    pane_title: Optional[str] = None  # Window/pane title (for activity detection)
 
 
 class TerminalBackend(ABC):

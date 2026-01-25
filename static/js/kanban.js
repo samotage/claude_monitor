@@ -104,7 +104,7 @@ function renderKanban(sessions, projects) {
         }
 
         return `
-            <div class="card ${statusClass} ${inputNeededClass} ${staleClass} ${recommendedClass}" onclick="openContextPanel('${escapeHtml(projectName)}', ${session.pid || 0}, '${escapeHtml(session.uuid)}')" title="Click for details">
+            <div class="card ${statusClass} ${inputNeededClass} ${staleClass} ${recommendedClass}" onclick="openContextPanel('${escapeHtml(projectName)}', ${session.pid || 0}, '${escapeHtml(session.uuid)}', '${escapeHtml(session.tmux_session || '')}')" title="Click for details">
                 <div class="card-line-numbers">${lineNums}</div>
                 <div class="card-content">
                     <div class="card-header">
@@ -115,7 +115,7 @@ function renderKanban(sessions, projects) {
                         ${session.pid ? `<span class="pid-info">${session.pid}</span>` : ''}
                         <button class="reboot-btn" onclick="event.stopPropagation(); openRebootPanel('${escapeHtml(projectName)}', '${escapeHtml(session.uuid)}')">Headspace</button>
                     </div>
-                    <div class="activity-state ${session.activity_state}" onclick="event.stopPropagation(); focusWindow(${session.pid || 0})" title="Click to focus ${session.session_type === 'tmux' ? 'tmux session' : 'iTerm window'}">
+                    <div class="activity-state ${session.activity_state}" onclick="event.stopPropagation(); focusWindow(${session.pid || 0}, '${escapeHtml(session.tmux_session || '')}')" title="Click to focus ${session.session_type === 'wezterm' ? 'WezTerm window' : session.session_type === 'tmux' ? 'tmux session' : 'iTerm window'}">
                         <span class="activity-icon">${activityInfo.icon}</span>
                         <span class="activity-label">${activityInfo.label}</span>
                         ${session.session_type === 'tmux' ? `<span class="tmux-badge ${session.tmux_attached ? 'attached' : 'detached'}" title="tmux: ${escapeHtml(session.tmux_session || '')}${session.tmux_attached ? ' (attached)' : ' (detached)'}">tmux</span>` : ''}
@@ -224,13 +224,19 @@ function renderKanban(sessions, projects) {
     kanban.innerHTML = html || '<div class="no-sessions">no active sessions</div>';
 }
 
-async function focusWindow(pid) {
-    if (!pid) {
-        console.warn('No PID available for this session');
-        return;
-    }
+async function focusWindow(pid, sessionName) {
     try {
-        const data = await focusWindowAPI(pid);
+        let data;
+        if (sessionName) {
+            // Use session name for WezTerm (PID not available)
+            data = await focusSessionAPI(sessionName);
+        } else if (pid) {
+            // Use PID for iTerm/tmux
+            data = await focusWindowAPI(pid);
+        } else {
+            console.warn('No PID or session name available for focus');
+            return;
+        }
         if (!data.success) {
             console.warn('Could not focus window');
         }

@@ -565,7 +565,7 @@ def _handle_session_end(known_session: KnownSession) -> None:
 - `lib/sessions.py:666-748` (`scan_tmux_session()`)
 
 **Problem:**
-`scan_tmux_session()` handles legacy `.claude-monitor-*.json` state files but is never called. `scan_sessions()` only uses `scan_tmux_session_direct()`.
+`scan_tmux_session()` handles legacy `.claude-monitor-*.json` state files but is never called. `scan_sessions()` only uses `scan_backend_session()`.
 
 **Solution:**
 1. Verify `scan_tmux_session()` is truly unused

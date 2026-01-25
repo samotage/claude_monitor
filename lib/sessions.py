@@ -68,6 +68,45 @@ _last_completed_turn: dict[str, dict] = {}
 # lib/headspace.py imports accessor functions to use this state.
 _previous_activity_states: dict[str, str] = {}
 
+# Early turn start signals from WezTerm Enter-key notifications
+# Key: session_id (session_name, e.g., "claude-myproject-abc123")
+# Value: datetime of the Enter keypress (UTC)
+_enter_signals: dict[str, datetime] = {}
+
+
+def record_enter_signal(session_id: str) -> None:
+    """Record that Enter was pressed in a session.
+
+    Called by the /api/wezterm/enter-pressed endpoint.
+    The signal is consumed by track_turn_cycle() on the next poll.
+
+    Args:
+        session_id: The session name
+    """
+    _enter_signals[session_id] = datetime.now(timezone.utc)
+
+
+def consume_enter_signal(session_id: str) -> Optional[datetime]:
+    """Consume and return the pending Enter signal for a session.
+
+    Returns the signal timestamp and removes it from the pending dict.
+    Returns None if no signal is pending or if the signal is stale (>10s).
+
+    Args:
+        session_id: The session name
+
+    Returns:
+        The datetime when Enter was pressed, or None
+    """
+    signal_time = _enter_signals.pop(session_id, None)
+    if signal_time is None:
+        return None
+    # Expire if older than 10 seconds (probably wasn't a real turn start)
+    age = (datetime.now(timezone.utc) - signal_time).total_seconds()
+    if age > 10:
+        return None
+    return signal_time
+
 
 def get_previous_activity_states() -> dict[str, str]:
     """Get a copy of the current activity states tracking dict.
@@ -118,7 +157,7 @@ def cleanup_stale_session_data(active_session_ids: set[str]) -> int:
     Returns:
         Number of stale entries cleaned up
     """
-    global _turn_tracking, _last_completed_turn, _previous_activity_states
+    global _turn_tracking, _last_completed_turn, _previous_activity_states, _enter_signals
 
     cleaned_count = 0
 
@@ -138,6 +177,12 @@ def cleanup_stale_session_data(active_session_ids: set[str]) -> int:
     stale_state_ids = [sid for sid in _previous_activity_states if sid not in active_session_ids]
     for sid in stale_state_ids:
         del _previous_activity_states[sid]
+        cleaned_count += 1
+
+    # Clean up stale enter signals
+    stale_signal_ids = [sid for sid in _enter_signals if sid not in active_session_ids]
+    for sid in stale_signal_ids:
+        del _enter_signals[sid]
         cleaned_count += 1
 
     return cleaned_count
@@ -287,10 +332,14 @@ def track_turn_cycle(
         # Generate unique turn_id for linking start/complete entries
         turn_id = str(uuid.uuid4())
 
+        # Check if we have an early Enter signal with a more accurate timestamp
+        enter_timestamp = consume_enter_signal(session_id)
+        actual_start_time = enter_timestamp or datetime.now(timezone.utc)
+
         turn_state = TurnState(
             turn_id=turn_id,
             command=command,
-            started_at=datetime.now(timezone.utc),
+            started_at=actual_start_time,
             previous_state=previous_state,
             logged_start=False,
             logged_completion=False,
@@ -301,7 +350,10 @@ def track_turn_cycle(
         _log_turn_start(session_id, tmux_session_name, turn_state)
         turn_state.logged_start = True
 
-        logger.debug(f"Turn started for {session_id}: '{command[:50]}...' (turn_id={turn_id[:8]})")
+        logger.debug(
+            f"Turn started for {session_id}: '{command[:50]}...' "
+            f"(turn_id={turn_id[:8]}, push={'yes' if enter_timestamp else 'no'})"
+        )
         return None
 
     # Turn END: transition FROM processing
@@ -641,38 +693,45 @@ def match_project(slug: str, projects: list[dict]) -> Optional[dict]:
     return None
 
 
-def scan_tmux_session_direct(
-    tmux_info: dict,
+def scan_backend_session(
+    session_info: dict,
     project: Optional[dict],
     project_slug: str,
     uuid8: Optional[str],
+    capture_fn=None,
+    session_type: str = "tmux",
 ) -> Optional[dict]:
-    """Scan a tmux session directly (without state file) and return session info.
+    """Scan a terminal session from any backend and return session info.
 
-    This is the new tmux-first approach where we get session info directly
-    from tmux, not from state files.
+    Works with both tmux and WezTerm backends.
 
     Args:
-        tmux_info: Session info dict from get_session_info()
+        session_info: Session info dict from backend's get_session_info()
         project: Matched project config from config.yaml (may be None)
         project_slug: The project slug extracted from session name
         uuid8: The short UUID extracted from session name (may be None)
+        capture_fn: Function to capture terminal content (defaults to tmux capture_pane)
+        session_type: Backend type ("tmux" or "wezterm")
 
     Returns:
         Session dict if session is active, None otherwise
     """
-    session_name = tmux_info.get("name")
+    if capture_fn is None:
+        capture_fn = capture_pane
+
+    session_name = session_info.get("name")
     if not session_name:
         return None
 
-    # Capture terminal content from tmux
-    content_tail = capture_pane(session_name, lines=200) or ""
+    # Capture terminal content from backend
+    content_tail = capture_fn(session_name, lines=200) or ""
 
-    # For tmux sessions, we don't have a window title like iTerm
-    window_title = ""
+    # Use pane title from backend if available (WezTerm provides rich titles
+    # with spinner chars for activity detection; tmux does not)
+    window_title = session_info.get("pane_title", "") or ""
 
     # Use tmux created time for elapsed calculation
-    created_timestamp = tmux_info.get("created", "")
+    created_timestamp = session_info.get("created", "")
     try:
         # tmux returns Unix timestamp
         start_time = datetime.fromtimestamp(int(created_timestamp), tz=timezone.utc)
@@ -712,7 +771,7 @@ def scan_tmux_session_direct(
     else:
         # Unknown project - use slug as name
         project_name = project_slug or "Unknown"
-        project_dir = tmux_info.get("pane_path", "")
+        project_dir = session_info.get("pane_path", "")
 
     # Track last activity (content change detection)
     session_id = session_name  # Use tmux session name as identifier
@@ -733,19 +792,19 @@ def scan_tmux_session_direct(
         "elapsed": elapsed_str,
         "last_activity_at": last_activity_at,
         "last_activity_ago": last_activity_ago,
-        "pid": tmux_info.get("pane_pid"),
-        "tty": tmux_info.get("pane_tty"),
+        "pid": session_info.get("pane_pid"),
+        "tty": session_info.get("pane_tty"),
         "status": "active",
         "activity_state": activity_state,
         "window_title": window_title,
-        "task_summary": task_summary if task_summary else f"tmux: {session_name}",
+        "task_summary": task_summary if task_summary else f"{session_type}: {session_name}",
         "content_snippet": content_snippet,
         "last_message": last_message,
         "turn_command": turn_command,  # Current turn's user command (if processing)
-        # tmux-specific fields
-        "session_type": "tmux",
+        # Backend fields
+        "session_type": session_type,
         "tmux_session": session_name,
-        "tmux_attached": tmux_info.get("attached", False),
+        "tmux_attached": session_info.get("attached", False),
     }
 
 
@@ -878,13 +937,13 @@ def cleanup_stale_state_files(config: dict, active_session_names: set[str]) -> N
 
 
 def scan_sessions(config: dict) -> list[dict]:
-    """Scan for active Claude Code sessions using tmux as the source of truth.
+    """Scan for active Claude Code sessions using the configured terminal backend.
 
-    This is the tmux-first approach: we discover sessions by querying tmux
+    Discovers sessions by querying the terminal backend (tmux or WezTerm)
     directly, not by scanning for state files. State files are only used
     for iTerm window focus, not for session discovery.
 
-    Stale state files (referencing dead tmux sessions) are automatically cleaned up.
+    Stale state files (referencing dead sessions) are automatically cleaned up.
 
     Args:
         config: Configuration dict with 'projects' list
@@ -894,23 +953,40 @@ def scan_sessions(config: dict) -> list[dict]:
     """
     sessions = []
     projects = config.get("projects", [])
+    backend_name = config.get("terminal_backend", "tmux")
 
-    # Get all tmux sessions (source of truth)
-    if not is_tmux_available():
-        logger.warning("tmux not available - no sessions will be discovered")
-        return sessions
+    # Select backend functions based on configuration
+    if backend_name == "wezterm":
+        from lib.backends.wezterm import (
+            is_wezterm_available,
+            list_sessions as backend_list_sessions,
+            get_session_info as backend_get_session_info,
+            capture_pane as backend_capture_pane,
+        )
+        if not is_wezterm_available():
+            logger.warning("WezTerm not available - no sessions will be discovered")
+            return sessions
+        session_type = "wezterm"
+    else:
+        backend_list_sessions = tmux_list_sessions
+        backend_get_session_info = get_session_info
+        backend_capture_pane = capture_pane
+        if not is_tmux_available():
+            logger.warning("tmux not available - no sessions will be discovered")
+            return sessions
+        session_type = "tmux"
 
-    all_tmux_sessions = tmux_list_sessions()
-    active_session_names = {s.get("name", "") for s in all_tmux_sessions}
+    all_sessions = backend_list_sessions()
+    active_session_names = {s.get("name", "") for s in all_sessions}
 
     # Clean up stale state files
     cleanup_stale_state_files(config, active_session_names)
 
     # Filter to claude-* sessions only
-    claude_sessions = [s for s in all_tmux_sessions if s.get("name", "").startswith("claude-")]
+    claude_sessions = [s for s in all_sessions if s.get("name", "").startswith("claude-")]
 
-    for tmux_sess in claude_sessions:
-        session_name = tmux_sess.get("name", "")
+    for sess in claude_sessions:
+        session_name = sess.get("name", "")
 
         # Parse session name to get project slug and uuid8
         project_slug, uuid8 = parse_session_name(session_name)
@@ -918,13 +994,16 @@ def scan_sessions(config: dict) -> list[dict]:
         # Match to config project
         matched_project = match_project(project_slug, projects) if project_slug else None
 
-        # Get detailed session info from tmux
-        tmux_info = get_session_info(session_name)
-        if not tmux_info:
+        # Get detailed session info from backend
+        sess_info = backend_get_session_info(session_name)
+        if not sess_info:
             continue
 
-        # Build session info directly from tmux
-        session = scan_tmux_session_direct(tmux_info, matched_project, project_slug or "", uuid8)
+        # Build session info
+        session = scan_backend_session(
+            sess_info, matched_project, project_slug or "", uuid8,
+            capture_fn=backend_capture_pane, session_type=session_type,
+        )
         if session:
             sessions.append(session)
 

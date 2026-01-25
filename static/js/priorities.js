@@ -144,9 +144,12 @@ function focusRecommendedSession() {
         return;
     }
     const topSession = prioritiesData.priorities[0];
-    if (topSession.session_id) {
-        focusWindow(parseInt(topSession.session_id));
-    }
+    // Look up session name from currentSessions for WezTerm focus support
+    const matchingSession = currentSessions?.find(s =>
+        s.uuid_short === topSession.uuid_short || String(s.pid) === String(topSession.session_id)
+    );
+    const sessionName = matchingSession?.tmux_session || '';
+    focusWindow(parseInt(topSession.session_id) || 0, sessionName);
 }
 
 function setSortMode(mode) {

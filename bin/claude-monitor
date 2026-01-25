@@ -50,7 +50,7 @@ def load_config() -> dict:
     Returns:
         Configuration dict with defaults applied.
     """
-    config_path = Path(__file__).parent.parent / "config.yaml"
+    config_path = Path(__file__).resolve().parent.parent / "config.yaml"
     default_config = {
         "terminal_backend": "tmux",
         "wezterm": {
@@ -217,10 +217,11 @@ def launch_claude_code_tmux(
     return pid
 
 
-def wezterm_session_exists(session_name: str, workspace: str = "claude-monitor") -> bool:
+def wezterm_session_exists(session_name: str) -> bool:
     """Check if a WezTerm session with the given name exists.
 
-    WezTerm uses window titles to identify sessions.
+    Uses tab_title for identification (persists even when Claude Code
+    overwrites the pane title).
     """
     try:
         result = subprocess.run(
@@ -233,17 +234,16 @@ def wezterm_session_exists(session_name: str, workspace: str = "claude-monitor")
 
         panes = json.loads(result.stdout) if result.stdout.strip() else []
         for pane in panes:
-            if pane.get("workspace") == workspace:
-                title = pane.get("title", "")
-                if title == session_name or title.startswith(f"{session_name} "):
-                    return True
+            tab_title = pane.get("tab_title", "")
+            if tab_title == session_name:
+                return True
         return False
     except (json.JSONDecodeError, subprocess.SubprocessError):
         return False
 
 
-def get_wezterm_pane_id(session_name: str, workspace: str = "claude-monitor") -> Optional[str]:
-    """Get the pane ID for a WezTerm session by name."""
+def get_wezterm_pane_id(session_name: str) -> Optional[str]:
+    """Get the pane ID for a WezTerm session by tab_title."""
     try:
         result = subprocess.run(
             ["wezterm", "cli", "list", "--format", "json"],
@@ -255,10 +255,9 @@ def get_wezterm_pane_id(session_name: str, workspace: str = "claude-monitor") ->
 
         panes = json.loads(result.stdout) if result.stdout.strip() else []
         for pane in panes:
-            if pane.get("workspace") == workspace:
-                title = pane.get("title", "")
-                if title == session_name or title.startswith(f"{session_name} "):
-                    return str(pane.get("pane_id"))
+            tab_title = pane.get("tab_title", "")
+            if tab_title == session_name:
+                return str(pane.get("pane_id"))
         return None
     except (json.JSONDecodeError, subprocess.SubprocessError):
         return None
@@ -268,25 +267,27 @@ def launch_claude_code_wezterm(
     session_uuid: str,
     session_name: str,
     project_dir: Path,
-    workspace: str = "claude-monitor",
 ) -> Optional[str]:
     """Launch Claude Code inside a WezTerm window.
 
+    Spawns into the current workspace (so the window is visible) and sets
+    the tab title to the session name. Tab titles persist even when Claude
+    Code overwrites the pane title, so the monitor can still discover sessions.
+
     Args:
         session_uuid: Monitor session UUID
-        session_name: Session name (used as window title)
+        session_name: Session name (set as tab title for discovery)
         project_dir: Working directory
-        workspace: WezTerm workspace name
 
     Returns:
         Pane ID of the created session, or None on failure
     """
     env_str = f"CLAUDE_MONITOR_UUID={session_uuid}"
 
-    # Check if session already exists
-    if wezterm_session_exists(session_name, workspace):
+    # Check if session already exists (by tab_title)
+    if wezterm_session_exists(session_name):
         print(f"WezTerm session '{session_name}' already exists.")
-        pane_id = get_wezterm_pane_id(session_name, workspace)
+        pane_id = get_wezterm_pane_id(session_name)
         if pane_id:
             print("Focusing existing session...")
             subprocess.run(
@@ -296,15 +297,13 @@ def launch_claude_code_wezterm(
         return pane_id
 
     # Create new WezTerm window with claude command
-    # Set the window title using escape sequence, then run claude
-    title_escape = f"\\033]0;{session_name}\\007"
-    shell_cmd = f"printf '{title_escape}'; env {env_str} claude"
+    # No --workspace: spawns into current workspace so the user can see it
+    shell_cmd = f"env {env_str} claude"
 
     result = subprocess.run(
         [
             "wezterm", "cli", "spawn",
             "--new-window",
-            "--workspace", workspace,
             "--cwd", str(project_dir),
             "--",
             "bash", "-c", shell_cmd,
@@ -319,6 +318,14 @@ def launch_claude_code_wezterm(
 
     pane_id = result.stdout.strip()
     print(f"Created WezTerm session: {session_name} (pane: {pane_id})")
+
+    # Set tab title for persistent identification
+    # Tab titles survive Claude Code overwriting the pane title
+    if pane_id:
+        subprocess.run(
+            ["wezterm", "cli", "set-tab-title", "--pane-id", pane_id, session_name],
+            capture_output=True,
+        )
 
     # Focus the new window
     if pane_id:
@@ -343,8 +350,6 @@ def cmd_start(backend_override: Optional[str] = None) -> None:
     # Load config to determine backend
     config = load_config()
     backend = backend_override or config.get("terminal_backend", "tmux")
-    wezterm_config = config.get("wezterm", {})
-    workspace = wezterm_config.get("workspace", "claude-monitor")
 
     # Session name pattern: claude-<slug>-<uuid8>
     session_name = f"claude-{slugify(project_name)}-{session_uuid[:8]}"
@@ -369,7 +374,7 @@ def cmd_start(backend_override: Optional[str] = None) -> None:
         try:
             # Launch in WezTerm (non-blocking - WezTerm manages its own window)
             pane_id = launch_claude_code_wezterm(
-                session_uuid, session_name, project_dir, workspace
+                session_uuid, session_name, project_dir
             )
             if pane_id:
                 # Update state file with pane_id (can be used for focus)
@@ -381,6 +386,7 @@ def cmd_start(backend_override: Optional[str] = None) -> None:
             print(f"\nSession {session_uuid[:8]} started in WezTerm.")
             print("The session runs in a separate WezTerm window.")
             print("State file will be cleaned up when the session ends.")
+            print("\nTip: Run 'claude-monitor setup-wezterm' for faster turn detection.")
 
         except KeyboardInterrupt:
             pass
@@ -416,6 +422,35 @@ def cmd_start(backend_override: Optional[str] = None) -> None:
                 print(f"\nSession {session_uuid[:8]} ended. State file removed.")
 
 
+def cmd_setup_wezterm() -> None:
+    """Print setup instructions for WezTerm Enter-key integration."""
+    hooks_file = Path(__file__).resolve().parent.parent / "lib" / "backends" / "wezterm_hooks.lua"
+
+    print("WezTerm Enter-Key Integration Setup")
+    print("=" * 40)
+    print()
+    print("This adds an Enter key hook to WezTerm that notifies the monitor")
+    print("when you press Enter in a Claude session, reducing detection latency.")
+    print()
+    print("Add this to your ~/.wezterm.lua (before 'return config'):")
+    print()
+    print(f"  local claude_hooks = dofile('{hooks_file}')")
+    print("  claude_hooks.apply(config)")
+    print()
+    print("To use a custom port (default 5050):")
+    print()
+    print(f"  local claude_hooks = dofile('{hooks_file}')")
+    print("  claude_hooks.apply(config, { port = 5050 })")
+    print()
+    print("Notes:")
+    print("  - Only fires for panes with titles starting 'claude-'")
+    print("  - Shift+Enter (newline) is unaffected")
+    print("  - Fails silently if the monitor server is not running")
+    print("  - Requires curl (standard on macOS)")
+    print()
+    print(f"Hook file: {hooks_file}")
+
+
 def cmd_help() -> None:
     """Show help message."""
     print(__doc__)
@@ -423,6 +458,7 @@ def cmd_help() -> None:
     print("  start              Launch Claude Code in a terminal session")
     print("  start --tmux       Launch using tmux backend (default)")
     print("  start --wezterm    Launch using WezTerm backend")
+    print("  setup-wezterm      Show WezTerm Enter-key integration setup")
     print("  help               Show this help message")
     print()
     print("Sessions run inside a named session (claude-<project-slug>-<uuid8>).")
@@ -448,6 +484,8 @@ def main() -> None:
         elif "--tmux" in sys.argv:
             backend_override = "tmux"
         cmd_start(backend_override)
+    elif command == "setup-wezterm":
+        cmd_setup_wezterm()
     elif command in ("help", "-h", "--help"):
         cmd_help()
     else:

@@ -129,18 +129,29 @@ def api_sessions():
 
 @app.route("/api/focus/<int:pid>", methods=["POST"])
 def api_focus(pid: int):
-    """API endpoint to focus an iTerm window by PID.
+    """API endpoint to focus a terminal window by PID.
 
-    Note: For tmux sessions, this falls back to searching by session content
-    since the PID's TTY is the tmux pane TTY, not the iTerm window TTY.
+    Supports both iTerm (via AppleScript) and WezTerm (via CLI activate-pane).
     """
-    # First try direct TTY matching (works for non-tmux sessions)
+    config = load_config()
+    backend_name = config.get("terminal_backend", "tmux")
+
+    if backend_name == "wezterm":
+        # Find session by PID and use WezTerm focus
+        sessions = scan_sessions(config)
+        for session in sessions:
+            if session.get("pid") == pid and session.get("tmux_session"):
+                from lib.backends.wezterm import focus_window as wezterm_focus
+                success = wezterm_focus(session["tmux_session"])
+                return jsonify({"success": success})
+        return jsonify({"success": False})
+
+    # iTerm/tmux: First try direct TTY matching (works for non-tmux sessions)
     success = focus_iterm_window_by_pid(pid)
     if success:
         return jsonify({"success": True})
 
     # For tmux sessions, look up the session name and search by content
-    config = load_config()
     sessions = scan_sessions(config)
     for session in sessions:
         if session.get("pid") == pid and session.get("tmux_session"):
@@ -154,6 +165,24 @@ def api_focus(pid: int):
 def api_focus_tmux(session_name: str):
     """API endpoint to focus an iTerm window by tmux session name."""
     success = focus_iterm_window_by_tmux_session(session_name)
+    return jsonify({"success": success})
+
+
+@app.route("/api/focus/session/<session_name>", methods=["POST"])
+def api_focus_session(session_name: str):
+    """API endpoint to focus a terminal window by session name.
+
+    Backend-aware: uses WezTerm CLI or iTerm AppleScript as appropriate.
+    """
+    config = load_config()
+    backend_name = config.get("terminal_backend", "tmux")
+
+    if backend_name == "wezterm":
+        from lib.backends.wezterm import focus_window as wezterm_focus
+        success = wezterm_focus(session_name)
+    else:
+        success = focus_iterm_window_by_tmux_session(session_name)
+
     return jsonify({"success": success})
 
 
@@ -995,6 +1024,83 @@ def api_output_from_session(session_id: str):
             "lines": lines,
             "note": "iTerm sessions have limited output capture (last ~5000 chars)"
         })
+
+
+# =============================================================================
+# Routes - WezTerm Event API
+# =============================================================================
+
+
+@app.route("/api/wezterm/enter-pressed", methods=["POST"])
+def api_wezterm_enter_pressed():
+    """Receive Enter-key notification from WezTerm.
+
+    Called by the WezTerm Lua hook when the user presses Enter
+    in a claude-* pane. This provides an early signal for turn
+    start detection, reducing latency vs. polling.
+
+    Request body:
+        pane_id: WezTerm numeric pane ID (int)
+
+    The signal is stored for consumption by track_turn_cycle()
+    on the next poll. It does NOT directly trigger state changes.
+    """
+    from lib.sessions import record_enter_signal, get_previous_activity_state
+
+    data = request.get_json(silent=True) or {}
+    pane_id = data.get("pane_id")
+
+    if pane_id is None:
+        return jsonify({"success": False, "error": "pane_id required"}), 400
+
+    pane_id_str = str(pane_id)
+
+    # Look up session name from pane_id
+    session_name = _resolve_pane_to_session(pane_id_str)
+    if not session_name:
+        return jsonify({"success": False, "error": "unknown pane"}), 404
+
+    # Check if the session is in input_needed or idle state
+    # (Enter during processing is likely noise -- e.g., scrolling)
+    current_state = get_previous_activity_state(session_name)
+    if current_state not in ("idle", "input_needed", None):
+        return jsonify({"success": True, "ignored": True, "reason": "not awaiting input"}), 200
+
+    # Record the signal
+    record_enter_signal(session_name)
+
+    return jsonify({"success": True, "session": session_name}), 200
+
+
+def _resolve_pane_to_session(pane_id_str: str):
+    """Resolve a WezTerm pane_id to a session name.
+
+    Uses the WezTerm backend's session_pane_map (reversed) and
+    falls back to a live query if needed.
+
+    Args:
+        pane_id_str: The pane ID as a string
+
+    Returns:
+        Session name (e.g., "claude-myproject-abc123") or None
+    """
+    try:
+        from lib.backends.wezterm import _session_pane_map, list_sessions as wezterm_list_sessions
+
+        # Reverse lookup in cached map
+        for name, pid in _session_pane_map.items():
+            if pid == pane_id_str:
+                return name
+
+        # Cache miss: query WezTerm live (also populates _session_pane_map)
+        wezterm_list_sessions()
+        for name, pid in _session_pane_map.items():
+            if pid == pane_id_str:
+                return name
+    except ImportError:
+        pass
+
+    return None
 
 
 # =============================================================================

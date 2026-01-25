@@ -23,6 +23,7 @@ import json
 import re
 import shutil
 import subprocess
+import time
 from typing import Optional
 
 from lib.backends.base import SessionInfo, TerminalBackend
@@ -38,6 +39,11 @@ _debug_logging_enabled: bool = False
 # Key: session name (e.g., "claude-myproject-abc123")
 # Value: pane-id (integer as string)
 _session_pane_map: dict[str, str] = {}
+
+# Session first-seen time cache (for elapsed time calculation)
+# Key: session name
+# Value: Unix timestamp (float) when the session was first discovered
+_session_first_seen: dict[str, float] = {}
 
 
 def set_debug_logging(enabled: bool) -> None:
@@ -132,8 +138,7 @@ class WezTermBackend(TerminalBackend):
 
     def __init__(self):
         """Initialize the WezTerm backend."""
-        # Workspace name for grouping Claude sessions
-        self._workspace = "claude-monitor"
+        pass
 
     @property
     def backend_name(self) -> str:
@@ -185,11 +190,21 @@ class WezTermBackend(TerminalBackend):
             # Extract pane info
             pane_id = str(pane.get("pane_id", ""))
             title = pane.get("title", "")
+            tab_title = pane.get("tab_title", "")
             workspace = pane.get("workspace", "")
 
+            # Prefer tab_title for session name when it identifies a Claude
+            # session.  Tab titles persist even when Claude Code overwrites
+            # the pane title to "✳ Claude Code".
+            if tab_title.startswith("claude-"):
+                name = tab_title
+            else:
+                name = title
+
             sessions.append({
-                "name": title,
+                "name": name,
                 "pane_id": pane_id,
+                "title": title,  # Raw pane title (has spinner chars for activity detection)
                 "created": "",  # WezTerm doesn't expose creation time
                 "attached": True,
                 "windows": 1,
@@ -197,8 +212,11 @@ class WezTermBackend(TerminalBackend):
             })
 
             # Update session map if this looks like a Claude session
-            if title.startswith("claude-"):
-                _session_pane_map[title] = pane_id
+            if name.startswith("claude-"):
+                _session_pane_map[name] = pane_id
+                # Track first-seen time for elapsed calculation
+                if name not in _session_first_seen:
+                    _session_first_seen[name] = time.time()
 
         return sessions
 
@@ -229,8 +247,9 @@ class WezTermBackend(TerminalBackend):
                             return True
                 except json.JSONDecodeError:
                     pass
-            # Pane no longer exists, remove from cache
+            # Pane no longer exists, remove from caches
             del _session_pane_map[session_name]
+            _session_first_seen.pop(session_name, None)
             return False
 
         # Search by title in live pane list
@@ -272,11 +291,12 @@ class WezTermBackend(TerminalBackend):
     ) -> bool:
         """Create a new WezTerm pane.
 
-        Uses 'wezterm cli spawn' to create a new window with the specified
-        command. Sets the window title to the session name for identification.
+        Uses 'wezterm cli spawn' to create a new window, then sets the
+        tab title to the session name for persistent identification.
+        Tab titles survive Claude Code overwriting the pane title.
 
         Args:
-            session_name: Name for the new session (used as window title)
+            session_name: Name for the new session (set as tab title)
             working_dir: Working directory for the session
             command: Optional command to run in the session
 
@@ -291,22 +311,15 @@ class WezTermBackend(TerminalBackend):
 
         args = ["spawn", "--new-window"]
 
-        # Set workspace for grouping
-        args.extend(["--workspace", self._workspace])
-
         if working_dir:
             args.extend(["--cwd", working_dir])
 
         args.append("--")
 
-        # Build command that sets window title then runs the actual command
-        title_escape = f"\\033]0;{session_name}\\007"
         if command:
-            shell_cmd = f"printf '{title_escape}'; {command}"
+            args.extend(["bash", "-c", command])
         else:
-            shell_cmd = f"printf '{title_escape}'; $SHELL"
-
-        args.extend(["bash", "-c", shell_cmd])
+            args.append("$SHELL")
 
         returncode, stdout, _ = _run_wezterm(*args)
 
@@ -314,6 +327,8 @@ class WezTermBackend(TerminalBackend):
             # The output contains the new pane-id
             pane_id = stdout.strip()
             if pane_id:
+                # Set tab title for persistent session identification
+                _run_wezterm("set-tab-title", "--pane-id", pane_id, session_name)
                 _session_pane_map[session_name] = pane_id
             return True
 
@@ -338,9 +353,9 @@ class WezTermBackend(TerminalBackend):
         returncode, _, _ = _run_wezterm("kill-pane", "--pane-id", pane_id)
 
         if returncode == 0:
-            # Remove from cache
-            if session_name in _session_pane_map:
-                del _session_pane_map[session_name]
+            # Remove from caches
+            _session_pane_map.pop(session_name, None)
+            _session_first_seen.pop(session_name, None)
             return True
 
         return False
@@ -523,15 +538,21 @@ class WezTermBackend(TerminalBackend):
 
         for pane in panes:
             if str(pane.get("pane_id", "")) == pane_id:
+                # Use first-seen time as creation timestamp (Unix epoch)
+                # WezTerm doesn't expose pane creation time natively
+                first_seen = _session_first_seen.get(session_name)
+                created = str(int(first_seen)) if first_seen else ""
+
                 return SessionInfo(
                     name=session_name,
                     pane_id=pane_id,
-                    created="",  # WezTerm doesn't expose creation time
+                    created=created,
                     attached=True,
                     windows=1,
                     pane_pid=pane.get("pid"),
                     pane_tty=pane.get("tty_name"),
                     pane_path=pane.get("cwd"),
+                    pane_title=pane.get("title"),
                 )
 
         return None
@@ -555,7 +576,17 @@ class WezTermBackend(TerminalBackend):
             return False
 
         returncode, _, _ = _run_wezterm("activate-pane", "--pane-id", pane_id)
-        return returncode == 0
+        if returncode == 0:
+            # Also bring WezTerm application to foreground
+            try:
+                subprocess.run(
+                    ["osascript", "-e", 'tell application "WezTerm" to activate'],
+                    capture_output=True, timeout=5,
+                )
+            except Exception:
+                pass  # Best effort - pane activation still succeeded
+            return True
+        return False
 
     def _get_pane_id(self, session_name: str) -> Optional[str]:
         """Get the pane-id for a session name.
@@ -669,7 +700,13 @@ def get_session_info(session_name: str) -> Optional[dict]:
         "pane_pid": info.pane_pid,
         "pane_tty": info.pane_tty,
         "pane_path": info.pane_path,
+        "pane_title": info.pane_title,
     }
+
+
+def focus_window(session_name: str) -> bool:
+    """Focus the WezTerm window containing this session."""
+    return _get_backend().focus_window(session_name)
 
 
 def get_claude_sessions() -> list[dict]:

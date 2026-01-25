@@ -4,10 +4,11 @@
 // Context Panel Functions
 // =============================================================================
 
-// Store session UUID for use in the panel
+// Store session UUID and name for use in the panel
 let contextPanelSessionUuid = null;
+let contextPanelSessionName = null;
 
-async function openContextPanel(projectName, sessionPid, sessionUuid = null) {
+async function openContextPanel(projectName, sessionPid, sessionUuid = null, sessionName = null) {
     const panel = document.getElementById('context-panel');
     const overlay = document.getElementById('context-panel-overlay');
     const content = document.getElementById('context-panel-content');
@@ -15,6 +16,7 @@ async function openContextPanel(projectName, sessionPid, sessionUuid = null) {
 
     contextPanelSessionPid = sessionPid;
     contextPanelSessionUuid = sessionUuid;
+    contextPanelSessionName = sessionName;
     title.textContent = projectName;
     content.innerHTML = '<div class="reboot-loading">Loading context...</div>';
 
@@ -146,15 +148,14 @@ function closeContextPanel() {
     overlay.classList.remove('active');
     contextPanelSessionPid = null;
     contextPanelSessionUuid = null;
+    contextPanelSessionName = null;
 
     // Trigger deferred render if blocking state has ended
     triggerDeferredRenderIfReady();
 }
 
 function focusContextSession() {
-    if (contextPanelSessionPid) {
-        focusWindow(contextPanelSessionPid);
-    }
+    focusWindow(contextPanelSessionPid || 0, contextPanelSessionName || '');
 }
 
 // =============================================================================
