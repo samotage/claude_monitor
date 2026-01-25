@@ -992,7 +992,7 @@ Any terminal integration replacement (e.g., WezTerm) must address:
 
 | PRD | Location | Relevance |
 |-----|----------|-----------|
-| tmux Session Logging | `docs/prds/tmux/done/tmux-session-logging-prd.md` | Logging specification |
+| tmux Session Logging | `docs/prds/logging/tmux-session-logging-prd.md` | Logging specification |
 | Session Summarisation | `docs/prds/headspace/done/e1_s3_session-summarisation-prd.md` | Content processing |
 | AI Prioritisation | `docs/prds/headspace/done/e1_s7_ai-prioritisation-prd.md` | Priority computation |
 

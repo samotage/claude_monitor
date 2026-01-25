@@ -429,7 +429,7 @@ Says "Require terminal-notifier" but doesn't mention config/API toggle.
 
 #### ISSUE #23: Wrong config key name
 **Priority:** Medium
-**Location:** `tmux-session-logging-prd.md` FR1
+**Location:** `docs/prds/logging/tmux-session-logging-prd.md` FR1
 
 PRD says: `debug_tmux_logging: true|false`
 Actual: `tmux_logging.debug_enabled` (nested)

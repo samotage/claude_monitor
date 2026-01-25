@@ -886,7 +886,7 @@ Notifications can be enabled/disabled via:
 
 ### Task 4.6: Fix Config Key Name in PRD
 **Audit Issue:** #23
-**Files:** `docs/prds/tmux/done/tmux-session-logging-prd.md`
+**Files:** `docs/prds/logging/tmux-session-logging-prd.md`
 
 **Change:**
 ```markdown

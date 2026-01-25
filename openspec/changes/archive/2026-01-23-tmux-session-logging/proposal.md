@@ -59,6 +59,6 @@ The tmux integration layer provides bidirectional communication with Claude Code
 
 ## Related Documents
 
-- PRD: `docs/prds/tmux/tmux-session-logging-prd.md`
+- PRD: `docs/prds/logging/tmux-session-logging-prd.md`
 - tmux-router spec: `openspec/specs/tmux-router/spec.md`
 - logging-ui spec: `openspec/specs/logging-ui/spec.md`
