@@ -15,7 +15,7 @@ import subprocess
 from typing import Optional
 
 from lib.backends.base import SessionInfo, TerminalBackend
-from lib.tmux_logging import create_tmux_log_entry, write_tmux_log_entry
+from lib.terminal_logging import create_terminal_log_entry, write_terminal_log_entry
 
 # Cache the tmux availability check (cleared on module reload)
 _tmux_available: Optional[bool] = None
@@ -66,7 +66,7 @@ def _log_tmux_event(
     if session_name.startswith("claude-"):
         session_id = session_name[7:]  # Remove "claude-" prefix
 
-    entry = create_tmux_log_entry(
+    entry = create_terminal_log_entry(
         session_id=session_id,
         tmux_session_name=session_name,
         direction=direction,
@@ -75,8 +75,9 @@ def _log_tmux_event(
         correlation_id=correlation_id,
         success=success,
         debug_enabled=_debug_logging_enabled,
+        backend="tmux",
     )
-    write_tmux_log_entry(entry)
+    write_terminal_log_entry(entry)
 
 
 def _run_tmux(*args: str, check: bool = False, capture: bool = True) -> tuple[int, str, str]:

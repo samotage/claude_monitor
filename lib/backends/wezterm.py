@@ -27,7 +27,7 @@ import time
 from typing import Optional
 
 from lib.backends.base import SessionInfo, TerminalBackend
-from lib.tmux_logging import create_tmux_log_entry, write_tmux_log_entry
+from lib.terminal_logging import create_terminal_log_entry, write_terminal_log_entry
 
 # Cache the WezTerm availability check (cleared on module reload)
 _wezterm_available: Optional[bool] = None
@@ -90,7 +90,7 @@ def _log_wezterm_event(
     if session_name.startswith("claude-"):
         session_id = session_name[7:]
 
-    entry = create_tmux_log_entry(
+    entry = create_terminal_log_entry(
         session_id=session_id,
         tmux_session_name=session_name,  # Reuse field for WezTerm session
         direction=direction,
@@ -99,8 +99,9 @@ def _log_wezterm_event(
         correlation_id=correlation_id,
         success=success,
         debug_enabled=_debug_logging_enabled,
+        backend="wezterm",
     )
-    write_tmux_log_entry(entry)
+    write_terminal_log_entry(entry)
 
 
 def _run_wezterm(*args: str, timeout: int = 10) -> tuple[int, str, str]:

@@ -122,8 +122,8 @@ async function loadSettings() {
         document.getElementById('priorities-polling-interval').value = priorities.polling_interval || 60;
         document.getElementById('priorities-model').value = priorities.model || '';
 
-        // tmux Logging - load from dedicated endpoint for accurate in-memory state
-        await loadTmuxLoggingState();
+        // Terminal Logging - load from dedicated endpoint for accurate in-memory state
+        await loadTerminalLoggingState();
 
     } catch (error) {
         console.error('Failed to load settings:', error);
@@ -131,34 +131,34 @@ async function loadSettings() {
 }
 
 /**
- * Load tmux logging debug state from API
+ * Load terminal logging debug state from API
  */
-async function loadTmuxLoggingState() {
+async function loadTerminalLoggingState() {
     try {
-        const response = await fetch('/api/logs/tmux/debug');
+        const response = await fetch('/api/logs/terminal/debug');
         const data = await response.json();
         if (data.success) {
-            setToggleState('tmux-logging-enabled-btn', data.debug_enabled);
+            setToggleState('terminal-logging-enabled-btn', data.debug_enabled);
         }
     } catch (error) {
-        console.error('Failed to load tmux logging state:', error);
-        setToggleState('tmux-logging-enabled-btn', false);
+        console.error('Failed to load terminal logging state:', error);
+        setToggleState('terminal-logging-enabled-btn', false);
     }
 }
 
 /**
- * Toggle tmux debug logging
+ * Toggle terminal debug logging
  */
-async function toggleTmuxLogging() {
-    const btn = document.getElementById('tmux-logging-enabled-btn');
+async function toggleTerminalLogging() {
+    const btn = document.getElementById('terminal-logging-enabled-btn');
     const currentState = btn?.dataset.state === 'on';
     const newState = !currentState;
 
     // Optimistically update UI
-    setToggleState('tmux-logging-enabled-btn', newState);
+    setToggleState('terminal-logging-enabled-btn', newState);
 
     try {
-        const response = await fetch('/api/logs/tmux/debug', {
+        const response = await fetch('/api/logs/terminal/debug', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enabled: newState })
@@ -167,13 +167,13 @@ async function toggleTmuxLogging() {
 
         if (!data.success) {
             // Revert on failure
-            setToggleState('tmux-logging-enabled-btn', currentState);
-            console.error('Failed to toggle tmux logging:', data.error);
+            setToggleState('terminal-logging-enabled-btn', currentState);
+            console.error('Failed to toggle terminal logging:', data.error);
         }
     } catch (error) {
         // Revert on error
-        setToggleState('tmux-logging-enabled-btn', currentState);
-        console.error('Failed to toggle tmux logging:', error);
+        setToggleState('terminal-logging-enabled-btn', currentState);
+        console.error('Failed to toggle terminal logging:', error);
     }
 }
 

@@ -442,7 +442,7 @@ def _log_turn_start(session_id: str, tmux_session_name: str, turn_state: TurnSta
         tmux_session_name: The tmux session name
         turn_state: TurnState with turn_id, command, started_at
     """
-    from lib.tmux_logging import create_tmux_log_entry, write_tmux_log_entry
+    from lib.terminal_logging import create_terminal_log_entry, write_terminal_log_entry
 
     payload = {
         "turn_id": turn_state.turn_id,
@@ -450,7 +450,7 @@ def _log_turn_start(session_id: str, tmux_session_name: str, turn_state: TurnSta
         "started_at": turn_state.started_at.isoformat(),
     }
 
-    entry = create_tmux_log_entry(
+    entry = create_terminal_log_entry(
         session_id=session_id,
         tmux_session_name=tmux_session_name,
         direction="out",  # User command is outgoing
@@ -458,9 +458,10 @@ def _log_turn_start(session_id: str, tmux_session_name: str, turn_state: TurnSta
         payload=json.dumps(payload),
         correlation_id=turn_state.turn_id,
         debug_enabled=True,  # Always log turn data
+        backend="tmux",  # Turn tracking currently only used with tmux
     )
 
-    write_tmux_log_entry(entry)
+    write_terminal_log_entry(entry)
 
 
 def _log_turn_completion(session_id: str, tmux_session_name: str, turn_state: TurnState, turn_data: dict, response_summary: str) -> None:
@@ -476,7 +477,7 @@ def _log_turn_completion(session_id: str, tmux_session_name: str, turn_state: Tu
         turn_data: Dict with command, result_state, completion_marker, duration_seconds, started_at
         response_summary: Summary of Claude's response (extracted from terminal content)
     """
-    from lib.tmux_logging import create_tmux_log_entry, write_tmux_log_entry
+    from lib.terminal_logging import create_terminal_log_entry, write_terminal_log_entry
 
     # Add turn_id and response_summary to payload
     payload = {
@@ -485,7 +486,7 @@ def _log_turn_completion(session_id: str, tmux_session_name: str, turn_state: Tu
         "response_summary": response_summary,
     }
 
-    entry = create_tmux_log_entry(
+    entry = create_terminal_log_entry(
         session_id=session_id,
         tmux_session_name=tmux_session_name,
         direction="in",  # Claude's response is incoming
@@ -493,9 +494,10 @@ def _log_turn_completion(session_id: str, tmux_session_name: str, turn_state: Tu
         payload=json.dumps(payload),
         correlation_id=turn_state.turn_id,
         debug_enabled=True,  # Always log turn data
+        backend="tmux",  # Turn tracking currently only used with tmux
     )
 
-    write_tmux_log_entry(entry)
+    write_terminal_log_entry(entry)
 
 
 def get_current_turn_command(session_id: str) -> Optional[str]:

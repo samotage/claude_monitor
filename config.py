@@ -42,6 +42,10 @@ DEFAULT_CONFIG = {
         "workspace": "claude-monitor",
         "full_scrollback": True,
     },
+    "terminal_logging": {
+        "debug_enabled": False,
+    },
+    # Legacy key for backward compatibility (deprecated)
     "tmux_logging": {
         "debug_enabled": False,
     },
