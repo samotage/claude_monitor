@@ -1,7 +1,7 @@
 ---
 validation:
   status: valid
-  validated_at: '2026-01-25T11:16:08+11:00'
+  validated_at: '2026-01-25T17:39:12+11:00'
 ---
 
 ## Product Requirements Document (PRD) — Terminal Logging Generalization
@@ -19,7 +19,9 @@ Claude Headspace now supports multiple terminal backends (tmux and WezTerm), but
 
 This PRD specifies renaming the logging system from "tmux" to "terminal" across the UI, API, configuration, and codebase. It also adds a backend identifier field to each log entry so users can distinguish which backend produced a given event. A backward compatibility strategy ensures existing logs without a backend field are treated as tmux-origin entries.
 
-The result is a logging system whose naming accurately reflects its multi-backend nature, with clear per-entry attribution.
+Additionally, a "Clear Logs" feature allows users to delete all terminal log entries, enabling noise-free debugging sessions when logs become cluttered.
+
+The result is a logging system whose naming accurately reflects its multi-backend nature, with clear per-entry attribution and easy log management.
 
 ---
 
@@ -35,7 +37,7 @@ Developers and operators of Claude Headspace who use either tmux or WezTerm (or 
 
 ### 1.3 Success Moment
 
-A developer using WezTerm opens the Logging panel, sees a "terminal" tab (not "tmux"), views log entries each clearly tagged with "wezterm" or "tmux," and filters to show only WezTerm events to debug a session issue.
+A developer using WezTerm opens the Logging panel, sees a "terminal" tab (not "tmux"), views log entries each clearly tagged with "wezterm" or "tmux," and filters to show only WezTerm events to debug a session issue. When starting a focused debugging session, they click "Clear Logs" to start fresh without historical noise.
 
 ---
 
@@ -52,6 +54,7 @@ A developer using WezTerm opens the Logging panel, sees a "terminal" tab (not "t
 - Rename the Python module from `lib/tmux_logging.py` to `lib/terminal_logging.py`
 - Rename the `TmuxLogEntry` dataclass to `TerminalLogEntry`
 - Add backend filter capability to the UI and API
+- Add a "Clear Logs" button to delete all terminal log entries for noise-free debugging
 - Backward compatibility: existing log entries without a `backend` field default to "tmux"
 - Update all imports and references across the codebase
 - Update tests to reflect new naming
@@ -81,6 +84,8 @@ A developer using WezTerm opens the Logging panel, sees a "terminal" tab (not "t
 8. Logs are written to `data/logs/terminal.jsonl`
 9. Existing log entries in the old `tmux.jsonl` file without a `backend` field are read with a default of "tmux"
 10. All existing logging features (search, refresh, pop-out, auto-refresh, expand/collapse) continue to work
+11. Users can clear all terminal logs via a UI button to start fresh debugging sessions
+12. The clear logs action requires confirmation to prevent accidental data loss
 
 ### 3.2 Non-Functional Success Criteria
 
@@ -130,29 +135,43 @@ A developer using WezTerm opens the Logging panel, sees a "terminal" tab (not "t
 
 **FR14:** The API log retrieval endpoint accepts an optional `backend` query parameter to filter results by backend ("tmux" or "wezterm").
 
+**FR15:** A DELETE endpoint at `/api/logs/terminal` clears all terminal log entries by truncating the log file.
+
 ### UI — Tab
 
-**FR15:** The Logging panel displays a "terminal" tab in place of the former "tmux" tab.
+**FR16:** The Logging panel displays a "terminal" tab in place of the former "tmux" tab.
 
-**FR16:** The terminal tab retains all existing features: search, refresh, pop-out, auto-refresh, expand/collapse.
+**FR17:** The terminal tab retains all existing features: search, refresh, pop-out, auto-refresh, expand/collapse.
 
 ### UI — Backend Indicator
 
-**FR17:** Each log entry in the list displays a visual indicator of its backend (e.g., a label showing "tmux" or "wezterm").
+**FR18:** Each log entry in the list displays a visual indicator of its backend (e.g., a label showing "tmux" or "wezterm").
 
-**FR18:** The backend indicator is visible in both collapsed and expanded log entry views.
+**FR19:** The backend indicator is visible in both collapsed and expanded log entry views.
 
 ### UI — Backend Filter
 
-**FR19:** The terminal log view includes a filter control to show all entries, only tmux entries, or only wezterm entries.
+**FR20:** The terminal log view includes a filter control to show all entries, only tmux entries, or only wezterm entries.
 
-**FR20:** The filter state persists during the session (not reset by auto-refresh).
+**FR21:** The filter state persists during the session (not reset by auto-refresh).
+
+### UI — Clear Logs
+
+**FR22:** The terminal log view includes a "Clear Logs" button that deletes all terminal log entries.
+
+**FR23:** Clicking the Clear Logs button displays a confirmation dialog before proceeding.
+
+**FR24:** After clearing, the log view refreshes to show an empty state.
+
+**FR25:** The Clear Logs button is visually distinct (e.g., red/destructive styling) to indicate its destructive nature.
 
 ### Tests
 
-**FR21:** All existing logging tests pass under the new naming.
+**FR26:** All existing logging tests pass under the new naming.
 
-**FR22:** Tests cover the `backend` field: presence in new entries, default for old entries, filtering by backend.
+**FR27:** Tests cover the `backend` field: presence in new entries, default for old entries, filtering by backend.
+
+**FR28:** Tests cover the clear logs endpoint: successful deletion, empty file after clear, UI refresh.
 
 ---
 
@@ -176,13 +195,15 @@ A developer using WezTerm opens the Logging panel, sees a "terminal" tab (not "t
 +----------------------------------------------------+
 ```
 
-### Backend Filter
+### Toolbar (Filter and Actions)
 
 ```
-+----------------------------------------------------+
-| Filter: [All] [tmux] [wezterm]          [Q Search]  |
-+----------------------------------------------------+
++--------------------------------------------------------------+
+| Filter: [All] [tmux] [wezterm]    [Q Search]  [Clear Logs]   |
++--------------------------------------------------------------+
 ```
+
+The "Clear Logs" button uses destructive styling (red text or background) to indicate it permanently deletes all log entries.
 
 ### Log Entry — Collapsed (with backend indicator)
 

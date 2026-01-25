@@ -393,13 +393,36 @@ def emit_priorities_invalidation(reason: str = "unknown") -> None:
     - Headspace update
     - Session start/end
 
-    Clients can poll get_last_invalidation_time() to know when to fetch fresh data.
+    This function:
+    1. Updates the invalidation timestamp
+    2. Triggers eager priority recomputation in a background thread
+    3. Broadcasts an SSE event to connected dashboard clients
 
     Args:
         reason: Description of why invalidation occurred (for logging)
     """
+    import threading
+
     global _priorities_invalidated_at
     _priorities_invalidated_at = datetime.now(timezone.utc)
+
+    # Trigger eager priority recomputation in background thread
+    # This ensures fresh data is ready when the client polls after receiving SSE
+    def recompute():
+        try:
+            from monitor import compute_priorities
+            compute_priorities(force_refresh=True)
+        except Exception:
+            pass  # Best effort - client will trigger refresh anyway
+
+    threading.Thread(target=recompute, daemon=True).start()
+
+    # Broadcast SSE event to connected dashboard clients
+    try:
+        from lib.sse import broadcast
+        broadcast("priorities_invalidated", {"reason": reason})
+    except Exception:
+        pass  # SSE not critical - client can still poll
 
 
 def get_last_invalidation_time() -> Optional[str]:

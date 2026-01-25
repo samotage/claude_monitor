@@ -22,7 +22,7 @@ Usage:
 from datetime import datetime, timezone
 
 import markdown
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 
 # Configuration
 from config import load_config, save_config
@@ -184,6 +184,57 @@ def api_focus_session(session_name: str):
         success = focus_iterm_window_by_tmux_session(session_name)
 
     return jsonify({"success": success})
+
+
+# =============================================================================
+# Routes - Server-Sent Events API
+# =============================================================================
+
+
+@app.route("/api/events")
+def api_events():
+    """SSE endpoint for real-time dashboard updates.
+
+    Clients connect here to receive push notifications for:
+    - session_update: When Enter is pressed in WezTerm (immediate session refresh)
+    - priorities_invalidated: When a turn completes (refresh AI priorities)
+
+    The connection uses SSE (Server-Sent Events) which is a simple,
+    HTTP-based streaming protocol for server-to-client push.
+    """
+    from lib.sse import add_client, remove_client, event_stream
+
+    def stream():
+        client_queue = add_client()
+        try:
+            yield from event_stream(client_queue)
+        finally:
+            remove_client(client_queue)
+
+    return Response(
+        stream(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering if behind nginx
+        }
+    )
+
+
+@app.route("/api/events/test", methods=["POST"])
+def api_events_test():
+    """Test endpoint to broadcast an SSE event (development only)."""
+    from lib.sse import broadcast, get_client_count
+
+    client_count = get_client_count()
+    broadcast("session_update", {"session": "test", "event": "manual_test"})
+
+    return jsonify({
+        "success": True,
+        "clients": client_count,
+        "message": "Broadcast sent"
+    })
 
 
 # =============================================================================
@@ -1069,6 +1120,11 @@ def api_wezterm_enter_pressed():
     # Record the signal
     record_enter_signal(session_name)
 
+    # Broadcast SSE event to connected dashboard clients
+    # This triggers immediate session refresh instead of waiting for poll cycle
+    from lib.sse import broadcast
+    broadcast("session_update", {"session": session_name, "event": "enter_pressed"})
+
     return jsonify({"success": True, "session": session_name}), 200
 
 
@@ -1153,7 +1209,7 @@ def main():
     print(f"\nOpen http://localhost:5050 in your browser")
     print("Press Ctrl+C to stop\n")
 
-    app.run(host="0.0.0.0", port=5050, debug=False)
+    app.run(host="0.0.0.0", port=5050, debug=False, threaded=True)
 
 
 if __name__ == "__main__":
