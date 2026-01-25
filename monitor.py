@@ -467,30 +467,32 @@ def api_logs_openrouter_stats():
     })
 
 
-@app.route("/api/logs/tmux")
-def api_logs_tmux():
-    """Get tmux session message logs.
+@app.route("/api/logs/terminal")
+def api_logs_terminal():
+    """Get terminal session message logs.
 
     Query params:
         since: ISO timestamp to get logs after (optional)
         search: Search query string (optional)
         session_id: Filter by session ID (optional)
+        backend: Filter by backend - "tmux" or "wezterm" (optional)
     """
-    from lib.tmux_logging import read_tmux_logs, get_tmux_logs_since, search_tmux_logs
+    from lib.terminal_logging import read_terminal_logs, get_terminal_logs_since, search_terminal_logs
 
     since = request.args.get("since")
     search_query = request.args.get("search", "")
     session_id = request.args.get("session_id")
+    backend = request.args.get("backend")
 
     # Get logs based on filters
     if since:
-        logs = get_tmux_logs_since(since)
+        logs = get_terminal_logs_since(since, backend=backend)
     else:
-        logs = read_tmux_logs()
+        logs = read_terminal_logs(backend=backend)
 
     # Apply search and session_id filters
     if search_query or session_id:
-        logs = search_tmux_logs(search_query, logs, session_id)
+        logs = search_terminal_logs(search_query, logs, session_id, backend=backend)
 
     return jsonify({
         "success": True,
@@ -499,21 +501,40 @@ def api_logs_tmux():
     })
 
 
-@app.route("/api/logs/tmux/stats")
-def api_logs_tmux_stats():
-    """Get aggregate statistics for tmux session logs."""
-    from lib.tmux_logging import get_tmux_log_stats
+@app.route("/api/logs/terminal", methods=["DELETE"])
+def api_logs_terminal_clear():
+    """Clear all terminal session logs."""
+    from lib.terminal_logging import clear_terminal_logs
 
-    stats = get_tmux_log_stats()
+    success = clear_terminal_logs()
+    if success:
+        return jsonify({
+            "success": True,
+            "message": "All terminal logs cleared"
+        })
+    else:
+        return jsonify({
+            "success": False,
+            "error": "Failed to clear logs"
+        }), 500
+
+
+@app.route("/api/logs/terminal/stats")
+def api_logs_terminal_stats():
+    """Get aggregate statistics for terminal session logs."""
+    from lib.terminal_logging import get_terminal_log_stats
+
+    backend = request.args.get("backend")
+    stats = get_terminal_log_stats(backend=backend)
     return jsonify({
         "success": True,
         "stats": stats
     })
 
 
-@app.route("/api/logs/tmux/debug", methods=["GET"])
-def api_logs_tmux_debug_get():
-    """Get tmux debug logging state."""
+@app.route("/api/logs/terminal/debug", methods=["GET"])
+def api_logs_terminal_debug_get():
+    """Get terminal debug logging state."""
     from lib.tmux import get_debug_logging
 
     return jsonify({
@@ -522,9 +543,9 @@ def api_logs_tmux_debug_get():
     })
 
 
-@app.route("/api/logs/tmux/debug", methods=["POST"])
-def api_logs_tmux_debug_post():
-    """Set tmux debug logging state.
+@app.route("/api/logs/terminal/debug", methods=["POST"])
+def api_logs_terminal_debug_post():
+    """Set terminal debug logging state.
 
     Request body:
         enabled: boolean - whether to enable debug logging
@@ -537,11 +558,11 @@ def api_logs_tmux_debug_post():
     # Update in-memory state
     set_debug_logging(enabled)
 
-    # Also update config file for persistence
+    # Also update config file for persistence (use new key)
     config = load_config()
-    if "tmux_logging" not in config:
-        config["tmux_logging"] = {}
-    config["tmux_logging"]["debug_enabled"] = enabled
+    if "terminal_logging" not in config:
+        config["terminal_logging"] = {}
+    config["terminal_logging"]["debug_enabled"] = enabled
     save_config(config)
 
     return jsonify({
@@ -1226,15 +1247,21 @@ def main():
     else:
         print("Session sync disabled")
 
-    # Configure tmux debug logging from config
+    # Configure terminal debug logging from config
+    # Uses new key first, falls back to legacy tmux_logging key
     from lib.tmux import set_debug_logging
+    terminal_logging_config = config.get("terminal_logging", {})
     tmux_logging_config = config.get("tmux_logging", {})
-    debug_enabled = tmux_logging_config.get("debug_enabled", False)
+    # New key takes precedence, fall back to legacy key
+    debug_enabled = terminal_logging_config.get(
+        "debug_enabled",
+        tmux_logging_config.get("debug_enabled", False)
+    )
     set_debug_logging(debug_enabled)
     if debug_enabled:
-        print("tmux debug logging enabled (full payloads)")
+        print("Terminal debug logging enabled (full payloads)")
     else:
-        print("tmux debug logging disabled (events only)")
+        print("Terminal debug logging disabled (events only)")
 
     print(f"\nOpen http://localhost:5050 in your browser")
     print("Press Ctrl+C to stop\n")

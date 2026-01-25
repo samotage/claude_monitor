@@ -101,8 +101,6 @@ The system SHALL support migration from old log file location.
 
 ---
 
-## MODIFIED Requirements
-
 ### Requirement: Terminal Logging API Endpoints
 
 All logging API endpoints SHALL use the `/api/logs/terminal` prefix.

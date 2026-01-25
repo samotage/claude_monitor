@@ -1,14 +1,15 @@
-"""tmux session message logging for Claude Headspace.
+"""Terminal session message logging for Claude Headspace.
 
 This module handles:
-- Log data format specification for tmux operations
-- Reading/writing tmux session logs from JSONL file
+- Log data format specification for terminal operations (tmux, WezTerm, etc.)
+- Reading/writing terminal session logs from JSONL file
 - Filtering and searching log entries
 - Payload truncation for large messages
 - Turn pair retrieval (turn_start + turn_complete linked by correlation_id)
+- Backend identification for multi-backend support
 
 Event types:
-- send_keys: Text sent to tmux session (direction=out)
+- send_keys: Text sent to terminal session (direction=out)
 - capture_pane: Pane content captured (direction=in)
 - session_started: Session lifecycle event
 - turn_start: User command sent to Claude (direction=out)
@@ -26,9 +27,11 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from typing import Optional
 
-# Log file path (same directory as OpenRouter logs)
+# Log file paths (same directory as OpenRouter logs)
 LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "logs")
-TMUX_LOG_FILE = os.path.join(LOG_DIR, "tmux.jsonl")
+TERMINAL_LOG_FILE = os.path.join(LOG_DIR, "terminal.jsonl")
+# Legacy path for backward compatibility
+LEGACY_LOG_FILE = os.path.join(LOG_DIR, "tmux.jsonl")
 
 # Maximum payload size before truncation (10KB)
 MAX_PAYLOAD_SIZE = 10 * 1024
@@ -39,14 +42,14 @@ MAX_LOG_FILES = 5  # Number of rotated files to keep
 
 
 @dataclass
-class TmuxLogEntry:
-    """Data structure for a tmux session log entry.
+class TerminalLogEntry:
+    """Data structure for a terminal session log entry.
 
     Fields:
         id: Unique identifier for the log entry
         timestamp: ISO 8601 timestamp of when the operation occurred
         session_id: Identifier for the session (usually project name)
-        tmux_session_name: The actual tmux session name (e.g., claude-my-project)
+        tmux_session_name: The session name (e.g., claude-my-project) - kept for compatibility
         direction: "in" for incoming (capture), "out" for outgoing (send)
         event_type: Type of event (send_keys, capture_pane, session_started, etc.)
         payload: Message content (None when debug logging is off)
@@ -54,6 +57,7 @@ class TmuxLogEntry:
         truncated: Whether payload was truncated
         original_size: Original payload size in bytes (set when truncated)
         success: Whether the operation succeeded
+        backend: Terminal backend that produced this entry ("tmux" or "wezterm")
     """
     id: str
     timestamp: str
@@ -66,6 +70,30 @@ class TmuxLogEntry:
     truncated: bool = False
     original_size: Optional[int] = None
     success: bool = True
+    backend: str = "tmux"  # Default to "tmux" for backward compatibility
+
+
+# Backward compatibility aliases
+TmuxLogEntry = TerminalLogEntry
+TMUX_LOG_FILE = TERMINAL_LOG_FILE
+
+
+def _get_active_log_file() -> str:
+    """Get the path to the active log file.
+
+    Implements backward compatibility:
+    - If terminal.jsonl exists, use it
+    - If only tmux.jsonl exists, use it (legacy)
+    - Otherwise, use terminal.jsonl for new logs
+
+    Returns:
+        Path to the log file to use
+    """
+    if os.path.exists(TERMINAL_LOG_FILE):
+        return TERMINAL_LOG_FILE
+    if os.path.exists(LEGACY_LOG_FILE):
+        return LEGACY_LOG_FILE
+    return TERMINAL_LOG_FILE
 
 
 def ensure_log_directory():
@@ -135,32 +163,37 @@ def _rotate_log_if_needed(log_file: str) -> None:
         print(f"Warning: Log rotation failed: {e}")
 
 
-def write_tmux_log_entry(entry: TmuxLogEntry) -> bool:
-    """Write a log entry to the tmux log file.
+def write_terminal_log_entry(entry: TerminalLogEntry) -> bool:
+    """Write a log entry to the terminal log file.
 
     Automatically rotates the log file if it exceeds MAX_LOG_SIZE_MB.
+    Always writes to the new terminal.jsonl file.
 
     Args:
-        entry: TmuxLogEntry dataclass instance
+        entry: TerminalLogEntry dataclass instance
 
     Returns:
         True if write was successful
     """
     ensure_log_directory()
 
-    # Check if rotation is needed before writing
-    _rotate_log_if_needed(TMUX_LOG_FILE)
+    # Always write to new log file location
+    _rotate_log_if_needed(TERMINAL_LOG_FILE)
 
     try:
         entry_dict = asdict(entry)
-        with open(TMUX_LOG_FILE, "a", encoding="utf-8") as f:
+        with open(TERMINAL_LOG_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry_dict) + "\n")
         return True
     except IOError:
         return False
 
 
-def create_tmux_log_entry(
+# Backward compatibility alias
+write_tmux_log_entry = write_terminal_log_entry
+
+
+def create_terminal_log_entry(
     session_id: str,
     tmux_session_name: str,
     direction: str,
@@ -169,21 +202,23 @@ def create_tmux_log_entry(
     correlation_id: Optional[str] = None,
     success: bool = True,
     debug_enabled: bool = False,
-) -> TmuxLogEntry:
-    """Create a new tmux log entry with auto-generated ID and timestamp.
+    backend: str = "tmux",
+) -> TerminalLogEntry:
+    """Create a new terminal log entry with auto-generated ID and timestamp.
 
     Args:
         session_id: Session identifier (project name)
-        tmux_session_name: The tmux session name
+        tmux_session_name: The session name
         direction: "in" or "out"
         event_type: Type of operation
         payload: Message content (only logged if debug_enabled)
         correlation_id: Links related operations
         success: Whether operation succeeded
         debug_enabled: If False, payload is not recorded
+        backend: Terminal backend identifier ("tmux" or "wezterm")
 
     Returns:
-        TmuxLogEntry instance
+        TerminalLogEntry instance
     """
     truncated = False
     original_size = None
@@ -194,7 +229,7 @@ def create_tmux_log_entry(
         if not truncated:
             original_size = None  # Only set when actually truncated
 
-    return TmuxLogEntry(
+    return TerminalLogEntry(
         id=str(uuid.uuid4()),
         timestamp=datetime.now(timezone.utc).isoformat(),
         session_id=session_id,
@@ -206,26 +241,39 @@ def create_tmux_log_entry(
         truncated=truncated,
         original_size=original_size,
         success=success,
+        backend=backend,
     )
 
 
-def read_tmux_logs() -> list[dict]:
-    """Read all tmux log entries from the log file.
+# Backward compatibility alias
+create_tmux_log_entry = create_terminal_log_entry
+
+
+def read_terminal_logs(backend: Optional[str] = None) -> list[dict]:
+    """Read all terminal log entries from the log file.
+
+    Args:
+        backend: Optional filter by backend ("tmux" or "wezterm")
 
     Returns:
         List of log entry dicts, newest first
     """
-    if not os.path.exists(TMUX_LOG_FILE):
+    log_file = _get_active_log_file()
+
+    if not os.path.exists(log_file):
         return []
 
     entries = []
     try:
-        with open(TMUX_LOG_FILE, "r", encoding="utf-8") as f:
+        with open(log_file, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line:
                     try:
                         entry = json.loads(line)
+                        # Apply default backend for legacy entries
+                        if "backend" not in entry:
+                            entry["backend"] = "tmux"
                         entries.append(entry)
                     except json.JSONDecodeError:
                         # Skip malformed lines
@@ -233,21 +281,30 @@ def read_tmux_logs() -> list[dict]:
     except IOError:
         return []
 
+    # Filter by backend if specified
+    if backend:
+        entries = [e for e in entries if e.get("backend") == backend]
+
     # Sort by timestamp descending (newest first)
     entries.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
     return entries
 
 
-def get_tmux_logs_since(since_timestamp: Optional[str] = None) -> list[dict]:
+# Backward compatibility alias
+read_tmux_logs = read_terminal_logs
+
+
+def get_terminal_logs_since(since_timestamp: Optional[str] = None, backend: Optional[str] = None) -> list[dict]:
     """Get log entries since a given timestamp.
 
     Args:
         since_timestamp: ISO 8601 timestamp. If None, returns all logs.
+        backend: Optional filter by backend ("tmux" or "wezterm")
 
     Returns:
         List of log entry dicts newer than the timestamp, newest first
     """
-    all_logs = read_tmux_logs()
+    all_logs = read_terminal_logs(backend=backend)
 
     if since_timestamp is None:
         return all_logs
@@ -259,25 +316,33 @@ def get_tmux_logs_since(since_timestamp: Optional[str] = None) -> list[dict]:
     return filtered
 
 
-def search_tmux_logs(
+# Backward compatibility alias
+get_tmux_logs_since = get_terminal_logs_since
+
+
+def search_terminal_logs(
     query: str,
     logs: Optional[list[dict]] = None,
     session_id: Optional[str] = None,
+    backend: Optional[str] = None,
 ) -> list[dict]:
     """Search log entries by query string and/or session_id.
 
-    Searches in: session_id, tmux_session_name, event_type, payload, correlation_id
+    Searches in: session_id, tmux_session_name, event_type, payload, correlation_id, backend
 
     Args:
         query: Search query (case-insensitive). Empty string matches all.
         logs: Optional list of logs to search. If None, reads all logs.
         session_id: Optional filter by session_id
+        backend: Optional filter by backend ("tmux" or "wezterm")
 
     Returns:
         List of matching log entry dicts, newest first
     """
     if logs is None:
-        logs = read_tmux_logs()
+        logs = read_terminal_logs(backend=backend)
+    elif backend:
+        logs = [e for e in logs if e.get("backend") == backend]
 
     # Filter by session_id first if provided
     if session_id:
@@ -298,6 +363,7 @@ def search_tmux_logs(
             entry.get("payload", "") or "",
             entry.get("correlation_id", "") or "",
             entry.get("direction", ""),
+            entry.get("backend", ""),
         ]
 
         # Check if query matches any field
@@ -308,14 +374,21 @@ def search_tmux_logs(
     return results
 
 
-def get_tmux_log_stats() -> dict:
-    """Get aggregate statistics from the tmux logs.
+# Backward compatibility alias
+search_tmux_logs = search_terminal_logs
+
+
+def get_terminal_log_stats(backend: Optional[str] = None) -> dict:
+    """Get aggregate statistics from the terminal logs.
+
+    Args:
+        backend: Optional filter by backend ("tmux" or "wezterm")
 
     Returns:
         Dict with total_entries, send_count, capture_count,
         success_count, failure_count, unique_sessions
     """
-    logs = read_tmux_logs()
+    logs = read_terminal_logs(backend=backend)
 
     sessions = set()
     stats = {
@@ -347,6 +420,26 @@ def get_tmux_log_stats() -> dict:
     return stats
 
 
+# Backward compatibility alias
+get_tmux_log_stats = get_terminal_log_stats
+
+
+def clear_terminal_logs() -> bool:
+    """Clear all terminal log entries by truncating the log file.
+
+    Returns:
+        True if successful, False otherwise
+    """
+    ensure_log_directory()
+    try:
+        # Truncate the terminal log file
+        with open(TERMINAL_LOG_FILE, "w", encoding="utf-8") as f:
+            pass  # Just open in write mode to truncate
+        return True
+    except IOError:
+        return False
+
+
 def get_turn_pairs(
     logs: Optional[list[dict]] = None,
     session_id: Optional[str] = None,
@@ -370,7 +463,7 @@ def get_turn_pairs(
         - response_summary: Claude's response summary (from complete payload, or None)
     """
     if logs is None:
-        logs = read_tmux_logs()
+        logs = read_terminal_logs()
 
     # Filter by session_id if provided
     if session_id:

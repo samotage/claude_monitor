@@ -7,14 +7,17 @@ let lastLogTimestamp = null;
 let expandedEntries = new Set();
 let allLogs = [];
 
-// Tab state - 'openrouter' or 'tmux'
+// Tab state - 'openrouter' or 'terminal'
 let activeLoggingTab = 'openrouter';
+
+// Backend filter state for terminal logs - 'all', 'tmux', or 'wezterm'
+let activeBackendFilter = 'all';
 
 // Separate log storage for each tab
 let openrouterLogs = [];
-let tmuxLogs = [];
+let terminalLogs = [];
 let lastOpenrouterTimestamp = null;
-let lastTmuxTimestamp = null;
+let lastTerminalTimestamp = null;
 
 /**
  * Initialize the logging panel
@@ -59,7 +62,7 @@ function setupLoggingTabs() {
 }
 
 /**
- * Switch between logging tabs (openrouter, tmux)
+ * Switch between logging tabs (openrouter, terminal)
  */
 function switchLoggingTab(tabName) {
     if (tabName === activeLoggingTab) return;
@@ -85,11 +88,92 @@ function switchLoggingTab(tabName) {
     // Clear expanded entries (they don't carry across tabs)
     expandedEntries.clear();
 
+    // Reset backend filter when switching tabs
+    activeBackendFilter = 'all';
+    updateBackendFilterButtons();
+
+    // Show/hide terminal-specific controls
+    updateTerminalControls();
+
     // Update empty state message
     updateEmptyStateMessage();
 
     // Load logs for the new tab
     loadLogsForActiveTab();
+}
+
+/**
+ * Show/hide terminal-specific controls based on active tab
+ */
+function updateTerminalControls() {
+    const backendFilter = document.getElementById('terminal-backend-filter');
+    const clearLogsBtn = document.getElementById('terminal-clear-logs-btn');
+
+    const showControls = activeLoggingTab === 'terminal';
+
+    if (backendFilter) {
+        backendFilter.style.display = showControls ? 'flex' : 'none';
+    }
+    if (clearLogsBtn) {
+        clearLogsBtn.style.display = showControls ? 'flex' : 'none';
+    }
+}
+
+/**
+ * Update backend filter button states
+ */
+function updateBackendFilterButtons() {
+    const filterButtons = document.querySelectorAll('.logging-filter-btn');
+    filterButtons.forEach(btn => {
+        if (btn.getAttribute('data-backend') === activeBackendFilter) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+}
+
+/**
+ * Set the backend filter and reload logs
+ */
+function setBackendFilter(backend) {
+    if (backend === activeBackendFilter) return;
+
+    activeBackendFilter = backend;
+    updateBackendFilterButtons();
+
+    // Reload terminal logs with new filter
+    loadTerminalLogs();
+}
+
+/**
+ * Clear all terminal logs with confirmation
+ */
+async function clearTerminalLogs() {
+    if (!confirm('Are you sure you want to delete all terminal logs? This action cannot be undone.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/logs/terminal', {
+            method: 'DELETE'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Reload to show empty state
+            terminalLogs = [];
+            allLogs = [];
+            renderTerminalLogs([]);
+        } else {
+            console.error('Failed to clear logs:', data.error);
+            alert('Failed to clear logs: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Failed to clear logs:', error);
+        alert('Failed to clear logs: ' + error.message);
+    }
 }
 
 /**
@@ -99,8 +183,8 @@ function updateEmptyStateMessage() {
     const emptyState = document.getElementById('logging-empty');
     if (!emptyState) return;
 
-    if (activeLoggingTab === 'tmux') {
-        emptyState.textContent = 'No tmux logs yet. Logs will appear here when tmux session operations occur.';
+    if (activeLoggingTab === 'terminal') {
+        emptyState.textContent = 'No terminal logs yet. Logs will appear here when terminal session operations occur.';
     } else {
         emptyState.textContent = 'No API logs yet. Logs will appear here when OpenRouter API calls are made.';
     }
@@ -110,8 +194,8 @@ function updateEmptyStateMessage() {
  * Load logs for the currently active tab
  */
 function loadLogsForActiveTab() {
-    if (activeLoggingTab === 'tmux') {
-        loadTmuxLogs();
+    if (activeLoggingTab === 'terminal') {
+        loadTerminalLogs();
     } else {
         loadOpenRouterLogs();
     }
@@ -165,9 +249,9 @@ async function loadOpenRouterLogs() {
 }
 
 /**
- * Load tmux logs from the API
+ * Load terminal logs from the API
  */
-async function loadTmuxLogs() {
+async function loadTerminalLogs() {
     const entriesContainer = document.getElementById('logging-entries');
     const emptyState = document.getElementById('logging-empty');
     const errorState = document.getElementById('logging-error');
@@ -175,7 +259,13 @@ async function loadTmuxLogs() {
     if (!entriesContainer) return;
 
     try {
-        const response = await fetch('/api/logs/tmux');
+        // Build URL with optional backend filter
+        let url = '/api/logs/terminal';
+        if (activeBackendFilter !== 'all') {
+            url += `?backend=${encodeURIComponent(activeBackendFilter)}`;
+        }
+
+        const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
@@ -185,14 +275,14 @@ async function loadTmuxLogs() {
             throw new Error(data.error || 'Unknown error');
         }
 
-        tmuxLogs = data.logs || [];
-        allLogs = tmuxLogs;
-        renderTmuxLogs(allLogs);
+        terminalLogs = data.logs || [];
+        allLogs = terminalLogs;
+        renderTerminalLogs(allLogs);
 
         // Update last timestamp for polling
-        if (tmuxLogs.length > 0) {
-            lastTmuxTimestamp = tmuxLogs[0].timestamp;
-            lastLogTimestamp = lastTmuxTimestamp;
+        if (terminalLogs.length > 0) {
+            lastTerminalTimestamp = terminalLogs[0].timestamp;
+            lastLogTimestamp = lastTerminalTimestamp;
         }
 
         // Hide error state
@@ -201,7 +291,7 @@ async function loadTmuxLogs() {
         }
 
     } catch (error) {
-        console.error('Failed to load tmux logs:', error);
+        console.error('Failed to load terminal logs:', error);
         if (errorState) {
             errorState.style.display = 'flex';
         }
@@ -262,9 +352,9 @@ function renderLogs(logs) {
 }
 
 /**
- * Render tmux logs to the container
+ * Render terminal logs to the container
  */
-function renderTmuxLogs(logs) {
+function renderTerminalLogs(logs) {
     const entriesContainer = document.getElementById('logging-entries');
     const emptyState = document.getElementById('logging-empty');
 
@@ -288,7 +378,7 @@ function renderTmuxLogs(logs) {
     }
 
     // Render log entries
-    const html = logs.map(entry => renderTmuxLogEntry(entry)).join('');
+    const html = logs.map(entry => renderTerminalLogEntry(entry)).join('');
 
     // Remove existing entries and add new ones
     const existingEntries = entriesContainer.querySelectorAll('.log-entry');
@@ -312,9 +402,9 @@ function renderTmuxLogs(logs) {
 }
 
 /**
- * Render a single tmux log entry
+ * Render a single terminal log entry
  */
-function renderTmuxLogEntry(entry) {
+function renderTerminalLogEntry(entry) {
     const isExpanded = expandedEntries.has(entry.id);
     const { datetime, ago } = formatTimestampWithAgo(entry.timestamp);
     const statusIcon = entry.success ? '✓' : '✗';
@@ -327,6 +417,10 @@ function renderTmuxLogEntry(entry) {
 
     // Session name (use tmux_session_name or session_id)
     const sessionName = entry.tmux_session_name || entry.session_id || 'unknown';
+
+    // Backend indicator
+    const backend = entry.backend || 'tmux';
+    const backendClass = backend === 'wezterm' ? 'backend-wezterm' : 'backend-tmux';
 
     // Payload display - preserve newlines for human readability
     const hasPayload = entry.payload !== null && entry.payload !== undefined;
@@ -345,13 +439,20 @@ function renderTmuxLogEntry(entry) {
            </div>`
         : '';
 
+    // Backend section in expanded view
+    const backendSection = `<div class="log-entry-meta-item">
+           <span class="log-entry-meta-label">Backend</span>
+           <span class="log-entry-meta-value">${escapeHtml(backend)}</span>
+       </div>`;
+
     return `
-        <div class="log-entry tmux-entry ${isExpanded ? 'expanded' : ''}" data-id="${entry.id}" onclick="toggleLogEntry('${entry.id}')">
+        <div class="log-entry terminal-entry ${isExpanded ? 'expanded' : ''}" data-id="${entry.id}" onclick="toggleLogEntry('${entry.id}')">
             <div class="log-entry-header">
                 <span class="log-entry-timestamp">
                     <span class="log-entry-timestamp-datetime">${datetime}</span>
                     <span class="log-entry-timestamp-ago">${ago}</span>
                 </span>
+                <span class="log-entry-backend ${backendClass}">${escapeHtml(backend)}</span>
                 <span class="log-entry-session">${escapeHtml(sessionName)}</span>
                 <span class="log-entry-direction ${directionClass}">
                     <span class="direction-icon">${directionIcon}</span>
@@ -364,6 +465,7 @@ function renderTmuxLogEntry(entry) {
                 <span class="log-entry-expand-icon">▼</span>
             </div>
             <div class="log-entry-body">
+                ${backendSection}
                 ${correlationSection}
                 <div class="log-entry-section">
                     <div class="log-entry-section-label">Payload</div>
@@ -485,8 +587,8 @@ function searchLogs(query) {
 
     if (!query) {
         // No query, show all logs
-        if (activeLoggingTab === 'tmux') {
-            renderTmuxLogs(allLogs);
+        if (activeLoggingTab === 'terminal') {
+            renderTerminalLogs(allLogs);
         } else {
             renderLogs(allLogs);
         }
@@ -498,8 +600,8 @@ function searchLogs(query) {
     const filtered = allLogs.filter(entry => {
         let searchableFields;
 
-        if (activeLoggingTab === 'tmux') {
-            // tmux log fields
+        if (activeLoggingTab === 'terminal') {
+            // terminal log fields
             searchableFields = [
                 entry.session_id || '',
                 entry.tmux_session_name || '',
@@ -507,6 +609,7 @@ function searchLogs(query) {
                 entry.payload || '',
                 entry.correlation_id || '',
                 entry.direction || '',
+                entry.backend || '',
             ];
         } else {
             // OpenRouter log fields
@@ -529,8 +632,8 @@ function searchLogs(query) {
         return combined.includes(query);
     });
 
-    if (activeLoggingTab === 'tmux') {
-        renderTmuxLogs(filtered);
+    if (activeLoggingTab === 'terminal') {
+        renderTerminalLogs(filtered);
     } else {
         renderLogs(filtered);
     }
@@ -595,8 +698,8 @@ function startLogPolling() {
  */
 async function pollForNewLogs() {
     // Poll for the active tab
-    if (activeLoggingTab === 'tmux') {
-        await pollForNewTmuxLogs();
+    if (activeLoggingTab === 'terminal') {
+        await pollForNewTerminalLogs();
     } else {
         await pollForNewOpenRouterLogs();
     }
@@ -645,16 +748,22 @@ async function pollForNewOpenRouterLogs() {
 }
 
 /**
- * Poll for new tmux logs
+ * Poll for new terminal logs
  */
-async function pollForNewTmuxLogs() {
-    if (!lastTmuxTimestamp) {
-        await loadTmuxLogs();
+async function pollForNewTerminalLogs() {
+    if (!lastTerminalTimestamp) {
+        await loadTerminalLogs();
         return;
     }
 
     try {
-        const response = await fetch(`/api/logs/tmux?since=${encodeURIComponent(lastTmuxTimestamp)}`);
+        // Build URL with since timestamp and optional backend filter
+        let url = `/api/logs/terminal?since=${encodeURIComponent(lastTerminalTimestamp)}`;
+        if (activeBackendFilter !== 'all') {
+            url += `&backend=${encodeURIComponent(activeBackendFilter)}`;
+        }
+
+        const response = await fetch(url);
         if (!response.ok) return;
 
         const data = await response.json();
@@ -664,12 +773,12 @@ async function pollForNewTmuxLogs() {
         if (newLogs.length === 0) return;
 
         // Update last timestamp
-        lastTmuxTimestamp = newLogs[0].timestamp;
-        lastLogTimestamp = lastTmuxTimestamp;
+        lastTerminalTimestamp = newLogs[0].timestamp;
+        lastLogTimestamp = lastTerminalTimestamp;
 
         // Prepend new logs
-        tmuxLogs = [...newLogs, ...tmuxLogs];
-        allLogs = tmuxLogs;
+        terminalLogs = [...newLogs, ...terminalLogs];
+        allLogs = terminalLogs;
 
         // Re-render with current search filter
         const searchInput = document.getElementById('logging-search');
@@ -678,11 +787,11 @@ async function pollForNewTmuxLogs() {
         if (query) {
             searchLogs(query);
         } else {
-            renderTmuxLogs(allLogs);
+            renderTerminalLogs(allLogs);
         }
 
     } catch (error) {
-        console.error('Failed to poll for new tmux logs:', error);
+        console.error('Failed to poll for new terminal logs:', error);
     }
 }
 
@@ -713,10 +822,10 @@ async function refreshLogs() {
     }
 
     // Reset timestamp to get full log list for active tab
-    if (activeLoggingTab === 'tmux') {
-        lastTmuxTimestamp = null;
+    if (activeLoggingTab === 'terminal') {
+        lastTerminalTimestamp = null;
         lastLogTimestamp = null;
-        await loadTmuxLogs();
+        await loadTerminalLogs();
     } else {
         lastOpenrouterTimestamp = null;
         lastLogTimestamp = null;

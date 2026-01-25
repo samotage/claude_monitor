@@ -362,11 +362,11 @@ class TestE2ENotificationFlow:
 
 
 class TestE2ELoggingToggleFlow:
-    """E2E tests for tmux debug logging toggle."""
+    """E2E tests for terminal debug logging toggle."""
 
     def test_get_logging_debug_state(self, client):
-        """GET /api/logs/tmux/debug returns current debug state."""
-        response = client.get("/api/logs/tmux/debug")
+        """GET /api/logs/terminal/debug returns current debug state."""
+        response = client.get("/api/logs/terminal/debug")
         assert response.status_code == 200
 
         data = response.get_json()
@@ -375,9 +375,9 @@ class TestE2ELoggingToggleFlow:
         assert isinstance(data["debug_enabled"], bool)
 
     def test_enable_debug_logging(self, client):
-        """POST /api/logs/tmux/debug enables debug logging."""
+        """POST /api/logs/terminal/debug enables debug logging."""
         response = client.post(
-            "/api/logs/tmux/debug",
+            "/api/logs/terminal/debug",
             json={"enabled": True},
             content_type="application/json"
         )
@@ -388,9 +388,9 @@ class TestE2ELoggingToggleFlow:
         assert data["debug_enabled"] is True
 
     def test_disable_debug_logging(self, client):
-        """POST /api/logs/tmux/debug disables debug logging."""
+        """POST /api/logs/terminal/debug disables debug logging."""
         response = client.post(
-            "/api/logs/tmux/debug",
+            "/api/logs/terminal/debug",
             json={"enabled": False},
             content_type="application/json"
         )
@@ -403,19 +403,19 @@ class TestE2ELoggingToggleFlow:
     def test_logging_toggle_persists(self, client):
         """Debug logging state persists across requests."""
         # Enable
-        client.post("/api/logs/tmux/debug", json={"enabled": True},
+        client.post("/api/logs/terminal/debug", json={"enabled": True},
                    content_type="application/json")
 
         # Verify
-        response = client.get("/api/logs/tmux/debug")
+        response = client.get("/api/logs/terminal/debug")
         assert response.get_json()["debug_enabled"] is True
 
         # Disable
-        client.post("/api/logs/tmux/debug", json={"enabled": False},
+        client.post("/api/logs/terminal/debug", json={"enabled": False},
                    content_type="application/json")
 
         # Verify
-        response = client.get("/api/logs/tmux/debug")
+        response = client.get("/api/logs/terminal/debug")
         assert response.get_json()["debug_enabled"] is False
 
 
@@ -556,9 +556,9 @@ class TestE2EActivityStateTransitions:
 class TestE2ELogEndpoints:
     """E2E tests for log retrieval endpoints."""
 
-    def test_get_tmux_logs_empty(self, client, temp_config_dir):
-        """GET /api/logs/tmux returns empty list when no logs."""
-        response = client.get("/api/logs/tmux")
+    def test_get_terminal_logs_empty(self, client, temp_config_dir):
+        """GET /api/logs/terminal returns empty list when no logs."""
+        response = client.get("/api/logs/terminal")
         assert response.status_code == 200
 
         data = response.get_json()
@@ -704,23 +704,23 @@ class TestE2EFullUserFlows:
         5. Verify disabled
         """
         # Step 1: Check initial
-        response = client.get("/api/logs/tmux/debug")
+        response = client.get("/api/logs/terminal/debug")
         assert response.get_json()["success"] is True
 
         # Step 2: Enable
-        response = client.post("/api/logs/tmux/debug", json={"enabled": True},
+        response = client.post("/api/logs/terminal/debug", json={"enabled": True},
                               content_type="application/json")
         assert response.get_json()["debug_enabled"] is True
 
         # Step 3: Verify enabled
-        response = client.get("/api/logs/tmux/debug")
+        response = client.get("/api/logs/terminal/debug")
         assert response.get_json()["debug_enabled"] is True
 
         # Step 4: Disable
-        response = client.post("/api/logs/tmux/debug", json={"enabled": False},
+        response = client.post("/api/logs/terminal/debug", json={"enabled": False},
                               content_type="application/json")
         assert response.get_json()["debug_enabled"] is False
 
         # Step 5: Verify disabled
-        response = client.get("/api/logs/tmux/debug")
+        response = client.get("/api/logs/terminal/debug")
         assert response.get_json()["debug_enabled"] is False

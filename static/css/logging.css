@@ -75,6 +75,48 @@
     to { transform: rotate(360deg); }
 }
 
+/* Backend filter buttons */
+.logging-backend-filter {
+    display: flex;
+    gap: 4px;
+    margin-left: 8px;
+}
+
+.logging-filter-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.logging-filter-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+}
+
+.logging-filter-btn.active {
+    background: var(--cyan-dim);
+    border-color: var(--cyan);
+    color: var(--cyan);
+}
+
+/* Destructive button styling for clear logs */
+.logging-action-btn.btn-destructive {
+    border-color: var(--red-dim);
+    color: var(--red);
+}
+
+.logging-action-btn.btn-destructive:hover {
+    background: var(--red-dim);
+    border-color: var(--red);
+    color: var(--red);
+}
+
 /* Search Container */
 .logging-search-container {
     flex-shrink: 0;
@@ -399,11 +441,33 @@
 }
 
 /* =============================================================================
-   tmux Log Entry Styles
+   Terminal Log Entry Styles
    ============================================================================= */
 
-.log-entry.tmux-entry .log-entry-header {
+.log-entry.terminal-entry .log-entry-header {
     gap: 12px;
+}
+
+/* Backend indicator badge */
+.log-entry-backend {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+.log-entry-backend.backend-tmux {
+    background: var(--green-dim);
+    color: var(--green);
+    border: 1px solid var(--green);
+}
+
+.log-entry-backend.backend-wezterm {
+    background: var(--cyan-dim);
+    color: var(--cyan);
+    border: 1px solid var(--cyan);
 }
 
 .log-entry-session {
