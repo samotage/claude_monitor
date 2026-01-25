@@ -2,6 +2,7 @@
 node_modules/
 venv/
 __pycache__/
+*.pyc
 
 # Environment
 .env
@@ -42,4 +43,5 @@ data/projects/*
 
 # Headspace state (runtime)
 data/headspace.yaml
+data/session_state.yaml
 .coverage
