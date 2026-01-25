@@ -80,10 +80,15 @@ def record_enter_signal(session_id: str) -> None:
     Called by the /api/wezterm/enter-pressed endpoint.
     The signal is consumed by track_turn_cycle() on the next poll.
 
+    Also clears the scan_sessions cache so the SSE-triggered fetch
+    gets fresh data with the new turn command.
+
     Args:
         session_id: The session name
     """
     _enter_signals[session_id] = datetime.now(timezone.utc)
+    # Invalidate cache so next fetch captures the new turn command
+    clear_scan_sessions_cache()
 
 
 def consume_enter_signal(session_id: str) -> Optional[datetime]:
@@ -949,6 +954,39 @@ def cleanup_stale_state_files(config: dict, active_session_names: set[str]) -> N
                 logger.warning(f"Error processing state file {state_file}: {e}")
 
 
+# Short-lived cache for scan_sessions results
+# This prevents expensive subprocess calls on rapid SSE-triggered updates
+_scan_sessions_cache: dict = {
+    "sessions": None,
+    "timestamp": None,
+    "config_hash": None,
+}
+_SCAN_CACHE_TTL_MS = 200  # Cache results for 200ms
+
+# Testing flag - set to True to disable caching (allows monkeypatching between calls)
+_disable_scan_cache = False
+
+
+def clear_scan_sessions_cache() -> None:
+    """Clear the scan_sessions cache. Used by tests and reset API."""
+    global _scan_sessions_cache
+    _scan_sessions_cache["sessions"] = None
+    _scan_sessions_cache["timestamp"] = None
+    _scan_sessions_cache["config_hash"] = None
+
+
+def _get_config_hash(config: dict) -> str:
+    """Get a simple hash of config to detect changes."""
+    import hashlib
+    import json
+    # Only hash the relevant parts
+    relevant = {
+        "projects": config.get("projects", []),
+        "terminal_backend": config.get("terminal_backend", "tmux"),
+    }
+    return hashlib.md5(json.dumps(relevant, sort_keys=True).encode()).hexdigest()[:8]
+
+
 def scan_sessions(config: dict) -> list[dict]:
     """Scan for active Claude Code sessions using the configured terminal backend.
 
@@ -958,12 +996,47 @@ def scan_sessions(config: dict) -> list[dict]:
 
     Stale state files (referencing dead sessions) are automatically cleaned up.
 
+    Results are cached for 200ms to improve SSE responsiveness - rapid
+    updates (like SSE-triggered refreshes) will return cached data instead
+    of making expensive subprocess calls.
+
     Args:
         config: Configuration dict with 'projects' list
 
     Returns:
         List of session dicts with status info
     """
+    global _scan_sessions_cache
+
+    # Skip cache in testing mode (allows monkeypatching between calls)
+    if _disable_scan_cache:
+        return _scan_sessions_uncached(config)
+
+    # Check cache validity
+    config_hash = _get_config_hash(config)
+    now = datetime.now(timezone.utc)
+
+    if (_scan_sessions_cache["sessions"] is not None
+        and _scan_sessions_cache["timestamp"] is not None
+        and _scan_sessions_cache["config_hash"] == config_hash):
+        age_ms = (now - _scan_sessions_cache["timestamp"]).total_seconds() * 1000
+        if age_ms < _SCAN_CACHE_TTL_MS:
+            # Return cached result
+            return _scan_sessions_cache["sessions"]
+
+    # Cache miss - do the expensive scan
+    sessions = _scan_sessions_uncached(config)
+
+    # Update cache
+    _scan_sessions_cache["sessions"] = sessions
+    _scan_sessions_cache["timestamp"] = now
+    _scan_sessions_cache["config_hash"] = config_hash
+
+    return sessions
+
+
+def _scan_sessions_uncached(config: dict) -> list[dict]:
+    """Internal uncached implementation of scan_sessions."""
     sessions = []
     projects = config.get("projects", [])
     backend_name = config.get("terminal_backend", "tmux")

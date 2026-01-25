@@ -304,6 +304,7 @@ def reset_working_state() -> dict:
         clear_previous_activity_states,
         clear_turn_tracking,
         clear_enter_signals,
+        clear_scan_sessions_cache,
     )
 
     reset_notification_state()
@@ -311,6 +312,7 @@ def reset_working_state() -> dict:
     clear_previous_activity_states()
     clear_turn_tracking()
     clear_enter_signals()
+    clear_scan_sessions_cache()
 
     return {
         "notification_state": "cleared",
@@ -318,6 +320,7 @@ def reset_working_state() -> dict:
         "turn_tracking": "cleared",
         "activity_states": "cleared",
         "enter_signals": "cleared",
+        "scan_cache": "cleared",
     }
 
 
@@ -1116,6 +1119,7 @@ def api_wezterm_enter_pressed():
     The signal is stored for consumption by track_turn_cycle()
     on the next poll. It does NOT directly trigger state changes.
     """
+    import time
     from lib.sessions import record_enter_signal, get_previous_activity_state
 
     data = request.get_json(silent=True) or {}
@@ -1137,13 +1141,19 @@ def api_wezterm_enter_pressed():
     if current_state not in ("idle", "input_needed", None):
         return jsonify({"success": True, "ignored": True, "reason": "not awaiting input"}), 200
 
-    # Record the signal
+    # Record the signal (also clears scan cache)
     record_enter_signal(session_name)
+
+    # Small delay to allow Claude Code to start processing
+    # The Enter key was sent after the curl was spawned, so Claude
+    # should be starting to process by now, but give it a moment
+    time.sleep(0.15)  # 150ms delay
 
     # Broadcast SSE event to connected dashboard clients
     # This triggers immediate session refresh instead of waiting for poll cycle
     from lib.sse import broadcast
     broadcast("session_update", {"session": session_name, "event": "enter_pressed"})
+    print(f"[SSE] Enter-pressed for {session_name}, broadcast sent", flush=True)
 
     return jsonify({"success": True, "session": session_name}), 200
 

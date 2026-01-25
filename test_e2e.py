@@ -59,6 +59,11 @@ def temp_config_dir(tmp_path, monkeypatch):
 def client(temp_config_dir, monkeypatch):
     """Create Flask test client with mocked external dependencies."""
     from monitor import app
+    import lib.sessions
+
+    # Disable scan_sessions cache during tests (allows monkeypatching between calls)
+    original_cache_flag = lib.sessions._disable_scan_cache
+    lib.sessions._disable_scan_cache = True
 
     # Mock tmux availability to avoid actual tmux calls
     monkeypatch.setattr("lib.sessions.is_tmux_available", lambda: True)
@@ -79,6 +84,9 @@ def client(temp_config_dir, monkeypatch):
 
     with app.test_client() as test_client:
         yield test_client
+
+    # Restore original cache flag
+    lib.sessions._disable_scan_cache = original_cache_flag
 
 
 @pytest.fixture
