@@ -13,7 +13,7 @@ A Kanban-style dashboard for tracking Claude Code sessions across multiple proje
 - **Native notifications** - Get macOS alerts when input is needed or tasks complete
 - **Click-to-focus** - Jump to any session from the dashboard or notification
 - **Real-time updates** - Dashboard refreshes automatically
-- **tmux integration** - Bidirectional session control with send/capture APIs
+- **Terminal backend support** - tmux (default) or WezTerm with send/capture APIs
 
 ## Quick Start
 
@@ -42,7 +42,9 @@ Open http://localhost:5050 in your browser.
 - **iTerm2** terminal
 - **Python 3.10+**
 - **Claude Code CLI**
-- **tmux** (default session mode, install with `brew install tmux`)
+- **Terminal backend** (one of):
+  - **tmux** (default) - `brew install tmux`
+  - **WezTerm** (alternative) - `brew install --cask wezterm`
 - **Homebrew** (optional, for notifications)
 
 ## Installation
@@ -93,13 +95,14 @@ Edit `config.yaml` to add your projects:
 projects:
   - name: "my-app"
     path: "/Users/you/dev/my-app"
-    # tmux is enabled by default
+    # Uses default backend
 
   - name: "api-service"
     path: "/Users/you/dev/api-service"
-    tmux: false          # Disable tmux to use iTerm mode
+    terminal_backend: "wezterm"   # Override: use WezTerm for this project
 
-scan_interval: 5        # Dashboard refresh rate (seconds)
+scan_interval: 5              # Dashboard refresh rate (seconds)
+terminal_backend: "tmux"      # Default backend: "tmux" or "wezterm"
 ```
 
 ## Usage
@@ -120,8 +123,9 @@ Instead of running `claude` directly, use the wrapper:
 
 ```bash
 cd /path/to/your/project
-claude-monitor start           # Default: runs in tmux
-claude-monitor start --iterm   # Force iTerm mode (read-only)
+claude-monitor start             # Uses configured backend (default: tmux)
+claude-monitor start --tmux      # Force tmux backend
+claude-monitor start --wezterm   # Use WezTerm backend
 ```
 
 This creates a state file that the dashboard uses to track the session.
@@ -155,39 +159,37 @@ Click the notification to jump directly to that iTerm session.
 
 Enable/disable notifications in the Settings tab of the dashboard.
 
-### tmux Integration
+### Terminal Backend Integration
 
-tmux is the **default session mode**, enabling bidirectional control of Claude Code sessions. You can send text to sessions and capture full output programmatically. This is the foundation for features like voice bridge and remote control.
+Terminal backends enable bidirectional control of Claude Code sessions. You can send text to sessions and capture full output programmatically.
 
-**Setup:**
-1. Install tmux: `brew install tmux`
-2. Run `claude-monitor start` (tmux is used by default)
-3. Sessions run inside named tmux sessions (`claude-<project-name>`)
+**Available Backends:**
+
+| Backend | Capabilities | Install |
+|---------|-------------|---------|
+| tmux | Full read/write (default) | `brew install tmux` |
+| WezTerm | Full read/write, cross-platform, full scrollback | `brew install --cask wezterm` |
+
+**Configuration:**
+
+Set the default backend in `config.yaml`:
+```yaml
+terminal_backend: "tmux"    # or "wezterm"
+```
 
 **Session Control APIs:**
 
 ```bash
-# Send text to a session (tmux only)
+# Send text to a session
 curl -X POST http://localhost:5050/api/send/<session_id> \
   -H "Content-Type: application/json" \
   -d '{"text": "yes", "enter": true}'
 
-# Capture session output (tmux or iTerm)
+# Capture session output
 curl http://localhost:5050/api/output/<session_id>?lines=100
-
-# Enable/disable tmux for a project
-curl -X POST http://localhost:5050/api/projects/my-app/tmux/enable
-curl -X POST http://localhost:5050/api/projects/my-app/tmux/disable
 ```
 
-**Session Types:**
-
-| Type | Capabilities | Use Case |
-|------|-------------|----------|
-| tmux | Full read/write | Default, voice bridge, remote control |
-| iTerm | Read-only + focus | Simple observation (use `--iterm` flag) |
-
-Sessions show a "tmux" badge in the dashboard when running in tmux mode.
+Sessions show their backend type as a badge in the dashboard.
 
 ## How It Works
 

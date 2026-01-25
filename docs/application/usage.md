@@ -24,20 +24,31 @@ Instead of running `claude` directly, use the wrapper script:
 
 ```bash
 cd /path/to/your/project
-claude-monitor start           # Default: runs in tmux (bidirectional control)
-claude-monitor start --iterm   # Force iTerm mode (read-only observation)
+claude-monitor start             # Use configured backend (default: tmux)
+claude-monitor start --tmux      # Explicitly use tmux
+claude-monitor start --wezterm   # Use WezTerm backend
 ```
 
 This creates a state file that the dashboard uses to track the session.
 
-### Session Types
+### Terminal Backends
 
-| Type | Capabilities | Use Case |
-|------|-------------|----------|
+| Backend | Capabilities | Use Case |
+|---------|-------------|----------|
 | **tmux** | Full read/write control via API | Default, voice bridge, automation, remote control |
-| **iTerm** | Read-only observation + window focus | Simple monitoring (use `--iterm` flag) |
+| **WezTerm** | Full read/write, cross-platform, full scrollback | Cross-platform, better scrollback access |
 
-Sessions running in tmux mode show a "tmux" badge in the dashboard.
+Sessions show their backend type as a badge in the dashboard.
+
+### Backend Comparison
+
+| Feature | tmux | WezTerm |
+|---------|------|---------|
+| Read session output | Yes | Yes |
+| Send commands | Yes | Yes |
+| Platform | macOS, Linux | macOS, Linux, Windows |
+| Scrollback | Configurable (default 2000 lines) | Full scrollback access |
+| Window focus | AppleScript (macOS) | Native CLI (cross-platform) |
 
 ## Dashboard Layout
 
@@ -190,54 +201,49 @@ Currently, all interactions are mouse-based. Keyboard shortcuts may be added in 
 
 Note: This only removes the project from monitoring. Project data in `data/projects/` is preserved.
 
-## tmux Integration
+## Terminal Backend Integration
 
-tmux is the **default session mode**, enabling bidirectional control of Claude Code sessions. You can send commands and capture full output programmatically. This is the foundation for features like voice bridge and remote control.
+The terminal backend enables bidirectional control of Claude Code sessions. You can send commands and capture full output programmatically. This is the foundation for features like voice bridge and remote control.
 
-### Installing tmux
+### Installing Backends
 
 ```bash
+# tmux (default)
 brew install tmux
+
+# WezTerm (alternative)
+brew install --cask wezterm
 ```
 
-### Using tmux (Default)
+### Choosing a Backend
 
-tmux is enabled by default. Just run:
-
-```bash
-claude-monitor start
-```
-
-### Disabling tmux for a Project
-
-To use iTerm mode (read-only) instead:
-
-**Option 1: Command line flag**
-
-```bash
-claude-monitor start --iterm
-```
-
-**Option 2: Via config.yaml**
-
-Set `tmux: false` in your project configuration:
+Set the default backend in `config.yaml`:
 
 ```yaml
-projects:
-  - name: "my-app"
-    path: "/Users/you/dev/my-app"
-    tmux: false
+terminal_backend: "tmux"    # or "wezterm"
 ```
 
-**Option 3: Via API**
+Or use command-line flags:
 
 ```bash
-curl -X POST http://localhost:5050/api/projects/my-app/tmux/disable
+claude-monitor start             # Use configured default
+claude-monitor start --tmux      # Force tmux
+claude-monitor start --wezterm   # Force WezTerm
+```
+
+### WezTerm Configuration
+
+WezTerm-specific settings:
+
+```yaml
+wezterm:
+  workspace: "claude-monitor"   # Workspace name for grouping sessions
+  full_scrollback: true         # Enable full scrollback capture
 ```
 
 ### Session Control via API
 
-Once running in tmux mode, you can control sessions programmatically:
+Both backends support the same API for session control:
 
 **Send text to a session:**
 ```bash
@@ -253,24 +259,26 @@ curl http://localhost:5050/api/output/<session_id>?lines=100
 
 The `session_id` can be found in the `/api/sessions` response (use `uuid` or `uuid_short`).
 
-### tmux Session Names
+### Session Names
 
-Sessions run inside named tmux sessions following the pattern `claude-<project-slug>`:
+Sessions follow the pattern `claude-<project-slug>-<uuid8>`:
 
-- Project "my-app" → tmux session `claude-my-app`
-- Project "API Service" → tmux session `claude-api-service`
+- Project "my-app" → session `claude-my-app-a1b2c3d4`
+- Project "API Service" → session `claude-api-service-e5f6g7h8`
 
-You can attach to these sessions directly with:
+**tmux:** Attach directly with:
 ```bash
-tmux attach-session -t claude-my-app
+tmux attach-session -t claude-my-app-a1b2c3d4
 ```
+
+**WezTerm:** Sessions appear in the configured workspace and can be focused via the dashboard.
 
 ### Dashboard Indicators
 
-Sessions running in tmux mode show:
-- A **tmux** badge next to the activity state
-- Badge colour indicates attached (green) or detached (amber) state
-- Hover over the badge to see the tmux session name
+Sessions show their backend type:
+- A **tmux** or **wezterm** badge next to the activity state
+- For tmux: badge colour indicates attached (green) or detached (amber) state
+- Hover over the badge to see the session name
 
 ## Tips
 

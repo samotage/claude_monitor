@@ -21,6 +21,11 @@ projects:
   - name: "another-project"
     path: "/Users/yourname/dev/another-project"
 
+  # Per-project backend override example (optional)
+  # - name: "wezterm-project"
+  #   path: "/Users/yourname/dev/wezterm-project"
+  #   terminal_backend: "wezterm"  # Use WezTerm for this project only
+
 # =============================================================================
 # Dashboard Settings
 # =============================================================================
@@ -121,6 +126,29 @@ session_sync:
   # Higher = more context but more processing
   # Default: 20
   jsonl_tail_entries: 20
+
+# =============================================================================
+# Terminal Backend
+# =============================================================================
+# Choose which terminal multiplexer to use for Claude Code sessions.
+# Options: "tmux" (default), "wezterm"
+#
+# tmux: Requires tmux installed. Sessions persist across iTerm restarts.
+# wezterm: Requires WezTerm. Cross-platform, full scrollback access, native focus.
+
+terminal_backend: "tmux"
+
+# WezTerm-specific settings (only used when terminal_backend: "wezterm")
+wezterm:
+  # Workspace name for grouping Claude sessions in WezTerm
+  # Default: "claude-monitor"
+  workspace: "claude-monitor"
+
+  # Enable full scrollback capture (WezTerm advantage over tmux)
+  # If true, capture entire scrollback history
+  # If false, limit to configured number of lines
+  # Default: true
+  full_scrollback: true
 
 # =============================================================================
 # tmux Debug Logging

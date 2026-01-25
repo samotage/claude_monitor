@@ -59,11 +59,14 @@ pytest
 pytest --cov=.  # With coverage
 
 # Start a monitored Claude session (in your project directory)
-# Default: runs in tmux for bidirectional control
+# Default: runs in configured backend (tmux by default)
 claude-monitor start
 
-# Start in iTerm mode (read-only, no tmux)
-claude-monitor start --iterm
+# Explicitly use tmux backend
+claude-monitor start --tmux
+
+# Use WezTerm backend
+claude-monitor start --wezterm
 ```
 
 ## Directory Structure
@@ -84,7 +87,12 @@ claude_monitor/
 │   ├── sessions.py      # Session scanning and tracking
 │   ├── headspace.py     # Headspace and priorities
 │   ├── compression.py   # Session summarization
-│   ├── tmux.py          # tmux integration
+│   ├── tmux.py          # tmux integration (backwards compat)
+│   ├── backends/        # Terminal backend abstraction
+│   │   ├── __init__.py  # Backend factory
+│   │   ├── base.py      # Abstract interface
+│   │   ├── tmux.py      # tmux backend
+│   │   └── wezterm.py   # WezTerm backend
 │   └── ...              # Other modules
 ├── data/                # Application data
 │   ├── projects/        # Project YAML data files
@@ -125,43 +133,45 @@ projects:
 scan_interval: 2          # Refresh interval in seconds (default)
 ```
 
-## tmux Integration
+## Terminal Backend Integration
 
-tmux is the **default mode** for Claude Code sessions, enabling:
+Terminal backends enable bidirectional control of Claude Code sessions:
 - **Send text/commands** to sessions via the API
 - **Capture full output** beyond iTerm's 5000 char limit
 - Enable **voice bridge** and **remote control** features
 
-### Requirements
+### Available Backends
 
-1. Install tmux: `brew install tmux`
-2. Start sessions with `claude-monitor start` (tmux is default)
+| Backend | Read | Write | Notes |
+|---------|------|-------|-------|
+| tmux | ✅ | ✅ | Default, requires `brew install tmux` |
+| WezTerm | ✅ | ✅ | Cross-platform, full scrollback, requires `brew install --cask wezterm` |
 
-### Disabling tmux for a project
+### Configuration
 
-To use iTerm mode (read-only) instead:
-
-**Option 1:** Use the `--iterm` flag:
-```bash
-claude-monitor start --iterm
-```
-
-**Option 2:** Set `tmux: false` in `config.yaml`:
+Set the default backend in `config.yaml`:
 ```yaml
-projects:
-  - name: "my-project"
-    path: "/path/to/project"
-    tmux: false  # Use iTerm mode
+terminal_backend: "tmux"    # or "wezterm"
 ```
 
-**Option 3:** Use the API:
+Or use command-line flags:
 ```bash
-curl -X POST http://localhost:5050/api/projects/my-project/tmux/disable
+claude-monitor start             # Use configured default
+claude-monitor start --tmux      # Force tmux
+claude-monitor start --wezterm   # Force WezTerm
+```
+
+### WezTerm-specific settings
+
+```yaml
+wezterm:
+  workspace: "claude-monitor"  # Workspace for grouping sessions
+  full_scrollback: true        # Enable full scrollback capture
 ```
 
 ### Session Control API
 
-Send text to a tmux session:
+Send text to a session:
 ```bash
 curl -X POST http://localhost:5050/api/send/<session_id> \
   -H "Content-Type: application/json" \
@@ -172,13 +182,6 @@ Capture session output:
 ```bash
 curl http://localhost:5050/api/output/<session_id>?lines=100
 ```
-
-### Session Types
-
-| Type | Read | Write | Notes |
-|------|------|-------|-------|
-| tmux | ✅ | ✅ | Default, full control, requires tmux installed |
-| iTerm | ✅ | ❌ | Read-only observation + window focus |
 
 ## How It Works
 

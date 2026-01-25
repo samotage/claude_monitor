@@ -160,11 +160,11 @@
             <div class="headspace-edit-form">
                 <div class="headspace-input-group">
                     <label class="headspace-input-label">Focus</label>
-                    <input type="text" class="headspace-input" id="headspace-focus-input" placeholder="What's your focus right now?" onblur="scheduleHeadspaceAutoSave()">
+                    <input type="text" class="headspace-input" id="headspace-focus-input" placeholder="What's your focus right now?" onblur="scheduleHeadspaceAutoSave()" autocomplete="off">
                 </div>
                 <div class="headspace-input-group">
                     <label class="headspace-input-label">Constraints (optional)</label>
-                    <input type="text" class="headspace-input" id="headspace-constraints-input" placeholder="Any limitations or boundaries?" onblur="scheduleHeadspaceAutoSave()">
+                    <input type="text" class="headspace-input" id="headspace-constraints-input" placeholder="Any limitations or boundaries?" onblur="scheduleHeadspaceAutoSave()" autocomplete="off">
                 </div>
                 <div class="headspace-edit-actions">
                     <span class="headspace-autosave-hint">Changes save automatically</span>
@@ -224,11 +224,11 @@
             <div class="focus-form">
                 <div class="focus-input-group">
                     <label class="focus-label">What's your focus right now?</label>
-                    <textarea id="focus-current-input" class="focus-textarea" placeholder="e.g., Ship the new feature before EOD" onblur="scheduleFocusTabAutoSave()"></textarea>
+                    <textarea id="focus-current-input" class="focus-textarea" placeholder="e.g., Ship the new feature before EOD" onblur="scheduleFocusTabAutoSave()" autocomplete="off"></textarea>
                 </div>
                 <div class="focus-input-group">
                     <label class="focus-label">Constraints (optional)</label>
-                    <textarea id="focus-constraints-input" class="focus-textarea focus-textarea-small" placeholder="e.g., Limited time, need to avoid breaking changes" onblur="scheduleFocusTabAutoSave()"></textarea>
+                    <textarea id="focus-constraints-input" class="focus-textarea focus-textarea-small" placeholder="e.g., Limited time, need to avoid breaking changes" onblur="scheduleFocusTabAutoSave()" autocomplete="off"></textarea>
                 </div>
                 <div class="focus-actions">
                     <span id="focus-save-status" class="focus-status"></span>
@@ -397,7 +397,7 @@
                     <div class="setting-row">
                         <label>api_key</label>
                         <div class="password-input-wrapper">
-                            <input type="password" id="openrouter-api-key" class="setting-input-wide" placeholder="sk-or-v1-..." onblur="scheduleSettingsAutoSave()">
+                            <input type="password" id="openrouter-api-key" class="setting-input-wide" placeholder="sk-or-v1-..." onblur="scheduleSettingsAutoSave()" autocomplete="off">
                             <button type="button" class="password-reveal-btn" onclick="togglePasswordVisibility('openrouter-api-key', this)">show</button>
                         </div>
                     </div>

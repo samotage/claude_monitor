@@ -132,50 +132,75 @@ priorities:
 | `polling_interval` | 60 | Cache refresh interval |
 | `model` | (uses openrouter.model) | Can use a different model for prioritisation |
 
-## tmux Integration
+## Terminal Backend
 
-tmux is **enabled by default** for all sessions, providing bidirectional control. Sessions run inside named tmux sessions, allowing you to send commands and capture full output via the API.
+Choose which terminal multiplexer to use for Claude Code sessions.
 
 ### Prerequisites
 
-Install tmux:
 ```bash
+# tmux (default)
 brew install tmux
+
+# WezTerm (alternative)
+brew install --cask wezterm
 ```
 
 ### Configuration
 
-tmux is enabled by default. To disable it for a specific project, set `tmux: false`:
+```yaml
+# Choose the default terminal backend
+terminal_backend: "tmux"    # Options: "tmux" (default), "wezterm"
+
+# WezTerm-specific settings (only used when terminal_backend: "wezterm")
+wezterm:
+  workspace: "claude-monitor"   # Workspace name for grouping sessions
+  full_scrollback: true         # Enable full scrollback capture
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `terminal_backend` | `tmux` | Which backend to use: `tmux` or `wezterm` |
+| `wezterm.workspace` | `claude-monitor` | WezTerm workspace for grouping Claude sessions |
+| `wezterm.full_scrollback` | `true` | Capture entire scrollback history |
+
+### Per-Project Override
+
+Override the backend for specific projects:
 
 ```yaml
 projects:
   - name: "my-app"
     path: "/Users/you/dev/my-app"
-    tmux: false   # Use iTerm mode (read-only)
+    terminal_backend: "wezterm"   # Use WezTerm for this project only
 ```
 
 ### API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/send/<session_id>` | POST | Send text to a tmux session |
+| `/api/send/<session_id>` | POST | Send text to session |
 | `/api/output/<session_id>` | GET | Capture session output |
-| `/api/projects/<name>/tmux` | GET | Check tmux status for project |
+| `/api/projects/<name>/tmux` | GET | Check backend status for project |
 | `/api/projects/<name>/tmux/enable` | POST | Enable tmux for project |
 | `/api/projects/<name>/tmux/disable` | POST | Disable tmux for project |
 
-### Session Types
+### Backend Comparison
 
-| Type | Read | Write | Notes |
-|------|------|-------|-------|
-| tmux | Yes | Yes | Default, requires tmux installed |
-| iTerm | Yes | No | Observation + window focus only |
+| Feature | tmux | WezTerm |
+|---------|------|---------|
+| Read output | Yes | Yes |
+| Send commands | Yes | Yes |
+| Platform | macOS, Linux | macOS, Linux, Windows |
+| Scrollback | Configurable (default 2000) | Full scrollback |
+| Window focus | AppleScript (macOS) | Native CLI |
 
 ### Command Line Flags
 
 ```bash
-claude-monitor start           # Default: runs in tmux
-claude-monitor start --iterm   # Force iTerm mode (read-only)
+claude-monitor start             # Use configured backend
+claude-monitor start --tmux      # Force tmux
+claude-monitor start --wezterm   # Force WezTerm
 ```
 
 ## Complete Example
@@ -185,10 +210,10 @@ claude-monitor start --iterm   # Force iTerm mode (read-only)
 projects:
   - name: "billing-api"
     path: "/Users/me/dev/billing-api"
-    # tmux is enabled by default
+    # Uses default backend
   - name: "frontend"
     path: "/Users/me/dev/frontend"
-    tmux: false           # Use iTerm mode for this project
+    terminal_backend: "wezterm"   # Override: use WezTerm for this project
   - name: "docs"
     path: "/Users/me/dev/docs"
 
@@ -216,6 +241,14 @@ headspace:
 priorities:
   enabled: true
   polling_interval: 60
+
+# Terminal Backend
+terminal_backend: "tmux"    # Default: "tmux" or "wezterm"
+
+# WezTerm settings (when using WezTerm backend)
+wezterm:
+  workspace: "claude-monitor"
+  full_scrollback: true
 ```
 
 ## Environment Variables

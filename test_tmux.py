@@ -21,6 +21,28 @@ from lib.tmux import (
 )
 
 
+@pytest.fixture(autouse=True)
+def reset_tmux_state():
+    """Reset tmux backend state before each test."""
+    import lib.backends.tmux as tmux_backend
+    from lib.backends import reset_backend
+
+    # Store original state
+    original_available = tmux_backend._tmux_available
+    original_debug = tmux_backend._debug_logging_enabled
+
+    # Reset cache so mocks can take effect
+    tmux_backend._tmux_available = None
+    reset_backend()
+
+    yield
+
+    # Restore original state
+    tmux_backend._tmux_available = original_available
+    tmux_backend._debug_logging_enabled = original_debug
+    reset_backend()
+
+
 # =============================================================================
 # Helper Function Tests
 # =============================================================================
@@ -104,9 +126,9 @@ class TestIsTmuxAvailable:
     @patch("shutil.which")
     def test_tmux_available(self, mock_which):
         """Returns True when tmux is found."""
-        # Reset the cached value
-        import lib.tmux
-        lib.tmux._tmux_available = None
+        # Reset the cached value in the backends module
+        import lib.backends.tmux as tmux_backend
+        tmux_backend._tmux_available = None
 
         mock_which.return_value = "/usr/local/bin/tmux"
         assert is_tmux_available() is True
@@ -115,8 +137,8 @@ class TestIsTmuxAvailable:
     @patch("shutil.which")
     def test_tmux_not_available(self, mock_which):
         """Returns False when tmux is not found."""
-        import lib.tmux
-        lib.tmux._tmux_available = None
+        import lib.backends.tmux as tmux_backend
+        tmux_backend._tmux_available = None
 
         mock_which.return_value = None
         assert is_tmux_available() is False
@@ -130,7 +152,7 @@ class TestIsTmuxAvailable:
 class TestRunTmux:
     """Tests for the internal _run_tmux helper."""
 
-    @patch("subprocess.run")
+    @patch("lib.backends.tmux.subprocess.run")
     def test_successful_command(self, mock_run):
         """Successfully executes a tmux command."""
         mock_run.return_value = MagicMock(
@@ -146,7 +168,7 @@ class TestRunTmux:
         assert stderr == ""
         mock_run.assert_called_once()
 
-    @patch("subprocess.run")
+    @patch("lib.backends.tmux.subprocess.run")
     def test_failed_command(self, mock_run):
         """Handles failed tmux command."""
         mock_run.return_value = MagicMock(
@@ -160,7 +182,7 @@ class TestRunTmux:
         assert code == 1
         assert stderr == "no server running"
 
-    @patch("subprocess.run")
+    @patch("lib.backends.tmux.subprocess.run")
     def test_timeout(self, mock_run):
         """Handles command timeout."""
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="tmux", timeout=10)
@@ -170,7 +192,7 @@ class TestRunTmux:
         assert code == 1
         assert stderr == "Command timed out"
 
-    @patch("subprocess.run")
+    @patch("lib.backends.tmux.subprocess.run")
     def test_tmux_not_found(self, mock_run):
         """Handles tmux not being installed."""
         mock_run.side_effect = FileNotFoundError()
@@ -189,41 +211,36 @@ class TestRunTmux:
 class TestSessionExists:
     """Tests for checking if a tmux session exists."""
 
-    @patch("lib.tmux.is_tmux_available")
-    @patch("lib.tmux._run_tmux")
-    def test_session_exists(self, mock_run, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux")
+    @patch("lib.backends.tmux._run_tmux")
+    def test_session_exists(self, mock_run, mock_which):
         """Returns True when session exists."""
-        mock_available.return_value = True
         mock_run.return_value = (0, "", "")
 
         assert session_exists("my-session") is True
         mock_run.assert_called_once_with("has-session", "-t", "my-session")
 
-    @patch("lib.tmux.is_tmux_available")
-    @patch("lib.tmux._run_tmux")
-    def test_session_not_exists(self, mock_run, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux")
+    @patch("lib.backends.tmux._run_tmux")
+    def test_session_not_exists(self, mock_run, mock_which):
         """Returns False when session doesn't exist."""
-        mock_available.return_value = True
         mock_run.return_value = (1, "", "session not found")
 
         assert session_exists("my-session") is False
 
-    @patch("lib.tmux.is_tmux_available")
-    def test_tmux_not_available(self, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value=None)
+    def test_tmux_not_available(self, mock_which):
         """Returns False when tmux is not available."""
-        mock_available.return_value = False
-
         assert session_exists("my-session") is False
 
 
 class TestListSessions:
     """Tests for listing tmux sessions."""
 
-    @patch("lib.tmux.is_tmux_available")
-    @patch("lib.tmux._run_tmux")
-    def test_list_sessions(self, mock_run, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux")
+    @patch("lib.backends.tmux._run_tmux")
+    def test_list_sessions(self, mock_run, mock_which):
         """Lists sessions successfully."""
-        mock_available.return_value = True
         mock_run.return_value = (0, "session1:1234567890:0:1\nsession2:1234567891:1:2\n", "")
 
         sessions = list_sessions()
@@ -234,21 +251,18 @@ class TestListSessions:
         assert sessions[1]["name"] == "session2"
         assert sessions[1]["attached"] is True
 
-    @patch("lib.tmux.is_tmux_available")
-    @patch("lib.tmux._run_tmux")
-    def test_list_sessions_empty(self, mock_run, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux")
+    @patch("lib.backends.tmux._run_tmux")
+    def test_list_sessions_empty(self, mock_run, mock_which):
         """Returns empty list when no sessions."""
-        mock_available.return_value = True
         mock_run.return_value = (1, "", "no server running")
 
         sessions = list_sessions()
         assert sessions == []
 
-    @patch("lib.tmux.is_tmux_available")
-    def test_list_sessions_tmux_unavailable(self, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value=None)
+    def test_list_sessions_tmux_unavailable(self, mock_which):
         """Returns empty list when tmux unavailable."""
-        mock_available.return_value = False
-
         sessions = list_sessions()
         assert sessions == []
 
@@ -256,53 +270,46 @@ class TestListSessions:
 class TestSendKeys:
     """Tests for sending keys to tmux sessions."""
 
-    @patch("lib.tmux.is_tmux_available")
-    @patch("lib.tmux.session_exists")
-    @patch("lib.tmux._run_tmux")
-    def test_send_keys_with_enter(self, mock_run, mock_exists, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux")
+    @patch("lib.backends.tmux._run_tmux")
+    def test_send_keys_with_enter(self, mock_run, mock_which):
         """Sends keys with Enter."""
-        mock_available.return_value = True
-        mock_exists.return_value = True
-        mock_run.return_value = (0, "", "")
+        # First call for session_exists (has-session), second for send-keys
+        mock_run.side_effect = [(0, "", ""), (0, "", "")]
 
         result = send_keys("my-session", "hello world", enter=True)
 
         assert result is True
-        mock_run.assert_called_once_with(
-            "send-keys", "-t", "my-session", "hello world", "Enter"
-        )
+        # Check that send-keys was called correctly (second call)
+        calls = mock_run.call_args_list
+        assert calls[-1] == (("send-keys", "-t", "my-session", "hello world", "Enter"),)
 
-    @patch("lib.tmux.is_tmux_available")
-    @patch("lib.tmux.session_exists")
-    @patch("lib.tmux._run_tmux")
-    def test_send_keys_without_enter(self, mock_run, mock_exists, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux")
+    @patch("lib.backends.tmux._run_tmux")
+    def test_send_keys_without_enter(self, mock_run, mock_which):
         """Sends keys without Enter."""
-        mock_available.return_value = True
-        mock_exists.return_value = True
-        mock_run.return_value = (0, "", "")
+        # First call for session_exists, second for send-keys
+        mock_run.side_effect = [(0, "", ""), (0, "", "")]
 
         result = send_keys("my-session", "hello", enter=False)
 
         assert result is True
-        mock_run.assert_called_once_with(
-            "send-keys", "-t", "my-session", "hello"
-        )
+        # Check that send-keys was called correctly (second call)
+        calls = mock_run.call_args_list
+        assert calls[-1] == (("send-keys", "-t", "my-session", "hello"),)
 
-    @patch("lib.tmux.is_tmux_available")
-    @patch("lib.tmux.session_exists")
-    def test_send_keys_session_not_exists(self, mock_exists, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux")
+    @patch("lib.backends.tmux._run_tmux")
+    def test_send_keys_session_not_exists(self, mock_run, mock_which):
         """Returns False when session doesn't exist."""
-        mock_available.return_value = True
-        mock_exists.return_value = False
+        mock_run.return_value = (1, "", "session not found")
 
         result = send_keys("my-session", "hello")
         assert result is False
 
-    @patch("lib.tmux.is_tmux_available")
-    def test_send_keys_tmux_unavailable(self, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value=None)
+    def test_send_keys_tmux_unavailable(self, mock_which):
         """Returns False when tmux unavailable."""
-        mock_available.return_value = False
-
         result = send_keys("my-session", "hello")
         assert result is False
 
@@ -310,28 +317,25 @@ class TestSendKeys:
 class TestCapturPane:
     """Tests for capturing tmux pane output."""
 
-    @patch("lib.tmux.is_tmux_available")
-    @patch("lib.tmux.session_exists")
-    @patch("lib.tmux._run_tmux")
-    def test_capture_pane(self, mock_run, mock_exists, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux")
+    @patch("lib.backends.tmux._run_tmux")
+    def test_capture_pane(self, mock_run, mock_which):
         """Captures pane output successfully."""
-        mock_available.return_value = True
-        mock_exists.return_value = True
-        mock_run.return_value = (0, "line1\nline2\nline3\n", "")
+        # First call for session_exists, second for capture-pane
+        mock_run.side_effect = [(0, "", ""), (0, "line1\nline2\nline3\n", "")]
 
         output = capture_pane("my-session", lines=100)
 
         assert output == "line1\nline2\nline3\n"
-        mock_run.assert_called_once_with(
-            "capture-pane", "-t", "my-session", "-p", "-S", "-100"
-        )
+        # Check that capture-pane was called correctly (second call)
+        calls = mock_run.call_args_list
+        assert calls[-1] == (("capture-pane", "-t", "my-session", "-p", "-S", "-100"),)
 
-    @patch("lib.tmux.is_tmux_available")
-    @patch("lib.tmux.session_exists")
-    def test_capture_pane_session_not_exists(self, mock_exists, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux")
+    @patch("lib.backends.tmux._run_tmux")
+    def test_capture_pane_session_not_exists(self, mock_run, mock_which):
         """Returns None when session doesn't exist."""
-        mock_available.return_value = True
-        mock_exists.return_value = False
+        mock_run.return_value = (1, "", "session not found")
 
         output = capture_pane("my-session")
         assert output is None
@@ -340,44 +344,39 @@ class TestCapturPane:
 class TestCreateSession:
     """Tests for creating tmux sessions."""
 
-    @patch("lib.tmux.is_tmux_available")
-    @patch("lib.tmux.session_exists")
-    @patch("lib.tmux._run_tmux")
-    def test_create_session_basic(self, mock_run, mock_exists, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux")
+    @patch("lib.backends.tmux._run_tmux")
+    def test_create_session_basic(self, mock_run, mock_which):
         """Creates a basic session."""
-        mock_available.return_value = True
-        mock_exists.return_value = False
-        mock_run.return_value = (0, "", "")
+        # First call for session_exists (returns not found), second for new-session
+        mock_run.side_effect = [(1, "", "session not found"), (0, "", "")]
 
         result = create_session("my-session")
 
         assert result is True
-        mock_run.assert_called_once_with(
-            "new-session", "-d", "-s", "my-session"
-        )
+        # Check that new-session was called correctly (second call)
+        calls = mock_run.call_args_list
+        assert calls[-1] == (("new-session", "-d", "-s", "my-session"),)
 
-    @patch("lib.tmux.is_tmux_available")
-    @patch("lib.tmux.session_exists")
-    @patch("lib.tmux._run_tmux")
-    def test_create_session_with_directory(self, mock_run, mock_exists, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux")
+    @patch("lib.backends.tmux._run_tmux")
+    def test_create_session_with_directory(self, mock_run, mock_which):
         """Creates session with working directory."""
-        mock_available.return_value = True
-        mock_exists.return_value = False
-        mock_run.return_value = (0, "", "")
+        # First call for session_exists (returns not found), second for new-session
+        mock_run.side_effect = [(1, "", "session not found"), (0, "", "")]
 
         result = create_session("my-session", working_dir="/path/to/project")
 
         assert result is True
-        mock_run.assert_called_once_with(
-            "new-session", "-d", "-s", "my-session", "-c", "/path/to/project"
-        )
+        # Check that new-session was called correctly (second call)
+        calls = mock_run.call_args_list
+        assert calls[-1] == (("new-session", "-d", "-s", "my-session", "-c", "/path/to/project"),)
 
-    @patch("lib.tmux.is_tmux_available")
-    @patch("lib.tmux.session_exists")
-    def test_create_session_already_exists(self, mock_exists, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux")
+    @patch("lib.backends.tmux._run_tmux")
+    def test_create_session_already_exists(self, mock_run, mock_which):
         """Returns False when session already exists."""
-        mock_available.return_value = True
-        mock_exists.return_value = True
+        mock_run.return_value = (0, "", "")  # session_exists returns True
 
         result = create_session("my-session")
         assert result is False
@@ -386,11 +385,10 @@ class TestCreateSession:
 class TestKillSession:
     """Tests for killing tmux sessions."""
 
-    @patch("lib.tmux.is_tmux_available")
-    @patch("lib.tmux._run_tmux")
-    def test_kill_session(self, mock_run, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux")
+    @patch("lib.backends.tmux._run_tmux")
+    def test_kill_session(self, mock_run, mock_which):
         """Kills session successfully."""
-        mock_available.return_value = True
         mock_run.return_value = (0, "", "")
 
         result = kill_session("my-session")
@@ -407,18 +405,15 @@ class TestKillSession:
 class TestGetSessionInfo:
     """Tests for getting detailed session info."""
 
-    @patch("lib.tmux.is_tmux_available")
-    @patch("lib.tmux.session_exists")
-    @patch("lib.tmux._run_tmux")
-    def test_get_session_info(self, mock_run, mock_exists, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux")
+    @patch("lib.backends.tmux._run_tmux")
+    def test_get_session_info(self, mock_run, mock_which):
         """Gets session info successfully."""
-        mock_available.return_value = True
-        mock_exists.return_value = True
-        mock_run.return_value = (
-            0,
-            "my-session:1234567890:1:1:12345:/dev/ttys001:/path/to/project\n",
-            ""
-        )
+        # First call for session_exists, second for list-panes
+        mock_run.side_effect = [
+            (0, "", ""),  # session_exists
+            (0, "my-session:1234567890:1:1:12345:/dev/ttys001:/path/to/project\n", ""),  # list-panes
+        ]
 
         info = get_session_info("my-session")
 
@@ -429,12 +424,11 @@ class TestGetSessionInfo:
         assert info["pane_tty"] == "/dev/ttys001"
         assert info["pane_path"] == "/path/to/project"
 
-    @patch("lib.tmux.is_tmux_available")
-    @patch("lib.tmux.session_exists")
-    def test_get_session_info_not_exists(self, mock_exists, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux")
+    @patch("lib.backends.tmux._run_tmux")
+    def test_get_session_info_not_exists(self, mock_run, mock_which):
         """Returns None when session doesn't exist."""
-        mock_available.return_value = True
-        mock_exists.return_value = False
+        mock_run.return_value = (1, "", "session not found")
 
         info = get_session_info("my-session")
         assert info is None
@@ -443,20 +437,20 @@ class TestGetSessionInfo:
 class TestGetClaudeSessions:
     """Tests for finding Claude-specific sessions."""
 
-    @patch("lib.tmux.is_tmux_available")
-    @patch("lib.tmux.list_sessions")
-    @patch("lib.tmux.get_session_info")
-    def test_get_claude_sessions(self, mock_info, mock_list, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux")
+    @patch("lib.backends.tmux._run_tmux")
+    def test_get_claude_sessions(self, mock_run, mock_which):
         """Filters to only Claude sessions."""
-        mock_available.return_value = True
-        mock_list.return_value = [
-            {"name": "claude-myproject", "attached": True, "windows": 1},
-            {"name": "other-session", "attached": False, "windows": 1},
-            {"name": "claude-another", "attached": False, "windows": 1},
-        ]
-        mock_info.side_effect = [
-            {"name": "claude-myproject", "pane_pid": 123},
-            {"name": "claude-another", "pane_pid": 456},
+        # list_sessions call, then session_exists + list-panes for each claude session
+        mock_run.side_effect = [
+            # list_sessions
+            (0, "claude-myproject:1234567890:1:1\nother-session:1234567891:0:1\nclaude-another:1234567892:0:1\n", ""),
+            # get_session_info for claude-myproject: session_exists then list-panes
+            (0, "", ""),
+            (0, "claude-myproject:1234567890:1:1:123:/dev/ttys001:/path1\n", ""),
+            # get_session_info for claude-another: session_exists then list-panes
+            (0, "", ""),
+            (0, "claude-another:1234567892:0:1:456:/dev/ttys002:/path2\n", ""),
         ]
 
         sessions = get_claude_sessions()
@@ -465,10 +459,8 @@ class TestGetClaudeSessions:
         assert sessions[0]["name"] == "claude-myproject"
         assert sessions[1]["name"] == "claude-another"
 
-    @patch("lib.tmux.is_tmux_available")
-    def test_get_claude_sessions_tmux_unavailable(self, mock_available):
+    @patch("lib.backends.tmux.shutil.which", return_value=None)
+    def test_get_claude_sessions_tmux_unavailable(self, mock_which):
         """Returns empty list when tmux unavailable."""
-        mock_available.return_value = False
-
         sessions = get_claude_sessions()
         assert sessions == []

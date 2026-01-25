@@ -445,10 +445,17 @@ class TestTmuxLoggingIntegration:
         monkeypatch.setattr("lib.tmux_logging.TMUX_LOG_FILE", str(log_file))
         monkeypatch.setattr("lib.tmux_logging.LOG_DIR", str(tmp_path))
 
-        # Mock tmux functions
-        with patch("lib.tmux.is_tmux_available", return_value=True), \
-             patch("lib.tmux.session_exists", return_value=True), \
-             patch("lib.tmux._run_tmux", return_value=(0, "", "")):
+        # Reset backend state
+        import lib.backends.tmux as tmux_backend
+        from lib.backends import reset_backend
+        tmux_backend._tmux_available = None
+        reset_backend()
+
+        # Mock tmux functions at backends level
+        with patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux"), \
+             patch("lib.backends.tmux._run_tmux") as mock_run:
+            # First call for session_exists, second for send-keys
+            mock_run.side_effect = [(0, "", ""), (0, "", "")]
 
             from lib.tmux import send_keys, set_debug_logging
             set_debug_logging(True)
@@ -473,9 +480,16 @@ class TestTmuxLoggingIntegration:
 
         captured_output = "Line 1\nLine 2\nLine 3"
 
-        with patch("lib.tmux.is_tmux_available", return_value=True), \
-             patch("lib.tmux.session_exists", return_value=True), \
-             patch("lib.tmux._run_tmux", return_value=(0, captured_output, "")):
+        # Reset backend state
+        import lib.backends.tmux as tmux_backend
+        from lib.backends import reset_backend
+        tmux_backend._tmux_available = None
+        reset_backend()
+
+        with patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux"), \
+             patch("lib.backends.tmux._run_tmux") as mock_run:
+            # First call for session_exists, second for capture-pane
+            mock_run.side_effect = [(0, "", ""), (0, captured_output, "")]
 
             from lib.tmux import capture_pane, set_debug_logging
             set_debug_logging(True)
@@ -498,9 +512,16 @@ class TestTmuxLoggingIntegration:
         monkeypatch.setattr("lib.tmux_logging.TMUX_LOG_FILE", str(log_file))
         monkeypatch.setattr("lib.tmux_logging.LOG_DIR", str(tmp_path))
 
-        with patch("lib.tmux.is_tmux_available", return_value=True), \
-             patch("lib.tmux.session_exists", return_value=True), \
-             patch("lib.tmux._run_tmux", return_value=(0, "", "")):
+        # Reset backend state
+        import lib.backends.tmux as tmux_backend
+        from lib.backends import reset_backend
+        tmux_backend._tmux_available = None
+        reset_backend()
+
+        with patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux"), \
+             patch("lib.backends.tmux._run_tmux") as mock_run:
+            # First call for session_exists, second for send-keys
+            mock_run.side_effect = [(0, "", ""), (0, "", "")]
 
             from lib.tmux import send_keys, set_debug_logging
             set_debug_logging(False)
@@ -518,9 +539,16 @@ class TestTmuxLoggingIntegration:
         monkeypatch.setattr("lib.tmux_logging.TMUX_LOG_FILE", str(log_file))
         monkeypatch.setattr("lib.tmux_logging.LOG_DIR", str(tmp_path))
 
-        with patch("lib.tmux.is_tmux_available", return_value=True), \
-             patch("lib.tmux.session_exists", return_value=True), \
-             patch("lib.tmux._run_tmux", return_value=(0, "response", "")):
+        # Reset backend state
+        import lib.backends.tmux as tmux_backend
+        from lib.backends import reset_backend
+        tmux_backend._tmux_available = None
+        reset_backend()
+
+        with patch("lib.backends.tmux.shutil.which", return_value="/usr/local/bin/tmux"), \
+             patch("lib.backends.tmux._run_tmux") as mock_run:
+            # Calls: session_exists (send), send-keys, session_exists (capture), capture-pane
+            mock_run.side_effect = [(0, "", ""), (0, "", ""), (0, "", ""), (0, "response", "")]
 
             from lib.tmux import send_keys, capture_pane, set_debug_logging
             set_debug_logging(True)
