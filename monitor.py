@@ -293,16 +293,31 @@ def reset_working_state() -> dict:
     Clears:
     - Notification tracking state (previous session states)
     - Priorities cache (AI-computed priorities)
+    - Turn tracking state (active and completed turns)
+    - Activity state tracking (previous states for transition detection)
+    - Enter signals (pending WezTerm signals)
 
     Returns:
         Dict with reset status information
     """
+    from lib.sessions import (
+        clear_previous_activity_states,
+        clear_turn_tracking,
+        clear_enter_signals,
+    )
+
     reset_notification_state()
     reset_priorities_cache()
+    clear_previous_activity_states()
+    clear_turn_tracking()
+    clear_enter_signals()
 
     return {
         "notification_state": "cleared",
-        "priorities_cache": "cleared"
+        "priorities_cache": "cleared",
+        "turn_tracking": "cleared",
+        "activity_states": "cleared",
+        "enter_signals": "cleared",
     }
 
 
@@ -754,6 +769,11 @@ def compute_priorities(force_refresh: bool = False) -> dict:
     # get_cached_priorities returns (cached_data, new_states) tuple
     cached, new_states = get_cached_priorities(sessions)
     if not force_refresh and cached:
+        # CRITICAL: Update activity states even on cache hit
+        # This prevents the same transition from being detected repeatedly
+        # (Fixes issue where cache hit skipped state update, causing redundant refreshes)
+        update_activity_states(new_states)
+
         # Get session states for filtering
         session_states = {s["session_id"]: s["activity_state"] for s in sessions}
 

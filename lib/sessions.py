@@ -145,6 +145,19 @@ def clear_previous_activity_states() -> None:
     _previous_activity_states = {}
 
 
+def clear_turn_tracking() -> None:
+    """Clear all turn tracking state (active and completed turns)."""
+    global _turn_tracking, _last_completed_turn
+    _turn_tracking.clear()
+    _last_completed_turn.clear()
+
+
+def clear_enter_signals() -> None:
+    """Clear all pending Enter signals from WezTerm."""
+    global _enter_signals
+    _enter_signals.clear()
+
+
 def cleanup_stale_session_data(active_session_ids: set[str]) -> int:
     """Remove tracking data for sessions that are no longer active.
 

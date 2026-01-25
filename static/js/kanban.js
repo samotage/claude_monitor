@@ -39,7 +39,8 @@ function getHybridSummary(session, priorityInfo) {
         summaryText = aiSummary || 'Waiting for input';
         cssClass = 'activity-summary input-needed-summary';
     } else {
-        // Idle: prefer AI summary, then turn_command context, then task_summary
+        // Idle: prefer AI summary, then turn_command context
+        // Avoid task_summary as fallback - it's often stale (from window title at session start)
         if (aiSummary) {
             summaryText = aiSummary;
         } else if (turnCommand) {
@@ -47,9 +48,14 @@ function getHybridSummary(session, priorityInfo) {
             const displayCommand = turnCommand.length > 50
                 ? turnCommand.substring(0, 47) + '...'
                 : turnCommand;
-            summaryText = `Completed: ${displayCommand}`;
+            summaryText = `Last: ${displayCommand}`;
         } else {
-            summaryText = taskSummary || 'Ready for task';
+            // Only use task_summary if it looks like meaningful context
+            // Generic titles often just contain project names or are very short
+            const looksGeneric = !taskSummary ||
+                taskSummary.length < 15 ||
+                taskSummary.toLowerCase().includes('claude');
+            summaryText = looksGeneric ? 'Ready for task' : taskSummary;
         }
         cssClass = 'activity-summary idle-summary';
     }

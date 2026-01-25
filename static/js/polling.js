@@ -85,6 +85,15 @@ async function fetchSessions() {
 }
 
 /**
+ * Get a stable session identifier that matches backend tracking.
+ * Priority: tmux_session > uuid > pid (fallback)
+ * This ensures frontend and backend use the same keys for state tracking.
+ */
+function getStableSessionId(session) {
+    return session.tmux_session || session.uuid || String(session.pid);
+}
+
+/**
  * Detect state transitions that require a priority refresh.
  * Returns true if any session transitioned from processing → idle/input_needed
  * (indicating a turn completed and we need fresh AI summary).
@@ -93,7 +102,8 @@ function detectStateTransitions(sessions) {
     let needsRefresh = false;
 
     for (const session of sessions) {
-        const sessionId = String(session.pid);
+        // Use stable session identifier that matches backend tracking
+        const sessionId = getStableSessionId(session);
         const currentState = session.activity_state;
         const previousState = previousActivityStates[sessionId];
 
@@ -108,7 +118,7 @@ function detectStateTransitions(sessions) {
     }
 
     // Clean up sessions that no longer exist
-    const currentSessionIds = new Set(sessions.map(s => String(s.pid)));
+    const currentSessionIds = new Set(sessions.map(s => getStableSessionId(s)));
     for (const sessionId of Object.keys(previousActivityStates)) {
         if (!currentSessionIds.has(sessionId)) {
             delete previousActivityStates[sessionId];
