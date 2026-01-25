@@ -37,7 +37,7 @@ DEFAULT_CONFIG = {
         "interval": 60,
         "jsonl_tail_entries": 20,
     },
-    "terminal_backend": "tmux",
+    "terminal_backend": "wezterm",
     "wezterm": {
         "workspace": "claude-monitor",
         "full_scrollback": True,

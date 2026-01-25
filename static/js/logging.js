@@ -147,33 +147,140 @@ function setBackendFilter(backend) {
 }
 
 /**
- * Clear all terminal logs with confirmation
+ * Show the custom confirmation modal
+ * @param {string} message - The message to display
+ * @param {function} onConfirm - Callback when user confirms
  */
-async function clearTerminalLogs() {
-    if (!confirm('Are you sure you want to delete all terminal logs? This action cannot be undone.')) {
+function showConfirmModal(message, onConfirm) {
+    const overlay = document.getElementById('confirm-modal-overlay');
+    const modal = document.getElementById('confirm-modal');
+    const messageEl = document.getElementById('confirm-modal-message');
+    const cancelBtn = document.getElementById('confirm-modal-cancel');
+    const confirmBtn = document.getElementById('confirm-modal-confirm');
+
+    if (!overlay || !modal || !messageEl || !cancelBtn || !confirmBtn) {
+        // Fallback to native confirm if modal elements missing
+        if (confirm(message)) {
+            onConfirm();
+        }
         return;
     }
 
-    try {
-        const response = await fetch('/api/logs/terminal', {
-            method: 'DELETE'
-        });
+    messageEl.textContent = message;
 
-        const data = await response.json();
+    // Show modal
+    overlay.classList.add('active');
+    modal.classList.add('active');
 
-        if (data.success) {
-            // Reload to show empty state
-            terminalLogs = [];
-            allLogs = [];
-            renderTerminalLogs([]);
-        } else {
-            console.error('Failed to clear logs:', data.error);
-            alert('Failed to clear logs: ' + (data.error || 'Unknown error'));
-        }
-    } catch (error) {
-        console.error('Failed to clear logs:', error);
-        alert('Failed to clear logs: ' + error.message);
+    // Clean up old listeners by cloning buttons
+    const newCancelBtn = cancelBtn.cloneNode(true);
+    const newConfirmBtn = confirmBtn.cloneNode(true);
+    cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+
+    function closeModal() {
+        overlay.classList.remove('active');
+        modal.classList.remove('active');
     }
+
+    // Cancel button
+    newCancelBtn.addEventListener('click', closeModal);
+
+    // Confirm button
+    newConfirmBtn.addEventListener('click', () => {
+        closeModal();
+        onConfirm();
+    });
+
+    // Close on overlay click
+    overlay.addEventListener('click', closeModal, { once: true });
+
+    // Close on Escape key
+    function handleEscape(e) {
+        if (e.key === 'Escape') {
+            closeModal();
+            document.removeEventListener('keydown', handleEscape);
+        }
+    }
+    document.addEventListener('keydown', handleEscape);
+}
+
+/**
+ * Clear all terminal logs with confirmation
+ */
+function clearTerminalLogs() {
+    showConfirmModal(
+        'Are you sure you want to delete all terminal logs? This action cannot be undone.',
+        async () => {
+            try {
+                const response = await fetch('/api/logs/terminal', {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Reload to show empty state
+                    terminalLogs = [];
+                    allLogs = [];
+                    renderTerminalLogs([]);
+                } else {
+                    console.error('Failed to clear logs:', data.error);
+                    showErrorModal('Failed to clear logs: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Failed to clear logs:', error);
+                showErrorModal('Failed to clear logs: ' + error.message);
+            }
+        }
+    );
+}
+
+/**
+ * Show an error message in a modal (replaces alert)
+ */
+function showErrorModal(message) {
+    const overlay = document.getElementById('confirm-modal-overlay');
+    const modal = document.getElementById('confirm-modal');
+    const messageEl = document.getElementById('confirm-modal-message');
+    const cancelBtn = document.getElementById('confirm-modal-cancel');
+    const confirmBtn = document.getElementById('confirm-modal-confirm');
+    const titleEl = modal.querySelector('.confirm-modal-title');
+
+    if (!overlay || !modal) {
+        alert(message);
+        return;
+    }
+
+    // Update title and message for error
+    if (titleEl) titleEl.textContent = 'Error';
+    messageEl.textContent = message;
+
+    // Hide cancel, change confirm to "OK"
+    cancelBtn.style.display = 'none';
+    confirmBtn.textContent = 'OK';
+    confirmBtn.className = 'confirm-modal-btn confirm-modal-cancel'; // Use cancel style (not destructive)
+
+    // Show modal
+    overlay.classList.add('active');
+    modal.classList.add('active');
+
+    function closeModal() {
+        overlay.classList.remove('active');
+        modal.classList.remove('active');
+        // Restore defaults
+        if (titleEl) titleEl.textContent = 'Confirm Action';
+        cancelBtn.style.display = '';
+        confirmBtn.textContent = 'Delete';
+        confirmBtn.className = 'confirm-modal-btn confirm-modal-confirm';
+    }
+
+    // Clone to remove old listeners
+    const newConfirmBtn = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+
+    newConfirmBtn.addEventListener('click', closeModal);
+    overlay.addEventListener('click', closeModal, { once: true });
 }
 
 /**
@@ -453,12 +560,14 @@ function renderTerminalLogEntry(entry) {
                     <span class="log-entry-timestamp-ago">${ago}</span>
                 </span>
                 <span class="log-entry-backend ${backendClass}">${escapeHtml(backend)}</span>
-                <span class="log-entry-session">${escapeHtml(sessionName)}</span>
+                <span class="log-entry-context">
+                    <span class="log-entry-context-event">${escapeHtml(entry.event_type)}</span>
+                    <span class="log-entry-context-session">${escapeHtml(sessionName)}</span>
+                </span>
                 <span class="log-entry-direction ${directionClass}">
                     <span class="direction-icon">${directionIcon}</span>
                     <span class="direction-text">${directionText}</span>
                 </span>
-                <span class="log-entry-event-type">${escapeHtml(entry.event_type)}</span>
                 <span class="log-entry-status">
                     <span class="log-entry-status-icon ${statusClass}">${statusIcon}</span>
                 </span>
@@ -849,21 +958,15 @@ function formatTimestampWithAgo(isoTimestamp) {
     try {
         const date = new Date(isoTimestamp);
 
-        // Format date and time
-        const dateStr = date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric'
-        });
+        // Format as DD.MM.YY HH:MM:SS
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = String(date.getFullYear()).slice(-2);
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
 
-        const time = date.toLocaleTimeString('en-US', {
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
-        });
-
-        const datetime = `${dateStr} ${time}`;
+        const datetime = `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
         const ago = formatTimeAgo(date);
 
         return { datetime, ago };

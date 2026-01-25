@@ -63,6 +63,39 @@ class TestRegressionActivityStateDetection:
         state, _ = parse_activity_state("", content_with_processing)
         assert state == "processing", "Failed to detect processing via (esc to interrupt)"
 
+    def test_regression_processing_detected_case_insensitive_esc(self):
+        """REGRESSION: Processing detection must be case-insensitive for 'Esc to interrupt'.
+
+        Bug (2026-01-26): Claude Code displays "(Esc to interrupt" with capital E,
+        but the detection code used lowercase "(esc to interrupt", causing processing
+        sessions to be incorrectly marked as idle.
+
+        Fix: Use case-insensitive comparison for the "(esc to interrupt)" check.
+        """
+        # Content with capital E in "Esc" - as Claude Code actually displays it
+        content_with_capital_esc = """
+        Some output here...
+
+        * Composing... (Esc to interrupt - 3m 52s - ↓ 3.0k tokens - thinking)
+
+        ❯
+        """
+
+        # Must detect processing even with capital E
+        state, _ = parse_activity_state("", content_with_capital_esc)
+        assert state == "processing", "Failed to detect processing with capital 'Esc' - case sensitivity bug"
+
+        # Also verify lowercase still works
+        content_with_lowercase_esc = """
+        Some output here...
+
+        * Composing... (esc to interrupt - 2m 10s)
+
+        ❯
+        """
+        state, _ = parse_activity_state("", content_with_lowercase_esc)
+        assert state == "processing", "Failed to detect processing with lowercase 'esc'"
+
     def test_regression_processing_not_detected_when_turn_complete(self):
         """REGRESSION: Completed turns should NOT be detected as processing.
 
@@ -672,6 +705,44 @@ class TestMatchProject:
         """Returns None for empty slug."""
         projects = [{"name": "Project", "path": "/path"}]
         result = match_project("", projects)
+        assert result is None
+
+    def test_matches_malformed_session_with_numeric_suffix(self):
+        """Matches project when slug has numeric suffix (e.g., 'claude-monitor-3').
+
+        This handles malformed WezTerm session names like 'claude-claude-monitor-3'
+        which parse to slug 'claude-monitor-3' but should match 'claude-monitor'.
+        """
+        projects = [
+            {"name": "Claude Monitor", "path": "/path/to/claude_monitor"},
+            {"name": "Other Project", "path": "/path/to/other"},
+        ]
+        # Malformed slug with single-digit suffix
+        result = match_project("claude-monitor-3", projects)
+        assert result is not None
+        assert result["name"] == "Claude Monitor"
+
+        # Another numeric suffix
+        result = match_project("claude-monitor-1", projects)
+        assert result is not None
+        assert result["name"] == "Claude Monitor"
+
+    def test_does_not_match_valid_uuid_suffix_as_malformed(self):
+        """Does not use prefix matching for valid 8-hex-char suffixes.
+
+        Valid session names like 'claude-monitor-94e09464' should use
+        exact matching, not prefix matching.
+        """
+        projects = [
+            {"name": "Claude Monitor", "path": "/path/to/claude_monitor"},
+        ]
+        # Valid UUID suffix - exact match should work
+        result = match_project("claude-monitor", projects)
+        assert result is not None
+        assert result["name"] == "Claude Monitor"
+
+        # Non-numeric, non-matching suffix should NOT match
+        result = match_project("claude-monitor-xyz", projects)
         assert result is None
 
 

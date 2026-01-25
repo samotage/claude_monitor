@@ -134,7 +134,7 @@ def api_focus(pid: int):
     Supports both iTerm (via AppleScript) and WezTerm (via CLI activate-pane).
     """
     config = load_config()
-    backend_name = config.get("terminal_backend", "tmux")
+    backend_name = config.get("terminal_backend", "wezterm")
 
     if backend_name == "wezterm":
         # Find session by PID and use WezTerm focus
@@ -175,7 +175,7 @@ def api_focus_session(session_name: str):
     Backend-aware: uses WezTerm CLI or iTerm AppleScript as appropriate.
     """
     config = load_config()
-    backend_name = config.get("terminal_backend", "tmux")
+    backend_name = config.get("terminal_backend", "wezterm")
 
     if backend_name == "wezterm":
         from lib.backends.wezterm import focus_window as wezterm_focus

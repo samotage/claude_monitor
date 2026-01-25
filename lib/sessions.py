@@ -46,6 +46,7 @@ class TurnState:
     command: str              # User's command that started the turn
     started_at: datetime      # When processing began
     previous_state: str       # State before processing started (idle/input_needed)
+    backend: str = "tmux"            # Terminal backend ("tmux" or "wezterm")
     logged_start: bool = False       # Prevent duplicate start logs
     logged_completion: bool = False  # Prevent duplicate completion logs
 
@@ -318,6 +319,7 @@ def track_turn_cycle(
     tmux_session_name: str,
     current_state: str,
     content: str,
+    backend: str = "tmux",
 ) -> Optional[dict]:
     """Track turn cycle transitions and log atomic turn pairs.
 
@@ -333,6 +335,7 @@ def track_turn_cycle(
         tmux_session_name: The tmux session name for logging
         current_state: Current activity state (processing/idle/input_needed)
         content: Terminal content for extracting command/completion marker
+        backend: Terminal backend identifier ("tmux" or "wezterm")
 
     Returns:
         Turn data dict if a turn just completed, None otherwise
@@ -359,6 +362,7 @@ def track_turn_cycle(
             command=command,
             started_at=actual_start_time,
             previous_state=previous_state,
+            backend=backend,
             logged_start=False,
             logged_completion=False,
         )
@@ -432,15 +436,15 @@ def get_last_completed_turn(session_id: str) -> Optional[dict]:
 
 
 def _log_turn_start(session_id: str, tmux_session_name: str, turn_state: TurnState) -> None:
-    """Log a turn start to the tmux log file.
+    """Log a turn start to the terminal log file.
 
     Creates a log entry with event_type="turn_start" and direction="out" (user command).
     The turn_id in correlation_id links this to the corresponding turn_complete entry.
 
     Args:
         session_id: Session identifier
-        tmux_session_name: The tmux session name
-        turn_state: TurnState with turn_id, command, started_at
+        tmux_session_name: The terminal session name
+        turn_state: TurnState with turn_id, command, started_at, backend
     """
     from lib.terminal_logging import create_terminal_log_entry, write_terminal_log_entry
 
@@ -458,22 +462,22 @@ def _log_turn_start(session_id: str, tmux_session_name: str, turn_state: TurnSta
         payload=json.dumps(payload),
         correlation_id=turn_state.turn_id,
         debug_enabled=True,  # Always log turn data
-        backend="tmux",  # Turn tracking currently only used with tmux
+        backend=turn_state.backend,
     )
 
     write_terminal_log_entry(entry)
 
 
 def _log_turn_completion(session_id: str, tmux_session_name: str, turn_state: TurnState, turn_data: dict, response_summary: str) -> None:
-    """Log a turn completion to the tmux log file.
+    """Log a turn completion to the terminal log file.
 
     Creates a log entry with event_type="turn_complete" and direction="in" (Claude response).
     The turn_id in correlation_id links this to the corresponding turn_start entry.
 
     Args:
         session_id: Session identifier
-        tmux_session_name: The tmux session name
-        turn_state: TurnState with turn_id for correlation
+        tmux_session_name: The terminal session name
+        turn_state: TurnState with turn_id, backend for correlation
         turn_data: Dict with command, result_state, completion_marker, duration_seconds, started_at
         response_summary: Summary of Claude's response (extracted from terminal content)
     """
@@ -494,7 +498,7 @@ def _log_turn_completion(session_id: str, tmux_session_name: str, turn_state: Tu
         payload=json.dumps(payload),
         correlation_id=turn_state.turn_id,
         debug_enabled=True,  # Always log turn data
-        backend="tmux",  # Turn tracking currently only used with tmux
+        backend=turn_state.backend,
     )
 
     write_terminal_log_entry(entry)
@@ -688,8 +692,9 @@ def match_project(slug: str, projects: list[dict]) -> Optional[dict]:
     """Match a project slug to a config project.
 
     Tries to match by:
-    1. Slugified project name
-    2. Slugified directory name
+    1. Exact match on slugified project name
+    2. Exact match on slugified directory name
+    3. Prefix match (for malformed session names like "claude-monitor-3")
 
     Args:
         slug: The project slug from the session name
@@ -701,6 +706,7 @@ def match_project(slug: str, projects: list[dict]) -> Optional[dict]:
     if not slug:
         return None
 
+    # First pass: exact matches
     for project in projects:
         # Match by slugified project name
         if slugify_project_name(project.get("name", "")) == slug:
@@ -709,6 +715,31 @@ def match_project(slug: str, projects: list[dict]) -> Optional[dict]:
         dir_name = Path(project.get("path", "")).name
         if slugify_project_name(dir_name) == slug:
             return project
+
+    # Second pass: prefix matching for malformed session names
+    # This handles cases like "claude-monitor-3" matching "claude-monitor"
+    # Sort by slug length descending to match most specific project first
+    projects_by_slug_len = sorted(
+        projects,
+        key=lambda p: len(slugify_project_name(p.get("name", ""))),
+        reverse=True,
+    )
+    for project in projects_by_slug_len:
+        project_slug = slugify_project_name(project.get("name", ""))
+        # Check if slug starts with project_slug followed by a hyphen and digits
+        # e.g., "claude-monitor-3" starts with "claude-monitor-"
+        if slug.startswith(project_slug + "-"):
+            suffix = slug[len(project_slug) + 1:]
+            # Only match if suffix looks like a number (malformed UUID)
+            if suffix.isdigit():
+                return project
+        # Also check directory name
+        dir_name = Path(project.get("path", "")).name
+        dir_slug = slugify_project_name(dir_name)
+        if slug.startswith(dir_slug + "-"):
+            suffix = slug[len(dir_slug) + 1:]
+            if suffix.isdigit():
+                return project
 
     return None
 
@@ -767,7 +798,7 @@ def scan_backend_session(
 
     # Track turn cycle (logs when turn completes, returns turn data)
     # Use session_name as the session_id for consistency
-    track_turn_cycle(session_name, session_name, activity_state, content_tail)
+    track_turn_cycle(session_name, session_name, activity_state, content_tail, backend=session_type)
 
     # Get turn command for display:
     # - If processing: show the current turn's command
@@ -984,7 +1015,7 @@ def _get_config_hash(config: dict) -> str:
     # Only hash the relevant parts
     relevant = {
         "projects": config.get("projects", []),
-        "terminal_backend": config.get("terminal_backend", "tmux"),
+        "terminal_backend": config.get("terminal_backend", "wezterm"),
     }
     return hashlib.md5(json.dumps(relevant, sort_keys=True).encode()).hexdigest()[:8]
 
@@ -1041,7 +1072,7 @@ def _scan_sessions_uncached(config: dict) -> list[dict]:
     """Internal uncached implementation of scan_sessions."""
     sessions = []
     projects = config.get("projects", [])
-    backend_name = config.get("terminal_backend", "tmux")
+    backend_name = config.get("terminal_backend", "wezterm")
 
     # Select backend functions based on configuration
     if backend_name == "wezterm":
@@ -1055,6 +1086,17 @@ def _scan_sessions_uncached(config: dict) -> list[dict]:
             logger.warning("WezTerm not available - no sessions will be discovered")
             return sessions
         session_type = "wezterm"
+
+        # Warn if tmux claude sessions are detected while using WezTerm
+        # This helps catch configuration mismatches
+        if is_tmux_available():
+            tmux_claude_sessions = [s for s in tmux_list_sessions() if s.get("name", "").startswith("claude-")]
+            if tmux_claude_sessions:
+                tmux_names = [s.get("name") for s in tmux_claude_sessions]
+                logger.warning(
+                    f"tmux claude sessions detected while using WezTerm backend: {tmux_names}. "
+                    "These sessions will be ignored. Kill them with: tmux kill-session -t <name>"
+                )
     else:
         backend_list_sessions = tmux_list_sessions
         backend_get_session_info = get_session_info
@@ -1170,10 +1212,12 @@ def parse_activity_state(window_title: str, content_tail: str = "") -> tuple[str
     # - "⏺ ... Running…" without ⎿ prefix = ACTIVE command
 
     # Check for ACTIVE processing - must be currently happening
-    # The "(esc to interrupt)" indicator appears ABOVE the prompt and status bar
+    # The "(Esc to interrupt)" indicator appears ABOVE the prompt and status bar
     # Status bar + prompt can be 400+ chars, so check last 800 chars
+    # NOTE: Case-insensitive check - Claude Code displays "Esc" with capital E
     tail_content = content_tail[-800:] if content_tail else ""
-    has_esc_to_interrupt = "(esc to interrupt" in tail_content
+    tail_content_lower = tail_content.lower()
+    has_esc_to_interrupt = "(esc to interrupt" in tail_content_lower
 
     # If "(esc to interrupt)" is in the tail, Claude is actively processing
     is_actively_processing = has_esc_to_interrupt

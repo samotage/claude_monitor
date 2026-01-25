@@ -36,7 +36,7 @@ def get_backend(backend_name: Optional[str] = None) -> TerminalBackend:
 
     Args:
         backend_name: Override to use specific backend ("tmux" or "wezterm").
-                     If None, reads from config (defaults to "tmux").
+                     If None, reads from config (defaults to "wezterm").
 
     Returns:
         Configured TerminalBackend instance.
@@ -52,10 +52,10 @@ def get_backend(backend_name: Optional[str] = None) -> TerminalBackend:
             from lib.config import load_config
 
             config = load_config()
-            backend_name = config.get("terminal_backend", "tmux")
+            backend_name = config.get("terminal_backend", "wezterm")
         except Exception:
-            # Fall back to tmux if config loading fails
-            backend_name = "tmux"
+            # Fall back to wezterm if config loading fails
+            backend_name = "wezterm"
 
     # Return cached instance if same backend
     if _backend_instance is not None and _cached_backend_name == backend_name:

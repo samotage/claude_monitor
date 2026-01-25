@@ -27,6 +27,19 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/settings.css') }}">
 </head>
 <body>
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal-overlay" class="confirm-modal-overlay"></div>
+    <div id="confirm-modal" class="confirm-modal">
+        <div class="confirm-modal-header">
+            <span class="confirm-modal-title">Confirm Action</span>
+        </div>
+        <div id="confirm-modal-message" class="confirm-modal-message"></div>
+        <div class="confirm-modal-actions">
+            <button id="confirm-modal-cancel" class="confirm-modal-btn confirm-modal-cancel">Cancel</button>
+            <button id="confirm-modal-confirm" class="confirm-modal-btn confirm-modal-confirm">Delete</button>
+        </div>
+    </div>
+
     <!-- Tooltip Popup (touch-friendly) -->
     <div id="tooltip-popup-overlay" class="tooltip-popup-overlay" onclick="hideTooltipPopup()"></div>
     <div id="tooltip-popup" class="tooltip-popup">

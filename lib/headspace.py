@@ -275,6 +275,7 @@ def is_cache_valid(current_sessions: list[dict] = None) -> tuple[bool, dict]:
     Cache is valid if:
     1. Cache exists
     2. No meaningful state transitions occurred
+    3. Terminal content hasn't significantly changed (content hash matches)
 
     State transitions that invalidate cache:
     - processing -> idle/input_needed (turn completed)
@@ -282,9 +283,8 @@ def is_cache_valid(current_sessions: list[dict] = None) -> tuple[bool, dict]:
     - New session appeared
     - Session disappeared
 
-    This approach saves API costs by only calling OpenRouter when
-    Claude finishes a turn or user interaction changes, not on
-    every terminal content update during processing.
+    Content hash invalidation ensures AI-generated summaries stay fresh
+    when terminal content changes without a state transition.
 
     Args:
         current_sessions: Current session list to check for transitions
@@ -313,6 +313,15 @@ def is_cache_valid(current_sessions: list[dict] = None) -> tuple[bool, dict]:
         needs_refresh, new_states = should_refresh_priorities(current_sessions)
         if needs_refresh:
             return False, new_states  # State transition occurred, invalidate cache
+
+        # Also check content hash to detect significant terminal content changes
+        # This ensures AI summaries stay fresh when content changes without state transition
+        cached_hash = _priorities_cache.get("content_hash")
+        if cached_hash is not None:
+            current_hash = compute_sessions_hash(current_sessions)
+            if current_hash != cached_hash:
+                return False, new_states  # Content changed, invalidate cache
+
         return True, new_states
 
     return True, {}

@@ -116,13 +116,23 @@ This specification serves as a complete baseline for:
 
 | Component | Location | Responsibility |
 |-----------|----------|----------------|
-| **tmux.py** | `lib/tmux.py` | Low-level tmux operations (create, send, capture, kill) |
+| **backends/tmux.py** | `lib/backends/tmux.py` | tmux backend - session management, send/capture (no pane_title) |
+| **backends/wezterm.py** | `lib/backends/wezterm.py` | WezTerm backend - session management, send/capture (has pane_title) |
 | **sessions.py** | `lib/sessions.py` | Session discovery, activity state parsing, turn tracking |
-| **tmux_logging.py** | `lib/tmux_logging.py` | Structured logging for tmux operations |
+| **terminal_logging.py** | `lib/terminal_logging.py` | Structured logging for terminal operations |
 | **notifications.py** | `lib/notifications.py` | State change detection, macOS notifications |
 | **headspace.py** | `lib/headspace.py` | Priority computation, cache management |
 | **iterm.py** | `lib/iterm.py` | iTerm window focus via AppleScript |
 | **monitor.py** | `monitor.py` | Flask app, API endpoints, HTML dashboard |
+
+### Backend Differences
+
+| Feature | tmux | WezTerm |
+|---------|------|---------|
+| `pane_title` in session info | No | Yes |
+| Activity detection method | Content-based only | Window title + content |
+| Spinner char detection | N/A (no title) | Uses first char of title |
+| Window focus | iTerm AppleScript | Native `activate-pane` |
 
 ---
 
@@ -328,8 +338,9 @@ def parse_activity_state(window_title: str, content_tail: str) -> tuple[str, str
         is_completed = True
 
     # 2. Check for active processing
-    #    Indicator: "(esc to interrupt)" in recent content
-    if "(esc to interrupt)" in content_tail[-PROCESSING_WINDOW:]:
+    #    Indicator: "(Esc to interrupt)" in recent content (case-insensitive)
+    #    NOTE: Claude Code displays "Esc" with capital E
+    if "(esc to interrupt)" in content_tail[-PROCESSING_WINDOW:].lower():
         is_actively_processing = True
 
     # 3. Check for spinner in window title
