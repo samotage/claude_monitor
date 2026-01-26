@@ -10,9 +10,10 @@ A Kanban-style dashboard for tracking Claude Code sessions across multiple proje
 
 - **Multi-project dashboard** - See all active Claude Code sessions at a glance
 - **Activity states** - Know when Claude is working, idle, or needs your input
+- **Claude Code hooks** - Instant, event-driven state detection (recommended)
 - **Native notifications** - Get macOS alerts when input is needed or tasks complete
 - **Click-to-focus** - Jump to any session from the dashboard or notification
-- **Real-time updates** - Dashboard refreshes automatically
+- **Real-time updates** - Dashboard refreshes automatically via SSE
 - **Terminal backend support** - tmux (default) or WezTerm with send/capture APIs
 
 ## Quick Start
@@ -159,6 +160,49 @@ Click the notification to jump directly to that iTerm session.
 
 Enable/disable notifications in the Settings tab of the dashboard.
 
+### Claude Code Hooks (Recommended)
+
+For instant, accurate state detection, install Claude Code hooks. Instead of polling terminal output, hooks provide event-driven updates directly from Claude Code.
+
+**Benefits:**
+- Instant state updates (<100ms vs 2-second polling)
+- 100% confidence (event-based vs inference)
+- Reduced resource usage
+
+**Quick Setup:**
+
+```bash
+./bin/install-hooks.sh
+```
+
+This installs:
+1. A hook script at `~/.claude/hooks/notify-monitor.sh`
+2. Hook configuration in `~/.claude/settings.json`
+
+After installation, the dashboard shows "hooks" badges on session cards when hooks are active.
+
+**Manual Setup:**
+
+If you prefer manual installation:
+
+1. Copy the hook script:
+   ```bash
+   cp bin/notify-monitor.sh ~/.claude/hooks/
+   chmod +x ~/.claude/hooks/notify-monitor.sh
+   ```
+
+2. Add hooks to `~/.claude/settings.json`:
+   ```json
+   {
+     "hooks": {
+       "Stop": [{"matcher": null, "hooks": [{"type": "command", "command": "~/.claude/hooks/notify-monitor.sh stop"}]}],
+       "UserPromptSubmit": [{"matcher": null, "hooks": [{"type": "command", "command": "~/.claude/hooks/notify-monitor.sh user-prompt-submit"}]}]
+     }
+   }
+   ```
+
+See `docs/architecture/claude-code-hooks.md` for detailed documentation.
+
 ### Terminal Backend Integration
 
 Terminal backends enable bidirectional control of Claude Code sessions. You can send text to sessions and capture full output programmatically.
@@ -228,6 +272,10 @@ Sessions show their backend type as a badge in the dashboard.
 | `/api/projects/<name>/tmux` | GET | Get project tmux status |
 | `/api/projects/<name>/tmux/enable` | POST | Enable tmux for project |
 | `/api/projects/<name>/tmux/disable` | POST | Disable tmux for project |
+| `/hook/status` | GET | Hook receiver status |
+| `/hook/session-start` | POST | Claude Code session started |
+| `/hook/stop` | POST | Claude finished turn |
+| `/hook/user-prompt-submit` | POST | User submitted prompt |
 
 ### Example: Get Sessions
 
@@ -294,13 +342,21 @@ Or use the restart script:
 
 ```
 claude-monitor/
-├── monitor.py           # Main Flask application
+├── run.py               # Main entry point (recommended)
+├── monitor.py           # Legacy Flask application
 ├── install.sh           # Installation script
 ├── config.yaml.example  # Configuration template
 ├── requirements.txt     # Python dependencies
 ├── restart_server.sh    # Server restart helper
 ├── bin/
-│   └── claude-monitor   # Session wrapper script
+│   ├── claude-monitor   # Session wrapper script
+│   ├── install-hooks.sh # Hook installation script
+│   └── notify-monitor.sh # Hook notification script
+├── src/                 # Application source code
+│   ├── routes/hooks.py  # Hook API endpoints
+│   └── services/hook_receiver.py  # Hook event processing
+├── docs/
+│   └── architecture/claude-code-hooks.md  # Hook documentation
 ├── .claude/             # Claude Code project settings
 └── README.md
 ```
