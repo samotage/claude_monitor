@@ -202,7 +202,8 @@ class TestCanTransition:
 
     def test_can_transition_invalid(self, state_machine, idle_task):
         """can_transition returns False for invalid transitions."""
-        assert state_machine.can_transition(idle_task, TaskState.PROCESSING) is False
+        # IDLE can transition to COMMANDED (polling) or PROCESSING (hooks)
+        # but not to COMPLETE or AWAITING_INPUT
         assert state_machine.can_transition(idle_task, TaskState.COMPLETE) is False
         assert state_machine.can_transition(idle_task, TaskState.AWAITING_INPUT) is False
 
@@ -219,9 +220,11 @@ class TestGetValidTransitions:
     """Test the get_valid_transitions method."""
 
     def test_get_valid_from_idle(self, state_machine, idle_task):
-        """IDLE can only transition to COMMANDED."""
+        """IDLE can transition to COMMANDED (polling) or PROCESSING (hooks)."""
         valid = state_machine.get_valid_transitions(idle_task)
-        assert valid == [TaskState.COMMANDED]
+        assert TaskState.COMMANDED in valid
+        assert TaskState.PROCESSING in valid
+        assert len(valid) == 2
 
     def test_get_valid_from_commanded(self, state_machine, commanded_task):
         """COMMANDED can only transition to PROCESSING."""
@@ -229,11 +232,12 @@ class TestGetValidTransitions:
         assert valid == [TaskState.PROCESSING]
 
     def test_get_valid_from_processing(self, state_machine, processing_task):
-        """PROCESSING can transition to AWAITING_INPUT or COMPLETE."""
+        """PROCESSING can transition to AWAITING_INPUT, COMPLETE, or IDLE (hooks)."""
         valid = state_machine.get_valid_transitions(processing_task)
         assert TaskState.AWAITING_INPUT in valid
         assert TaskState.COMPLETE in valid
-        assert len(valid) == 2
+        assert TaskState.IDLE in valid  # Hook-based transition
+        assert len(valid) == 3
 
     def test_get_valid_from_awaiting_input(self, state_machine, awaiting_input_task):
         """AWAITING_INPUT can only transition to PROCESSING."""
@@ -433,26 +437,30 @@ class TestTransitionTriggerEnum:
     """Test TransitionTrigger enum values."""
 
     def test_all_triggers_exist(self):
-        """All 6 triggers are defined."""
+        """All 8 triggers are defined (6 polling + 2 hook-based)."""
         triggers = [t.value for t in TransitionTrigger]
+        # Polling-based triggers
         assert "user_pressed_enter" in triggers
         assert "llm_started" in triggers
         assert "llm_asked_question" in triggers
         assert "llm_finished" in triggers
         assert "user_responded" in triggers
         assert "new_task_started" in triggers
-        assert len(triggers) == 6
+        # Hook-based triggers
+        assert "hook_prompt_submitted" in triggers
+        assert "hook_turn_complete" in triggers
+        assert len(triggers) == 8
 
 
 class TestValidTransitionsDict:
     """Test the VALID_TRANSITIONS constant."""
 
-    def test_exactly_6_valid_transitions(self):
-        """There are exactly 6 valid transitions defined."""
-        assert len(VALID_TRANSITIONS) == 6
+    def test_exactly_8_valid_transitions(self):
+        """There are exactly 8 valid transitions defined (6 polling + 2 hooks)."""
+        assert len(VALID_TRANSITIONS) == 8
 
     def test_all_transitions_have_unique_trigger(self):
         """Each transition has a specific trigger."""
         triggers_used = list(VALID_TRANSITIONS.values())
-        # All 6 triggers should be used exactly once
-        assert len(set(triggers_used)) == 6
+        # All 8 triggers should be used exactly once
+        assert len(set(triggers_used)) == 8

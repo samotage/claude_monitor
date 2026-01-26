@@ -1,6 +1,7 @@
 """Flask routes for Claude Headspace."""
 
 from src.routes.agents import agents_bp
+from src.routes.config import config_bp
 from src.routes.events import events_bp
 from src.routes.headspace import headspace_bp
 from src.routes.hooks import hooks_bp
@@ -11,6 +12,7 @@ from src.routes.projects import projects_bp
 
 __all__ = [
     "agents_bp",
+    "config_bp",
     "events_bp",
     "headspace_bp",
     "hooks_bp",
@@ -28,6 +30,7 @@ def register_blueprints(app):
         app: The Flask application instance.
     """
     app.register_blueprint(agents_bp, url_prefix="/api")
+    app.register_blueprint(config_bp, url_prefix="/api")
     app.register_blueprint(events_bp, url_prefix="/api")
     app.register_blueprint(headspace_bp, url_prefix="/api")
     app.register_blueprint(hooks_bp, url_prefix="/hook")

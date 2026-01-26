@@ -115,6 +115,37 @@ class ApiLimitsConfig(BaseModel):
     )
 
 
+class TerminalLoggingConfig(BaseModel):
+    """Terminal session logging configuration.
+
+    Controls debug logging for terminal operations (send_keys, capture_pane).
+    When debug is disabled, payloads are not recorded to conserve space.
+    """
+
+    debug_enabled: bool = Field(
+        default=False,
+        description="Enable debug logging with payload content",
+    )
+    max_payload_size: int = Field(
+        default=10 * 1024,  # 10KB
+        ge=1024,
+        le=1024 * 1024,  # 1MB max
+        description="Maximum payload size before truncation (bytes)",
+    )
+    max_log_size_mb: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Rotate log when file exceeds this size (MB)",
+    )
+    max_log_files: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Number of rotated log files to keep",
+    )
+
+
 class AppConfig(BaseModel):
     """Root application configuration.
 
@@ -155,6 +186,10 @@ class AppConfig(BaseModel):
     api_limits: ApiLimitsConfig = Field(
         default_factory=ApiLimitsConfig,
         description="API rate limiting and bounds configuration",
+    )
+    terminal_logging: TerminalLoggingConfig = Field(
+        default_factory=TerminalLoggingConfig,
+        description="Terminal session logging configuration",
     )
     port: int = Field(
         default=5050,

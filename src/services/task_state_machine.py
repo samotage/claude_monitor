@@ -31,6 +31,13 @@ class TransitionTrigger(str, Enum):
     NEW_TASK_STARTED = "new_task_started"
     """A new task began (COMPLETE → IDLE)."""
 
+    # Hook-specific triggers (event-driven, skip intermediate states)
+    HOOK_PROMPT_SUBMITTED = "hook_prompt_submitted"
+    """Claude Code hook: user submitted prompt (IDLE → PROCESSING directly)."""
+
+    HOOK_TURN_COMPLETE = "hook_turn_complete"
+    """Claude Code hook: Claude finished turn (PROCESSING → IDLE directly)."""
+
 
 @dataclass
 class TransitionResult:
@@ -71,6 +78,11 @@ VALID_TRANSITIONS: dict[tuple[TaskState, TaskState], TransitionTrigger] = {
     (TaskState.AWAITING_INPUT, TaskState.PROCESSING): TransitionTrigger.USER_RESPONDED,
     # 6. COMPLETE → IDLE: New task begins
     (TaskState.COMPLETE, TaskState.IDLE): TransitionTrigger.NEW_TASK_STARTED,
+    # Hook-specific transitions (skip intermediate states for event-driven updates)
+    # 7. IDLE → PROCESSING: Hook reports user submitted prompt
+    (TaskState.IDLE, TaskState.PROCESSING): TransitionTrigger.HOOK_PROMPT_SUBMITTED,
+    # 8. PROCESSING → IDLE: Hook reports turn complete
+    (TaskState.PROCESSING, TaskState.IDLE): TransitionTrigger.HOOK_TURN_COMPLETE,
 }
 
 

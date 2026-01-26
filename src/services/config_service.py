@@ -188,13 +188,30 @@ class ConfigService:
         if "debug" in raw:
             migrated["debug"] = raw["debug"]
 
+        # Terminal logging config - migrate from legacy tmux_logging
+        terminal_logging: dict[str, Any] = {}
+        if "terminal_logging" in raw:
+            tl_config = raw["terminal_logging"]
+            terminal_logging["debug_enabled"] = tl_config.get("debug_enabled", False)
+            if "max_payload_size" in tl_config:
+                terminal_logging["max_payload_size"] = tl_config["max_payload_size"]
+            if "max_log_size_mb" in tl_config:
+                terminal_logging["max_log_size_mb"] = tl_config["max_log_size_mb"]
+            if "max_log_files" in tl_config:
+                terminal_logging["max_log_files"] = tl_config["max_log_files"]
+        elif "tmux_logging" in raw:
+            # Legacy field migration
+            tl_config = raw["tmux_logging"]
+            terminal_logging["debug_enabled"] = tl_config.get("debug_enabled", False)
+        if terminal_logging:
+            migrated["terminal_logging"] = terminal_logging
+
         # Log deprecated fields that were ignored
         deprecated = [
             "idle_timeout_minutes",
             "stale_threshold_hours",
             "headspace",
             "session_sync",
-            "tmux_logging",
         ]
         for field in deprecated:
             if field in raw:

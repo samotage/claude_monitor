@@ -19,14 +19,14 @@ from pathlib import Path
 
 import yaml
 
-logger = logging.getLogger(__name__)
-
 from src.models.agent import Agent
 from src.models.headspace import HeadspaceFocus
 from src.models.inference import InferenceCall
 from src.models.project import Project
 from src.models.task import Task, TaskState
 from src.models.turn import Turn
+
+logger = logging.getLogger(__name__)
 
 
 class AgentStore:
@@ -167,6 +167,10 @@ class AgentStore:
             session_name=session_name,
         )
         self._agents[agent.id] = agent
+        logger.info(
+            f"[AgentStore] Created agent {agent.id[:8]}: name={session_name}, "
+            f"terminal_id={terminal_session_id[:16]}, project_id={project_id}"
+        )
         self._emit("agent_created", {"agent_id": agent.id, "project_id": project_id})
         self._save_state()
         return agent
@@ -350,6 +354,14 @@ class AgentStore:
         if agent:
             agent.current_task_id = task.id
             agent.set_state(task.state)
+            logger.info(
+                f"[AgentStore] Created task {task.id[:8]} for agent {agent_id[:8]} "
+                f"(state={task.state.value})"
+            )
+        else:
+            logger.warning(
+                f"[AgentStore] Created task {task.id[:8]} but agent {agent_id[:8]} not found!"
+            )
 
         self._emit("task_created", {"task_id": task.id, "agent_id": agent_id})
         self._save_state()
@@ -378,12 +390,25 @@ class AgentStore:
 
     def update_task(self, task: Task) -> Task:
         """Update a task and sync agent state."""
+        old_task = self._tasks.get(task.id)
+        old_state = old_task.state.value if old_task else "none"
+
         self._tasks[task.id] = task
 
         # Sync agent state
         agent = self._agents.get(task.agent_id)
         if agent and agent.current_task_id == task.id:
             agent.set_state(task.state)
+            logger.info(
+                f"[AgentStore] Updated task {task.id[:8]}: {old_state} -> {task.state.value} "
+                f"(agent={agent.id[:8]})"
+            )
+        else:
+            logger.debug(
+                f"[AgentStore] Updated task {task.id[:8]} but not linked to agent "
+                f"(task.agent_id={task.agent_id[:8]}, agent_task_id="
+                f"{agent.current_task_id[:8] if agent and agent.current_task_id else 'none'})"
+            )
 
         self._emit(
             "task_state_changed",

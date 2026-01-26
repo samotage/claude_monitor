@@ -472,7 +472,12 @@ notifications:
         """Create the Flask application."""
         app = create_app(config_file)
         # Replace agent_store with fresh one using temp dir
-        app.extensions["agent_store"] = AgentStore(data_dir=temp_dir)
+        # Also update GoverningAgent and HookReceiver to use the same store
+        new_store = AgentStore(data_dir=temp_dir)
+        app.extensions["agent_store"] = new_store
+        app.extensions["governing_agent"]._store = new_store
+        if app.extensions.get("hook_receiver"):
+            app.extensions["hook_receiver"]._store = new_store
         app.config["TESTING"] = True
         yield app
 
@@ -483,9 +488,8 @@ notifications:
 
     def test_create_and_list_agents(self, client, app):
         """Test creating an agent via store and listing via API."""
-        # Use the governing agent's store (the one routes actually use)
-        governing_agent = app.extensions["governing_agent"]
-        store = governing_agent._store
+        # Use the shared store from app extensions
+        store = app.extensions["agent_store"]
 
         # Create an agent directly
         agent = store.create_agent(

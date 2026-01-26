@@ -44,4 +44,5 @@ data/projects/*
 # Headspace state (runtime)
 data/headspace.yaml
 data/session_state.yaml
+data/state.yaml
 .coverage

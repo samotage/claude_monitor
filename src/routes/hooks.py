@@ -12,6 +12,7 @@ Endpoints:
 - GET  /hook/status          - Hook receiver status
 """
 
+import json
 import logging
 
 from flask import Blueprint, current_app, jsonify, request
@@ -19,6 +20,15 @@ from flask import Blueprint, current_app, jsonify, request
 hooks_bp = Blueprint("hooks", __name__)
 
 logger = logging.getLogger(__name__)
+
+
+def _log_hook_request(event_type: str, data: dict) -> None:
+    """Log hook request with full data for debugging."""
+    session_id = data.get("session_id", "unknown")[:8] if data.get("session_id") else "unknown"
+    cwd = data.get("cwd", "")
+    cwd_short = cwd.split("/")[-1] if cwd else "no-cwd"
+    logger.info(f"[HOOK] {event_type} | session={session_id}... | cwd={cwd_short}")
+    logger.debug(f"[HOOK] {event_type} full data: {json.dumps(data, default=str)}")
 
 
 def _get_hook_receiver():
@@ -48,15 +58,18 @@ def hook_session_start():
     Returns:
         JSON with processing result.
     """
+    data = request.get_json(silent=True) or {}
+    _log_hook_request("session-start", data)
+
     config = _get_config()
     if config and not config.hooks.enabled:
+        logger.info("[HOOK] session-start REJECTED: hooks disabled")
         return jsonify({"status": "disabled", "message": "Hooks are disabled"}), 200
 
     hook_receiver = _get_hook_receiver()
     if not hook_receiver:
+        logger.error("[HOOK] session-start FAILED: hook receiver not available")
         return jsonify({"status": "error", "message": "Hook receiver not available"}), 200
-
-    data = request.get_json(silent=True) or {}
 
     result = hook_receiver.process_event(
         event_type="session-start",
@@ -64,6 +77,12 @@ def hook_session_start():
         cwd=data.get("cwd", ""),
         timestamp=data.get("timestamp"),
         data=data,
+    )
+
+    logger.info(
+        f"[HOOK] session-start RESULT: success={result.success}, "
+        f"agent_id={result.agent_id[:8] if result.agent_id else 'none'}, "
+        f"state={result.new_state.value if result.new_state else 'none'}"
     )
 
     return jsonify(
@@ -136,15 +155,18 @@ def hook_stop():
     Returns:
         JSON with processing result and new state.
     """
+    data = request.get_json(silent=True) or {}
+    _log_hook_request("stop", data)
+
     config = _get_config()
     if config and not config.hooks.enabled:
+        logger.info("[HOOK] stop REJECTED: hooks disabled")
         return jsonify({"status": "disabled", "message": "Hooks are disabled"}), 200
 
     hook_receiver = _get_hook_receiver()
     if not hook_receiver:
+        logger.error("[HOOK] stop FAILED: hook receiver not available")
         return jsonify({"status": "error", "message": "Hook receiver not available"}), 200
-
-    data = request.get_json(silent=True) or {}
 
     result = hook_receiver.process_event(
         event_type="stop",
@@ -152,6 +174,13 @@ def hook_stop():
         cwd=data.get("cwd", ""),
         timestamp=data.get("timestamp"),
         data=data,
+    )
+
+    logger.info(
+        f"[HOOK] stop RESULT: success={result.success}, "
+        f"agent_id={result.agent_id[:8] if result.agent_id else 'none'}, "
+        f"state={result.new_state.value if result.new_state else 'none'}, "
+        f"msg={result.message}"
     )
 
     return jsonify(
@@ -225,15 +254,18 @@ def hook_user_prompt_submit():
     Returns:
         JSON with processing result and new state.
     """
+    data = request.get_json(silent=True) or {}
+    _log_hook_request("user-prompt-submit", data)
+
     config = _get_config()
     if config and not config.hooks.enabled:
+        logger.info("[HOOK] user-prompt-submit REJECTED: hooks disabled")
         return jsonify({"status": "disabled", "message": "Hooks are disabled"}), 200
 
     hook_receiver = _get_hook_receiver()
     if not hook_receiver:
+        logger.error("[HOOK] user-prompt-submit FAILED: hook receiver not available")
         return jsonify({"status": "error", "message": "Hook receiver not available"}), 200
-
-    data = request.get_json(silent=True) or {}
 
     result = hook_receiver.process_event(
         event_type="user-prompt-submit",
@@ -241,6 +273,12 @@ def hook_user_prompt_submit():
         cwd=data.get("cwd", ""),
         timestamp=data.get("timestamp"),
         data=data,
+    )
+
+    logger.info(
+        f"[HOOK] user-prompt-submit RESULT: success={result.success}, "
+        f"agent_id={result.agent_id[:8] if result.agent_id else 'none'}, "
+        f"state={result.new_state.value if result.new_state else 'none'}"
     )
 
     return jsonify(

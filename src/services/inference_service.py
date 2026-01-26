@@ -61,9 +61,11 @@ class InferenceService:
         Args:
             config: Model configuration per purpose.
             api_key: OpenRouter API key. If not provided, reads from OPENROUTER_API_KEY.
+                     Pass empty string "" to explicitly disable API calls.
         """
         self.config = config or InferenceConfig()
-        self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
+        # Use api_key if explicitly provided (including empty string), else fall back to env
+        self.api_key = api_key if api_key is not None else os.environ.get("OPENROUTER_API_KEY", "")
         self._cache: dict[str, CacheEntry] = {}
 
     def _compute_hash(self, purpose: InferencePurpose, input_data: dict) -> str:

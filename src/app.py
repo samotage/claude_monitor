@@ -367,7 +367,7 @@ def start_background_tasks(app: Flask) -> None:
 
             while True:
                 try:
-                    governing_agent.scan_once()
+                    governing_agent.poll_agents()
                 except Exception as e:
                     logger.error(f"Scan error: {e}")
                 time.sleep(scan_interval)
@@ -380,10 +380,14 @@ def start_background_tasks(app: Flask) -> None:
 # Module-level app for CLI usage
 def main():
     """Run the Flask application."""
+    # Enable DEBUG level for our modules to trace data flow
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
+    # Reduce noise from external libraries
+    logging.getLogger("werkzeug").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     app = create_app()
     config = app.extensions.get("config")

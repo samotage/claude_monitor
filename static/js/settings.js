@@ -54,7 +54,11 @@ async function saveSettingsQuietly() {
         if (result.success) {
             statusEl.className = 'settings-status success';
             statusEl.textContent = 'Saved';
-            currentProjects = validProjects;
+            // NOTE: We intentionally do NOT set currentProjects = validProjects here.
+            // Doing so would remove empty/incomplete projects from the in-memory array
+            // while leaving them visible in the DOM, causing a desync where projects
+            // "disappear" on the next render. The filter is only for what we send to
+            // the API - incomplete projects stay in memory so users can keep editing.
 
             setTimeout(() => {
                 if (statusEl.textContent === 'Saved') {

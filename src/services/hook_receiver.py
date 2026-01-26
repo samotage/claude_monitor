@@ -133,10 +133,18 @@ class HookReceiver:
         Returns:
             HookResult with processing outcome.
         """
+        logger.debug(
+            f"[HookReceiver] process_event called: type={event_type}, "
+            f"session={session_id[:8]}..., cwd={cwd}"
+        )
+
         # Update activity tracking (thread-safe)
         with self._lock:
             self._last_event_time = time.time()
             self._event_count += 1
+            current_count = self._event_count
+
+        logger.debug(f"[HookReceiver] Event count now: {current_count}")
 
         # Notify GoverningAgent of hook activity (for dynamic polling)
         if self._governing_agent:
@@ -146,7 +154,7 @@ class HookReceiver:
         try:
             event_type_enum = HookEventType(event_type)
         except ValueError:
-            logger.warning(f"Unknown hook event type: {event_type}")
+            logger.warning(f"[HookReceiver] Unknown hook event type: {event_type}")
             return HookResult(
                 success=False,
                 message=f"Unknown event type: {event_type}",
@@ -161,7 +169,7 @@ class HookReceiver:
             data=data or {},
         )
 
-        logger.info(f"Hook event: {event_type} for session {session_id[:8]}...")
+        logger.info(f"[HookReceiver] Processing {event_type} for session {session_id[:8]}...")
 
         # Process based on event type
         if event_type_enum == HookEventType.SESSION_START:
@@ -263,13 +271,20 @@ class HookReceiver:
         Returns:
             HookResult with the new state.
         """
+        logger.debug(f"[HookReceiver] _handle_stop: session={event.session_id[:8]}...")
+
         agent = self._get_agent_for_session(event.session_id, event.cwd)
 
         if agent is None:
+            logger.debug("[HookReceiver] _handle_stop: No agent for session, returning early")
             return HookResult(
                 success=True,
                 message="Session not tracked",
             )
+
+        logger.debug(
+            f"[HookReceiver] _handle_stop: Found agent {agent.id[:8]} ({agent.session_name})"
+        )
 
         # Get current task state
         current_task = self._store.get_current_task(agent.id)
@@ -278,8 +293,14 @@ class HookReceiver:
         # Determine new state - stop means Claude finished, so IDLE
         new_state = TaskState.IDLE
 
+        logger.info(
+            f"[HookReceiver] _handle_stop: agent={agent.id[:8]}, "
+            f"transition {old_state.value} -> {new_state.value}"
+        )
+
         # Apply state transition if we have a governing agent
         if self._governing_agent and old_state != new_state:
+            logger.debug("[HookReceiver] Calling GoverningAgent._handle_state_transition")
             self._governing_agent._handle_state_transition(
                 agent_id=agent.id,
                 old_state=old_state,
@@ -287,6 +308,8 @@ class HookReceiver:
                 content="",  # No content needed for hook-based detection
                 interpretation_confidence=1.0,  # Hooks are certain
             )
+        elif old_state == new_state:
+            logger.debug(f"[HookReceiver] State unchanged ({old_state.value}), skipping transition")
 
         # Emit SSE event
         self._event_bus.emit(
@@ -318,13 +341,24 @@ class HookReceiver:
         Returns:
             HookResult with the new state.
         """
+        logger.debug(
+            f"[HookReceiver] _handle_user_prompt_submit: session={event.session_id[:8]}..."
+        )
+
         agent = self._get_agent_for_session(event.session_id, event.cwd)
 
         if agent is None:
+            logger.debug(
+                "[HookReceiver] _handle_user_prompt_submit: No agent found, returning early"
+            )
             return HookResult(
                 success=True,
                 message="Session not tracked",
             )
+
+        logger.debug(
+            f"[HookReceiver] _handle_user_prompt_submit: Found agent {agent.id[:8]} ({agent.session_name})"
+        )
 
         # Get current task state
         current_task = self._store.get_current_task(agent.id)
@@ -333,8 +367,14 @@ class HookReceiver:
         # User submitted prompt means Claude is now processing
         new_state = TaskState.PROCESSING
 
+        logger.info(
+            f"[HookReceiver] _handle_user_prompt_submit: agent={agent.id[:8]}, "
+            f"transition {old_state.value} -> {new_state.value}"
+        )
+
         # Apply state transition if we have a governing agent
         if self._governing_agent and old_state != new_state:
+            logger.debug("[HookReceiver] Calling GoverningAgent._handle_state_transition")
             self._governing_agent._handle_state_transition(
                 agent_id=agent.id,
                 old_state=old_state,
@@ -342,6 +382,8 @@ class HookReceiver:
                 content="",
                 interpretation_confidence=1.0,
             )
+        elif old_state == new_state:
+            logger.debug(f"[HookReceiver] State unchanged ({old_state.value}), skipping transition")
 
         # Emit SSE event
         self._event_bus.emit(
@@ -413,6 +455,9 @@ class HookReceiver:
         Returns:
             The correlated Agent, or None if correlation failed.
         """
+        logger.debug(
+            f"[HookReceiver] _correlate_session: session={claude_session_id[:8]}..., cwd={cwd}"
+        )
 
         # Check if we already have this session mapped (thread-safe)
         with self._lock:
@@ -420,29 +465,51 @@ class HookReceiver:
                 agent_id = self._session_map[claude_session_id]
                 agent = self._store.get_agent(agent_id)
                 if agent:
+                    logger.debug(
+                        f"[HookReceiver] Found existing mapping: session {claude_session_id[:8]} "
+                        f"-> agent {agent.id[:8]} ({agent.session_name})"
+                    )
                     return agent
+                else:
+                    logger.warning(
+                        f"[HookReceiver] Session {claude_session_id[:8]} mapped to agent "
+                        f"{agent_id[:8]} but agent not found in store!"
+                    )
 
         # Normalize cwd (remove trailing slash)
         cwd = cwd.rstrip("/") if cwd else ""
 
         # Try to find existing agent by working directory
-        for agent in self._store.list_agents():
+        all_agents = self._store.list_agents()
+        logger.debug(f"[HookReceiver] Checking {len(all_agents)} agents for cwd match: {cwd}")
+
+        for agent in all_agents:
             # Check if agent's project path matches
             if agent.project_id:
                 project = self._store.get_project(agent.project_id)
                 if project and project.path:
                     project_path = project.path.rstrip("/")
+                    logger.debug(
+                        f"[HookReceiver] Comparing agent {agent.id[:8]} project path: "
+                        f"'{project_path}' vs cwd '{cwd}'"
+                    )
                     if project_path == cwd:
                         with self._lock:
                             self._session_map[claude_session_id] = agent.id
                         logger.info(
-                            f"Correlated session {claude_session_id[:8]} to agent {agent.id[:8]} by project path"
+                            f"[HookReceiver] Correlated session {claude_session_id[:8]} "
+                            f"to agent {agent.id[:8]} by project path match"
                         )
                         return agent
 
         # No match found - create a new agent
         # Use cwd as session name since we don't have terminal info
         session_name = cwd.split("/")[-1] if cwd else "claude-session"
+        logger.info(
+            f"[HookReceiver] No matching agent found for cwd={cwd}, "
+            f"creating new agent: {session_name}"
+        )
+
         agent = self._store.create_agent(
             terminal_session_id=f"hook-{claude_session_id[:8]}",
             session_name=session_name,
@@ -451,7 +518,9 @@ class HookReceiver:
         # Store mapping (thread-safe)
         with self._lock:
             self._session_map[claude_session_id] = agent.id
-        logger.info(f"Created new agent {agent.id[:8]} for session {claude_session_id[:8]}")
+        logger.info(
+            f"[HookReceiver] Created new agent {agent.id[:8]} for session {claude_session_id[:8]}"
+        )
 
         return agent
 

@@ -16,6 +16,11 @@ from src.services.hook_receiver import (
     HookResult,
 )
 from src.services.inference_service import CacheEntry, InferenceService
+from src.services.logging_service import (
+    LoggingService,
+    get_logging_service,
+    reset_logging_service,
+)
 from src.services.notification_service import (
     NotificationPayload,
     NotificationService,
@@ -35,6 +40,11 @@ from src.services.task_state_machine import (
     TransitionResult,
     TransitionTrigger,
 )
+from src.services.terminal_logging_service import (
+    TerminalLoggingService,
+    get_terminal_logging_service,
+    reset_terminal_logging_service,
+)
 
 __all__ = [
     "AgentContext",
@@ -47,10 +57,14 @@ __all__ = [
     "EventBus",
     "get_config_service",
     "get_event_bus",
+    "get_logging_service",
     "get_notification_service",
+    "get_terminal_logging_service",
     "reset_config_service",
     "reset_event_bus",
+    "reset_logging_service",
     "reset_notification_service",
+    "reset_terminal_logging_service",
     "GitActivity",
     "GitAnalyzer",
     "GoverningAgent",
@@ -62,6 +76,7 @@ __all__ = [
     "InterpretationMethod",
     "InterpretationResult",
     "InvalidTransitionError",
+    "LoggingService",
     "NotificationPayload",
     "NotificationService",
     "NotificationType",
@@ -69,6 +84,7 @@ __all__ = [
     "PriorityService",
     "StateInterpreter",
     "TaskStateMachine",
+    "TerminalLoggingService",
     "TransitionResult",
     "TransitionTrigger",
 ]

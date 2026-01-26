@@ -327,12 +327,16 @@ class GoverningAgent:
             The appropriate TransitionTrigger, or None if not a valid transition.
         """
         trigger_map = {
+            # Polling-based transitions (5-state model)
             (TaskState.IDLE, TaskState.COMMANDED): TransitionTrigger.USER_PRESSED_ENTER,
             (TaskState.COMMANDED, TaskState.PROCESSING): TransitionTrigger.LLM_STARTED,
             (TaskState.PROCESSING, TaskState.AWAITING_INPUT): TransitionTrigger.LLM_ASKED_QUESTION,
             (TaskState.PROCESSING, TaskState.COMPLETE): TransitionTrigger.LLM_FINISHED,
             (TaskState.AWAITING_INPUT, TaskState.PROCESSING): TransitionTrigger.USER_RESPONDED,
             (TaskState.COMPLETE, TaskState.IDLE): TransitionTrigger.NEW_TASK_STARTED,
+            # Hook-based transitions (skip intermediate states)
+            (TaskState.IDLE, TaskState.PROCESSING): TransitionTrigger.HOOK_PROMPT_SUBMITTED,
+            (TaskState.PROCESSING, TaskState.IDLE): TransitionTrigger.HOOK_TURN_COMPLETE,
         }
         return trigger_map.get((old_state, new_state))
 

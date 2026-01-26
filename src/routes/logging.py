@@ -7,18 +7,22 @@ Provides REST API endpoints for log management:
 """
 
 from flask import Blueprint, jsonify, request
-from lib.logging import get_log_stats, get_logs_since, read_openrouter_logs, search_logs
-from lib.terminal_logging import (
+
+from src.services.logging_service import (
+    get_log_stats,
+    get_logs_since,
+    read_openrouter_logs,
+    search_logs,
+)
+from src.services.terminal_logging_service import (
     clear_terminal_logs,
+    get_debug_logging,
     get_terminal_log_stats,
     get_terminal_logs_since,
     read_terminal_logs,
     search_terminal_logs,
+    set_debug_logging,
 )
-
-# Import debug logging from the configured backend
-# Using lib.tmux for backward compatibility - it delegates to the actual backend
-from lib.tmux import get_debug_logging, set_debug_logging
 
 logging_bp = Blueprint("logging", __name__)
 
@@ -172,6 +176,7 @@ def set_debug_state():
         - success: True
         - debug_enabled: New debug state
     """
+    import logging
     from pathlib import Path
 
     import yaml
@@ -186,10 +191,7 @@ def set_debug_state():
     # (avoiding circular imports with config service)
     config_path = Path("config.yaml")
     try:
-        if config_path.exists():
-            config = yaml.safe_load(config_path.read_text()) or {}
-        else:
-            config = {}
+        config = yaml.safe_load(config_path.read_text()) or {} if config_path.exists() else {}
 
         if "terminal_logging" not in config:
             config["terminal_logging"] = {}
@@ -198,8 +200,6 @@ def set_debug_state():
         config_path.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
     except Exception as e:
         # Log error but don't fail - in-memory state is already updated
-        import logging
-
         logging.getLogger(__name__).warning(f"Failed to persist debug state: {e}")
 
     return jsonify({"success": True, "debug_enabled": get_debug_logging()})

@@ -10,10 +10,18 @@ from src.models.config import (
     HookConfig,
     NotificationConfig,
     ProjectConfig,
+    TerminalLoggingConfig,
     WezTermConfig,
 )
 from src.models.headspace import HeadspaceFocus, HeadspaceHistoryEntry
 from src.models.inference import InferenceCall, InferenceConfig, InferencePurpose
+from src.models.log_entry import (
+    OpenRouterLogEntry,
+    OpenRouterLogStats,
+    TerminalLogEntry,
+    TerminalLogStats,
+    TurnPair,
+)
 from src.models.project import (
     Project,
     ProjectContext,
@@ -56,4 +64,11 @@ __all__ = [
     "ProjectConfig",
     "WezTermConfig",
     "NotificationConfig",
+    "TerminalLoggingConfig",
+    # Log entries
+    "OpenRouterLogEntry",
+    "OpenRouterLogStats",
+    "TerminalLogEntry",
+    "TerminalLogStats",
+    "TurnPair",
 ]

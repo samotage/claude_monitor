@@ -29,8 +29,7 @@ def sse_events():
 
     def generate():
         """Generate SSE events from the event bus."""
-        for event in event_bus.subscribe():
-            yield f"event: {event.type}\ndata: {event.data}\n\n"
+        yield from event_bus.get_sse_stream()
 
     return Response(
         generate(),

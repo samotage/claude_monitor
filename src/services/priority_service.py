@@ -101,7 +101,7 @@ class PriorityService:
                 "agent_id": a.agent_id,
                 "session_name": a.session_name,
                 "project_name": a.project_name or "Unknown",
-                "state": a.state.value,
+                "state": a.state.value if a.state else "unknown",
                 "task_summary": a.task_summary or "No summary",
             }
             for a in agents
@@ -282,7 +282,8 @@ class PriorityService:
         # Sort agents by ID for consistent hashing
         agent_ids = sorted(a.agent_id for a in agents)
         agent_states = "|".join(
-            f"{a.agent_id}:{a.state.value}" for a in sorted(agents, key=lambda x: x.agent_id)
+            f"{a.agent_id}:{a.state.value if a.state else 'none'}"
+            for a in sorted(agents, key=lambda x: x.agent_id)
         )
 
         headspace_hash = self._hash_headspace(headspace)

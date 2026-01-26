@@ -6,18 +6,26 @@ Provides REST API endpoints for agent management:
 - Focus agent's terminal window
 """
 
+import logging
+
 from flask import Blueprint, current_app, jsonify, request
 
 from src.backends.wezterm import get_wezterm_backend
 from src.services.agent_store import AgentStore
+from src.services.notification_service import get_notification_service
+
+logger = logging.getLogger(__name__)
 
 agents_bp = Blueprint("agents", __name__)
 
 
 def _get_store() -> AgentStore:
-    """Get the agent store singleton."""
-    # This will be replaced with proper DI in production
-    return AgentStore()
+    """Get the agent store from app extensions (shared instance)."""
+    store = current_app.extensions.get("agent_store")
+    if store is None:
+        logger.warning("AgentStore not in extensions, creating new instance (TEST MODE)")
+        store = AgentStore()
+    return store
 
 
 @agents_bp.route("/agents", methods=["GET"])
@@ -36,9 +44,17 @@ def list_agents():
     store = _get_store()
     agents = store.list_agents()
 
+    logger.debug(f"[API] GET /agents - found {len(agents)} agents in store")
+
     result = []
     for agent in agents:
         current_task = store.get_current_task(agent.id)
+        task_state = current_task.state.value if current_task else "no_task"
+
+        logger.debug(
+            f"[API] Agent {agent.id[:8]}: session={agent.session_name}, "
+            f"task_state={task_state}, task_id={current_task.id[:8] if current_task else 'none'}"
+        )
 
         result.append(
             {
@@ -59,6 +75,7 @@ def list_agents():
             }
         )
 
+    logger.debug(f"[API] GET /agents - returning {len(result)} agents")
     return jsonify({"agents": result})
 
 
@@ -214,3 +231,40 @@ def get_agent_content(agent_id: str):
             "lines": len(content.split("\n")),
         }
     )
+
+
+@agents_bp.route("/reset", methods=["POST"])
+def reset_working_state():
+    """Reset all working state for a clean slate.
+
+    Clears:
+    - All agents and tasks
+    - Notification cooldowns
+    - Inference caches
+
+    This is useful when the dashboard gets into a bad state or
+    when you want to start fresh without restarting the server.
+
+    Returns:
+        JSON object with reset status details.
+    """
+    try:
+        store = _get_store()
+        store.clear()
+
+        notification_service = get_notification_service()
+        notification_service.reset_cooldowns()
+
+        return jsonify(
+            {
+                "success": True,
+                "message": "Working state reset successfully",
+                "details": {
+                    "agents": "cleared",
+                    "tasks": "cleared",
+                    "notifications": "cooldowns_cleared",
+                },
+            }
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
