@@ -115,6 +115,7 @@ claude_monitor/
 │   │   ├── state_interpreter.py # LLM state detection
 │   │   ├── inference_service.py # OpenRouter API
 │   │   ├── governing_agent.py   # Main orchestrator
+│   │   ├── hook_receiver.py     # Claude Code lifecycle hooks
 │   │   ├── priority_service.py  # Cross-project priorities
 │   │   ├── notification_service.py
 │   │   ├── event_bus.py        # SSE broadcasting
@@ -130,7 +131,8 @@ claude_monitor/
 │       ├── agents.py    # /api/agents endpoints
 │       ├── tasks.py     # /api/tasks endpoints
 │       ├── config.py    # /api/config endpoints
-│       └── events.py    # /api/events SSE endpoint
+│       ├── events.py    # /api/events SSE endpoint
+│       └── hooks.py     # /hook/* Claude Code hooks
 │
 ├── tests/               # Test suite (mirrors src/)
 │   ├── conftest.py      # Shared fixtures
@@ -267,6 +269,42 @@ curl http://localhost:5050/api/output/<session_id>?lines=100
          └◀────────────────┴───────────────┘
 ```
 
+### Claude Code Hooks (Event-Driven)
+
+The monitor can receive lifecycle events directly from Claude Code via hooks:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              Claude Code (Terminal Session)                  │
+│                                                              │
+│  Hooks fire on lifecycle events ──────────────────┐         │
+└──────────────────────────────────────────────────┼─────────┘
+                                                    │
+                                                    ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Claude Monitor (Flask)                          │
+│              http://localhost:5050                           │
+│                                                              │
+│  POST /hook/session-start      → Agent created, IDLE        │
+│  POST /hook/user-prompt-submit → Transition to PROCESSING   │
+│  POST /hook/stop               → Transition to IDLE         │
+│  POST /hook/notification       → Timestamp update           │
+│  POST /hook/session-end        → Agent marked inactive      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Benefits over polling:**
+- Instant state updates (<100ms vs 2-second polling)
+- 100% confidence (event-based vs inference)
+- Reduced resource usage (no constant terminal scraping)
+
+**Setup:**
+```bash
+./bin/install-hooks.sh
+```
+
+See `docs/architecture/claude-code-hooks.md` for detailed documentation.
+
 ### Legacy Architecture (lib/)
 
 1. **State Files:** `.claude-monitor-*.json` files in project directories
@@ -287,6 +325,7 @@ curl http://localhost:5050/api/output/<session_id>?lines=100
 | `EventBus` | SSE event broadcasting |
 | `ConfigService` | Config loading with legacy migration |
 | `GitAnalyzer` | Git history analysis for narratives |
+| `HookReceiver` | Claude Code lifecycle hooks for event-driven state detection |
 
 ### Key Methods
 
@@ -325,6 +364,17 @@ curl http://localhost:5050/api/output/<session_id>?lines=100
 | `/api/events` | GET | SSE event stream |
 | `/api/config` | GET/POST | Read/write configuration |
 | `/api/priorities` | GET | Get AI-ranked agent priorities |
+
+### Claude Code Hook Routes
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/hook/session-start` | POST | Claude Code session started |
+| `/hook/session-end` | POST | Claude Code session ended |
+| `/hook/stop` | POST | Claude finished turn (primary completion signal) |
+| `/hook/notification` | POST | Claude Code notification |
+| `/hook/user-prompt-submit` | POST | User submitted prompt |
+| `/hook/status` | GET | Hook receiver status and activity |
 
 ### Legacy Routes (still supported)
 

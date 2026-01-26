@@ -665,3 +665,71 @@
         max-height: 50vh;
     }
 }
+
+/* Hook Status Indicator */
+.hook-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.6rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.hook-status.hooks-active {
+    background: rgba(115, 224, 160, 0.15);
+    color: var(--green);
+    border: 1px solid rgba(115, 224, 160, 0.3);
+}
+
+.hook-status.polling-only {
+    background: rgba(224, 176, 115, 0.15);
+    color: var(--amber);
+    border: 1px solid rgba(224, 176, 115, 0.3);
+}
+
+.hook-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+}
+
+.hook-status.hooks-active .hook-status-dot {
+    background: var(--green);
+}
+
+.hook-status.polling-only .hook-status-dot {
+    background: var(--amber);
+}
+
+/* Pulse animation for active hooks */
+@keyframes hook-pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.hook-status.hooks-active.receiving .hook-status-dot {
+    animation: hook-pulse 1s ease-in-out infinite;
+}
+
+/* Stats bar hook status */
+.stat-item.hook-status-stat {
+    border-left: 1px solid var(--border);
+    padding-left: 12px;
+    margin-left: 8px;
+}
+
+.stat-value.hooks-active {
+    color: var(--green);
+}
+
+.stat-value.polling-only {
+    color: var(--amber);
+}

@@ -29,6 +29,7 @@ from src.routes import register_blueprints
 from src.services import (
     AgentStore,
     GoverningAgent,
+    HookReceiver,
     InferenceService,
     StateInterpreter,
     get_config_service,
@@ -166,6 +167,14 @@ def _init_services(app: Flask, config: AppConfig) -> None:
         event_bus=event_bus,
     )
     app.extensions["governing_agent"] = governing_agent
+
+    # Create HookReceiver for Claude Code lifecycle hooks
+    hook_receiver = HookReceiver(
+        agent_store=agent_store,
+        event_bus=event_bus,
+        governing_agent=governing_agent,
+    )
+    app.extensions["hook_receiver"] = hook_receiver
 
     logger.info("Services initialized")
 

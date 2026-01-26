@@ -9,6 +9,12 @@ from src.services.config_service import (
 from src.services.event_bus import Event, EventBus, get_event_bus, reset_event_bus
 from src.services.git_analyzer import Commit, GitActivity, GitAnalyzer
 from src.services.governing_agent import AgentSnapshot, GoverningAgent
+from src.services.hook_receiver import (
+    HookEvent,
+    HookEventType,
+    HookReceiver,
+    HookResult,
+)
 from src.services.inference_service import CacheEntry, InferenceService
 from src.services.notification_service import (
     NotificationPayload,
@@ -48,6 +54,10 @@ __all__ = [
     "GitActivity",
     "GitAnalyzer",
     "GoverningAgent",
+    "HookEvent",
+    "HookEventType",
+    "HookReceiver",
+    "HookResult",
     "InferenceService",
     "InterpretationMethod",
     "InterpretationResult",

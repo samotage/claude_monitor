@@ -45,10 +45,17 @@ class GoverningAgent:
     3. Trigger inference calls per Activity Matrix
     4. Compute priorities based on headspace alignment
     5. Emit events via EventBus
+    6. Support hybrid polling + hooks mode
     """
 
-    # Polling interval for state detection
+    # Polling interval for state detection (normal mode)
     POLL_INTERVAL_SECONDS = 2.0
+
+    # Reduced polling interval when hooks are active
+    POLL_INTERVAL_WITH_HOOKS_SECONDS = 60.0
+
+    # Time without hook events before falling back to normal polling
+    HOOK_TIMEOUT_SECONDS = 300.0
 
     def __init__(
         self,
@@ -88,6 +95,10 @@ class GoverningAgent:
         # Priority tracking
         self._priorities_stale = True
         self._last_priority_computation: datetime | None = None
+
+        # Hook integration tracking
+        self._last_hook_event_time: float = 0
+        self._hooks_enabled: bool = True
 
         # Callbacks for extension
         self._on_state_change_callbacks: list[Callable] = []
@@ -602,7 +613,12 @@ class GoverningAgent:
         self._on_state_change_callbacks.append(callback)
 
     def _poll_loop(self) -> None:
-        """Background polling loop."""
+        """Background polling loop.
+
+        Uses dynamic polling interval based on hook activity:
+        - If hooks are active (received within timeout): Poll every 60 seconds
+        - If hooks are inactive: Poll every 2 seconds (normal mode)
+        """
         while self._running:
             try:
                 self.poll_agents()
@@ -614,7 +630,57 @@ class GoverningAgent:
             except Exception as e:
                 logger.error(f"Error in poll loop: {e}")
 
-            time.sleep(self.POLL_INTERVAL_SECONDS)
+            # Use dynamic interval based on hook activity
+            interval = self._get_poll_interval()
+            time.sleep(interval)
+
+    def _get_poll_interval(self) -> float:
+        """Get the current polling interval based on hook activity.
+
+        Returns:
+            Polling interval in seconds.
+        """
+        if not self._hooks_enabled:
+            return self.POLL_INTERVAL_SECONDS
+
+        # Check if hooks are active (received events recently)
+        if self._last_hook_event_time > 0:
+            elapsed = time.time() - self._last_hook_event_time
+            if elapsed < self.HOOK_TIMEOUT_SECONDS:
+                # Hooks are active, use reduced polling
+                return self.POLL_INTERVAL_WITH_HOOKS_SECONDS
+
+        # Hooks inactive or never received, use normal polling
+        return self.POLL_INTERVAL_SECONDS
+
+    def record_hook_event(self) -> None:
+        """Record that a hook event was received.
+
+        Called by HookReceiver when processing events to update
+        the last hook event timestamp for dynamic polling.
+        """
+        self._last_hook_event_time = time.time()
+
+    def get_hook_status(self) -> dict:
+        """Get hook integration status.
+
+        Returns:
+            Dict with hook status information.
+        """
+        hooks_active = False
+        elapsed = None
+
+        if self._last_hook_event_time > 0:
+            elapsed = time.time() - self._last_hook_event_time
+            hooks_active = elapsed < self.HOOK_TIMEOUT_SECONDS
+
+        return {
+            "hooks_enabled": self._hooks_enabled,
+            "hooks_active": hooks_active,
+            "last_hook_event_time": self._last_hook_event_time,
+            "seconds_since_last_hook": elapsed,
+            "current_poll_interval": self._get_poll_interval(),
+        }
 
     @property
     def agent_count(self) -> int:

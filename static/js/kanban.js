@@ -1,5 +1,113 @@
 /* Kanban Rendering Functions */
 
+// Hook status state
+let hookStatusData = null;
+let lastHookEventTime = 0;
+
+/**
+ * Fetch hook status from the server.
+ * @returns {Promise<Object|null>} Hook status data or null on error
+ */
+async function fetchHookStatus() {
+    try {
+        const response = await fetch('/hook/status');
+        if (!response.ok) {
+            console.warn('Failed to fetch hook status:', response.status);
+            return null;
+        }
+        hookStatusData = await response.json();
+        updateHookStatusUI();
+        return hookStatusData;
+    } catch (error) {
+        console.error('Error fetching hook status:', error);
+        return null;
+    }
+}
+
+/**
+ * Update the hook status display in the stats bar.
+ */
+function updateHookStatusUI() {
+    const statItem = document.getElementById('hook-status-stat');
+    const valueEl = document.getElementById('hook-status-value');
+
+    if (!statItem || !valueEl) return;
+
+    if (!hookStatusData || !hookStatusData.enabled) {
+        statItem.style.display = 'none';
+        return;
+    }
+
+    statItem.style.display = '';
+
+    const isActive = hookStatusData.active && hookStatusData.tracked_sessions > 0;
+    const isReceiving = lastHookEventTime > Date.now() - 3000; // Event in last 3 seconds
+
+    if (isActive) {
+        valueEl.textContent = `${hookStatusData.tracked_sessions} active`;
+        valueEl.className = 'stat-value hooks-active';
+        if (isReceiving) {
+            valueEl.classList.add('receiving');
+        }
+    } else {
+        valueEl.textContent = 'polling';
+        valueEl.className = 'stat-value polling-only';
+    }
+
+    // Add tooltip with more details
+    const secondsSinceEvent = hookStatusData.seconds_since_last_event;
+    let title = `Hooks: ${isActive ? 'Active' : 'Polling mode'}`;
+    if (hookStatusData.event_count > 0) {
+        title += `\nEvents: ${hookStatusData.event_count}`;
+        if (secondsSinceEvent !== null) {
+            title += `\nLast event: ${Math.round(secondsSinceEvent)}s ago`;
+        }
+    }
+    statItem.title = title;
+}
+
+/**
+ * Mark hook event received (for animation).
+ */
+function markHookEventReceived() {
+    lastHookEventTime = Date.now();
+    updateHookStatusUI();
+
+    // Clear receiving state after animation
+    setTimeout(() => {
+        updateHookStatusUI();
+    }, 3000);
+}
+
+/**
+ * Get hook status indicator HTML for a session card.
+ * @param {Object} session - Session data
+ * @returns {string} HTML for hook status indicator
+ */
+function getHookStatusIndicator(session) {
+    if (!hookStatusData || !hookStatusData.enabled) {
+        return '';
+    }
+
+    // Check if this session has hooks active
+    // We use terminal_session_id or session_name to identify
+    const hasHooksActive = hookStatusData.active && hookStatusData.tracked_sessions > 0;
+    const isReceiving = lastHookEventTime > Date.now() - 3000;
+
+    if (hasHooksActive) {
+        const receivingClass = isReceiving ? ' receiving' : '';
+        return `<span class="hook-status hooks-active${receivingClass}" title="Hooks active - instant state detection">
+            <span class="hook-status-dot"></span>
+            <span>hooks</span>
+        </span>`;
+    }
+
+    return `<span class="hook-status polling-only" title="Polling mode - 2s interval">
+        <span class="hook-status-dot"></span>
+        <span>poll</span>
+    </span>`;
+}
+
 /**
  * Get hybrid activity summary for display.
  *
@@ -157,6 +265,7 @@ function renderKanban(sessions, projects) {
                     <div class="card-header">
                         <span class="status ${session.status}">${session.status}</span>
                         <span class="uuid">${session.uuid_short}</span>
+                        ${getHookStatusIndicator(session)}
                         ${session.last_activity_ago ? `<span class="last-activity" title="Last activity: ${escapeHtml(session.last_activity_at || '')}">active ${escapeHtml(session.last_activity_ago)}</span>` : ''}
                         <span class="elapsed" title="Session uptime">up ${session.elapsed}</span>
                         ${session.pid ? `<span class="pid-info">${session.pid}</span>` : ''}

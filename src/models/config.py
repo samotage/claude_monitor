@@ -51,6 +51,35 @@ class NotificationConfig(BaseModel):
     )
 
 
+class HookConfig(BaseModel):
+    """Claude Code hooks configuration.
+
+    Hooks provide event-driven state detection from Claude Code sessions,
+    offering instant, certain state updates vs. polling-based inference.
+    """
+
+    enabled: bool = Field(
+        default=True,
+        description="Whether to accept Claude Code hook events",
+    )
+    fallback_polling: bool = Field(
+        default=True,
+        description="Continue polling as a fallback when hooks are enabled",
+    )
+    polling_interval_with_hooks: int = Field(
+        default=60,
+        ge=10,
+        le=300,
+        description="Polling interval in seconds when hooks are active (reduced from normal)",
+    )
+    session_timeout: int = Field(
+        default=300,
+        ge=60,
+        le=3600,
+        description="Seconds without hook events before falling back to normal polling",
+    )
+
+
 class AppConfig(BaseModel):
     """Root application configuration.
 
@@ -83,6 +112,10 @@ class AppConfig(BaseModel):
     notifications: NotificationConfig = Field(
         default_factory=NotificationConfig,
         description="Notification settings",
+    )
+    hooks: HookConfig = Field(
+        default_factory=HookConfig,
+        description="Claude Code hooks configuration for event-driven state detection",
     )
     port: int = Field(
         default=5050,

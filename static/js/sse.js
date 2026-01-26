@@ -80,6 +80,25 @@ function connectSSE() {
                         fetchPriorities(true);  // force refresh
                     }
                 }, 500);
+            } else if (message.type === 'hook_session_start' ||
+                       message.type === 'hook_session_end' ||
+                       message.type === 'hook_stop' ||
+                       message.type === 'hook_user_prompt_submit' ||
+                       message.type === 'hook_notification') {
+                // Hook event received - update UI and mark as receiving
+                if (typeof markHookEventReceived === 'function') {
+                    markHookEventReceived();
+                }
+                // Refresh hook status
+                if (typeof fetchHookStatus === 'function') {
+                    fetchHookStatus();
+                }
+                // Refresh sessions on state-changing events
+                if (message.type === 'hook_stop' || message.type === 'hook_user_prompt_submit') {
+                    if (typeof fetchSessions === 'function') {
+                        fetchSessions();
+                    }
+                }
             }
         } catch (e) {
             console.warn('SSE message parse error:', e);

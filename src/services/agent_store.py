@@ -58,6 +58,10 @@ class AgentStore:
         self._projects: dict[str, Project] = {}
         self._headspace: HeadspaceFocus | None = None
 
+        # Claude Code session correlation (session_id -> agent_id)
+        # This maps Claude Code's $CLAUDE_SESSION_ID to our agent IDs
+        self._claude_session_map: dict[str, str] = {}
+
         # Event listeners
         self._listeners: dict[str, list[Callable]] = {}
 
@@ -200,10 +204,127 @@ class AgentStore:
         for task_id in task_ids:
             self._remove_task_cascade(task_id)
 
+        # Remove any Claude session mappings
+        sessions_to_remove = [
+            sid for sid, aid in self._claude_session_map.items() if aid == agent_id
+        ]
+        for session_id in sessions_to_remove:
+            del self._claude_session_map[session_id]
+
         del self._agents[agent_id]
         self._emit("agent_removed", {"agent_id": agent_id})
         self._save_state()
         return True
+
+    # =========================================================================
+    # Claude Code Session Correlation
+    # =========================================================================
+
+    def register_claude_session(self, claude_session_id: str, cwd: str) -> Agent:
+        """Register a Claude Code session and correlate to an agent.
+
+        This is called when we receive a session_start hook from Claude Code.
+        We try to match to an existing agent by working directory, or create
+        a new agent if no match is found.
+
+        Args:
+            claude_session_id: The Claude Code $CLAUDE_SESSION_ID.
+            cwd: The working directory of the session.
+
+        Returns:
+            The correlated or newly created Agent.
+        """
+        # Check if we already have this session mapped
+        if claude_session_id in self._claude_session_map:
+            agent_id = self._claude_session_map[claude_session_id]
+            agent = self._agents.get(agent_id)
+            if agent:
+                return agent
+
+        # Normalize cwd
+        cwd = cwd.rstrip("/") if cwd else ""
+
+        # Try to find existing agent by project path match
+        for agent in self._agents.values():
+            if agent.project_id:
+                project = self._projects.get(agent.project_id)
+                if project and project.path:
+                    project_path = project.path.rstrip("/")
+                    if project_path == cwd:
+                        self._claude_session_map[claude_session_id] = agent.id
+                        self._emit(
+                            "claude_session_registered",
+                            {
+                                "claude_session_id": claude_session_id,
+                                "agent_id": agent.id,
+                                "correlation_method": "project_path",
+                            },
+                        )
+                        return agent
+
+        # No match - create a new agent
+        session_name = cwd.split("/")[-1] if cwd else "claude-session"
+        agent = self.create_agent(
+            terminal_session_id=f"hook-{claude_session_id[:8]}",
+            session_name=session_name,
+        )
+
+        self._claude_session_map[claude_session_id] = agent.id
+        self._emit(
+            "claude_session_registered",
+            {
+                "claude_session_id": claude_session_id,
+                "agent_id": agent.id,
+                "correlation_method": "new_agent",
+            },
+        )
+
+        return agent
+
+    def get_agent_by_claude_session(self, claude_session_id: str) -> Agent | None:
+        """Get an agent by its Claude Code session ID.
+
+        Args:
+            claude_session_id: The Claude Code $CLAUDE_SESSION_ID.
+
+        Returns:
+            The Agent if found, None otherwise.
+        """
+        agent_id = self._claude_session_map.get(claude_session_id)
+        if agent_id:
+            return self._agents.get(agent_id)
+        return None
+
+    def unregister_claude_session(self, claude_session_id: str) -> bool:
+        """Unregister a Claude Code session.
+
+        Called when a session ends.
+
+        Args:
+            claude_session_id: The Claude Code $CLAUDE_SESSION_ID.
+
+        Returns:
+            True if the session was registered and removed, False otherwise.
+        """
+        if claude_session_id in self._claude_session_map:
+            agent_id = self._claude_session_map.pop(claude_session_id)
+            self._emit(
+                "claude_session_unregistered",
+                {
+                    "claude_session_id": claude_session_id,
+                    "agent_id": agent_id,
+                },
+            )
+            return True
+        return False
+
+    def get_claude_session_mapping(self) -> dict[str, str]:
+        """Get the current Claude session to agent mapping.
+
+        Returns:
+            Dict mapping claude_session_id -> agent_id.
+        """
+        return self._claude_session_map.copy()
 
     # =========================================================================
     # Task CRUD
