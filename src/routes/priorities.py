@@ -76,26 +76,56 @@ def get_priorities():
         force_refresh=force_refresh,
     )
 
-    # Format response
+    # Format response with legacy-compatible field names for frontend
+    # Frontend expects: priority_score, uuid_short, project_name, session_id,
+    # activity_state, activity_summary, rationale
     priorities = []
     for agent_id, result in results.items():
         agent = next((a for a in agents if a.id == agent_id), None)
         current_task = store.get_current_task(agent_id) if agent else None
 
+        # Get project name
+        project = store.get_project(agent.project_id) if agent and agent.project_id else None
+        project_name = project.name if project else "Unknown"
+
+        # Map 5-state to legacy 3-state for frontend
+        task_state = current_task.state.value if current_task else "idle"
+        legacy_state_map = {
+            "idle": "idle",
+            "commanded": "processing",
+            "processing": "processing",
+            "awaiting_input": "input_needed",
+            "complete": "idle",
+        }
+        activity_state = legacy_state_map.get(task_state, "idle")
+
+        # Get terminal session ID (used as PID for legacy compatibility)
+        terminal_id = agent.terminal_session_id if agent else None
+        try:
+            session_id = int(terminal_id) if terminal_id and terminal_id.isdigit() else None
+        except (ValueError, AttributeError):
+            session_id = None
+
         priorities.append(
             {
+                # Legacy-compatible field names
+                "priority_score": result.score,
+                "uuid_short": agent_id[:8] if agent_id else "",
+                "project_name": project_name,
+                "session_id": session_id,
+                "activity_state": activity_state,
+                "activity_summary": current_task.summary if current_task else None,
+                "rationale": result.rationale,
+                # Also include new fields for completeness
                 "agent_id": agent_id,
                 "session_name": agent.session_name if agent else "Unknown",
-                "project_id": agent.project_id if agent else None,
-                "score": result.score,
-                "rationale": result.rationale,
-                "state": current_task.state.value if current_task else "unknown",
+                "state": task_state,
                 "computed_at": result.computed_at.isoformat(),
             }
         )
 
     # Sort by priority score (highest first)
-    priorities.sort(key=lambda p: p["score"], reverse=True)
+    priorities.sort(key=lambda p: p["priority_score"], reverse=True)
 
     return jsonify(
         {

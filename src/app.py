@@ -103,6 +103,16 @@ def create_app(config_path: str = "config.yaml") -> Flask:
             scan_interval=config.scan_interval,
         )
 
+    # Add logging popout route
+    @app.route("/logging")
+    def logging_popout():
+        from flask import render_template
+
+        return render_template(
+            "logging.html",
+            scan_interval=config.scan_interval,
+        )
+
     # Add legacy compatibility routes if needed
     _add_legacy_routes(app, config)
 
@@ -166,6 +176,45 @@ def _register_error_handlers(app: Flask) -> None:
         return response
 
 
+def _register_projects_from_config(agent_store, config: AppConfig) -> None:
+    """Register projects from config into the agent store.
+
+    Creates Project objects for each configured project and adds them
+    to the store if they don't already exist. Existing projects are
+    updated with config values.
+
+    Args:
+        agent_store: The AgentStore to register projects with.
+        config: Application configuration containing project list.
+    """
+    from src.models.project import Project
+
+    for project_config in config.projects:
+        # Check if project already exists (by name)
+        existing = agent_store.get_project_by_name(project_config.name)
+
+        if existing is None:
+            # Create new project from config
+            import uuid
+
+            project = Project(
+                id=str(uuid.uuid4()),
+                name=project_config.name,
+                path=project_config.path,
+                goal=project_config.goal,
+                git_repo_path=project_config.git_repo_path,
+            )
+            agent_store.add_project(project)
+            logger.info(f"Registered project: {project_config.name}")
+        else:
+            # Update existing project with config values
+            existing.path = project_config.path
+            existing.goal = project_config.goal or existing.goal
+            existing.git_repo_path = project_config.git_repo_path or existing.git_repo_path
+            agent_store.update_project(existing)
+            logger.debug(f"Updated project: {project_config.name}")
+
+
 def _init_services(app: Flask, config: AppConfig) -> None:
     """Initialize all services and wire them together.
 
@@ -183,6 +232,9 @@ def _init_services(app: Flask, config: AppConfig) -> None:
     # Create AgentStore
     agent_store = AgentStore(data_dir=str(data_dir))
     app.extensions["agent_store"] = agent_store
+
+    # Register projects from config
+    _register_projects_from_config(agent_store, config)
 
     # Create EventBus
     event_bus = get_event_bus()
@@ -329,11 +381,26 @@ def _agent_to_session(agent, task, agent_store) -> dict:
 
     # Calculate elapsed time
     elapsed = ""
+    elapsed_seconds = 0
     if agent.created_at:
         delta = datetime.now() - agent.created_at
-        hours = int(delta.total_seconds() // 3600)
-        minutes = int((delta.total_seconds() % 3600) // 60)
+        elapsed_seconds = delta.total_seconds()
+        hours = int(elapsed_seconds // 3600)
+        minutes = int((elapsed_seconds % 3600) // 60)
         elapsed = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+
+    # Get task details
+    task_summary = task.summary if task else None
+    priority_score = task.priority_score if task else None
+    priority_rationale = task.priority_rationale if task else None
+    command_summary = task.command_summary if task else None
+
+    # Terminal session ID (used as pseudo-PID for legacy compatibility)
+    terminal_id = agent.terminal_session_id
+    try:
+        pid = int(terminal_id) if terminal_id and terminal_id.isdigit() else None
+    except (ValueError, AttributeError):
+        pid = None
 
     return {
         "uuid": agent.id,
@@ -342,21 +409,35 @@ def _agent_to_session(agent, task, agent_store) -> dict:
         "activity_state": legacy_state_map.get(task_state, "idle"),
         "status": "active" if task else "completed",
         "elapsed": elapsed,
+        "elapsed_seconds": elapsed_seconds,
         "started_at": agent.created_at.isoformat() if agent.created_at else None,
-        "pid": None,  # Deprecated
+        "pid": pid,
         "session_type": "wezterm",
         "tmux_session": agent.session_name,
+        # Additional fields for frontend compatibility
+        "task_summary": task_summary,
+        "last_message": "",  # TODO: Populate from turn tracking when ported
+        "turn_command": command_summary or "",  # Use command_summary as turn_command
+        "priority_score": priority_score,
+        "rationale": priority_rationale,
+        "session_id": agent.terminal_session_id,
     }
 
 
 def start_background_tasks(app: Flask) -> None:
     """Start background tasks for the application.
 
+    Starts:
+    - Agent polling loop (GoverningAgent)
+    - Compression service background thread
+    - Session sync service background thread
+
     Args:
         app: Flask application.
     """
     governing_agent = app.extensions.get("governing_agent")
     config = app.extensions.get("config")
+    agent_store = app.extensions.get("agent_store")
 
     if governing_agent and config:
         scan_interval = config.scan_interval
@@ -375,6 +456,48 @@ def start_background_tasks(app: Flask) -> None:
         thread = threading.Thread(target=scan_loop, daemon=True)
         thread.start()
         logger.info(f"Started background scan thread (interval: {scan_interval}s)")
+
+    # Start compression service background thread if enabled
+    if config and agent_store:
+        from src.services.compression_service import get_compression_service
+
+        compression_service = get_compression_service(
+            data_dir="data",
+            compression_interval=300,  # 5 minutes default
+        )
+
+        def get_project_names():
+            """Get list of project names for compression processing."""
+            return [p.name for p in agent_store.list_projects()]
+
+        compression_service.start_background_thread(get_project_names)
+        app.extensions["compression_service"] = compression_service
+
+    # Start session sync service background thread if enabled
+    if config and config.session_sync.enabled and agent_store:
+        from src.services.session_sync_service import get_session_sync_service
+
+        session_sync_service = get_session_sync_service(
+            data_dir="data",
+            sync_interval=config.session_sync.interval,
+            jsonl_tail_entries=config.session_sync.jsonl_tail_entries,
+        )
+
+        def get_active_sessions():
+            """Get list of active agent sessions for sync."""
+            agents = agent_store.list_agents()
+            return [
+                {
+                    "uuid": a.id,
+                    "id": a.id,
+                    "project_id": a.project_id,
+                }
+                for a in agents
+            ]
+
+        session_sync_service.start_background_thread(get_active_sessions)
+        app.extensions["session_sync_service"] = session_sync_service
+        logger.info("Started session sync background thread")
 
 
 # Module-level app for CLI usage

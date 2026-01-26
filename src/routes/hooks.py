@@ -14,12 +14,37 @@ Endpoints:
 
 import json
 import logging
+from datetime import datetime
+from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request
 
 hooks_bp = Blueprint("hooks", __name__)
 
 logger = logging.getLogger(__name__)
+
+# Hook event log file
+HOOK_LOG_FILE = Path(__file__).parent.parent.parent / "data" / "logs" / "hooks.jsonl"
+
+
+def _write_hook_log(event_type: str, data: dict, result: dict | None = None) -> None:
+    """Write hook event to log file for UI display."""
+    try:
+        HOOK_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "event_type": event_type,
+            "session_id": data.get("session_id", "unknown"),
+            "cwd": data.get("cwd", ""),
+            "data": data,
+            "result": result,
+        }
+
+        with open(HOOK_LOG_FILE, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception as e:
+        logger.error(f"Failed to write hook log: {e}")
 
 
 def _log_hook_request(event_type: str, data: dict) -> None:
@@ -83,6 +108,16 @@ def hook_session_start():
         f"[HOOK] session-start RESULT: success={result.success}, "
         f"agent_id={result.agent_id[:8] if result.agent_id else 'none'}, "
         f"state={result.new_state.value if result.new_state else 'none'}"
+    )
+
+    _write_hook_log(
+        "session-start",
+        data,
+        {
+            "success": result.success,
+            "agent_id": result.agent_id,
+            "state": result.new_state.value if result.new_state else None,
+        },
     )
 
     return jsonify(
@@ -183,6 +218,16 @@ def hook_stop():
         f"msg={result.message}"
     )
 
+    _write_hook_log(
+        "stop",
+        data,
+        {
+            "success": result.success,
+            "agent_id": result.agent_id,
+            "state": result.new_state.value if result.new_state else None,
+        },
+    )
+
     return jsonify(
         {
             "status": "ok" if result.success else "error",
@@ -279,6 +324,16 @@ def hook_user_prompt_submit():
         f"[HOOK] user-prompt-submit RESULT: success={result.success}, "
         f"agent_id={result.agent_id[:8] if result.agent_id else 'none'}, "
         f"state={result.new_state.value if result.new_state else 'none'}"
+    )
+
+    _write_hook_log(
+        "user-prompt-submit",
+        data,
+        {
+            "success": result.success,
+            "agent_id": result.agent_id,
+            "state": result.new_state.value if result.new_state else None,
+        },
     )
 
     return jsonify(

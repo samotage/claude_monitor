@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Claude Headspace Diagnostic Framework
 
+DEPRECATED: This script uses the legacy tmux backend. For the new WezTerm-based
+architecture, use `python -m src.app` with the dashboard at http://localhost:5050.
+
 This script tests the fundamental assumptions of session monitoring.
 Run it to see exactly what's happening at each layer.
 
@@ -11,25 +14,28 @@ Usage:
 """
 
 import subprocess
-import sys
 import time
+import warnings
 from datetime import datetime
+
+warnings.warn(
+    "diagnostic.py uses the legacy tmux backend. Consider using the new WezTerm-based "
+    "architecture with run.py or python -m src.app instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 # =============================================================================
 # LAYER 1: Can we even talk to tmux?
 # =============================================================================
+
 
 def test_tmux_available() -> dict:
     """Test if tmux is installed and accessible."""
     result = {"test": "tmux_available", "passed": False, "details": {}}
 
     try:
-        proc = subprocess.run(
-            ["tmux", "-V"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
+        proc = subprocess.run(["tmux", "-V"], capture_output=True, text=True, timeout=5)
         result["details"]["version"] = proc.stdout.strip()
         result["details"]["returncode"] = proc.returncode
         result["passed"] = proc.returncode == 0
@@ -50,11 +56,11 @@ def test_tmux_sessions() -> dict:
             ["tmux", "list-sessions", "-F", "#{session_name}"],
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
         )
 
         if proc.returncode == 0:
-            sessions = [s for s in proc.stdout.strip().split('\n') if s]
+            sessions = [s for s in proc.stdout.strip().split("\n") if s]
             claude_sessions = [s for s in sessions if s.startswith("claude-")]
 
             result["details"]["all_sessions"] = sessions
@@ -77,6 +83,7 @@ def test_tmux_sessions() -> dict:
 # LAYER 2: Can we capture pane content?
 # =============================================================================
 
+
 def test_capture_pane(session_name: str) -> dict:
     """Test capturing content from a specific tmux pane."""
     result = {"test": "capture_pane", "session": session_name, "passed": False, "details": {}}
@@ -87,13 +94,13 @@ def test_capture_pane(session_name: str) -> dict:
             ["tmux", "capture-pane", "-t", session_name, "-p", "-S", "-200"],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
 
         if proc.returncode == 0:
             content = proc.stdout
             result["details"]["content_length"] = len(content)
-            result["details"]["line_count"] = content.count('\n')
+            result["details"]["line_count"] = content.count("\n")
             result["details"]["last_500_chars"] = content[-500:] if content else "(empty)"
             result["passed"] = True
         else:
@@ -116,8 +123,15 @@ PROCESSING_INDICATORS = [
 ]
 
 COMPLETION_VERBS = [
-    "Baked", "Brewed", "Clauded", "Thought", "Worked", "Wizarded",
-    "Computed", "Crafted", "Processed",  # Sample of common ones
+    "Baked",
+    "Brewed",
+    "Clauded",
+    "Thought",
+    "Worked",
+    "Wizarded",
+    "Computed",
+    "Crafted",
+    "Processed",  # Sample of common ones
 ]
 
 INPUT_NEEDED_PATTERNS = [
@@ -141,7 +155,7 @@ def analyze_content(content: str) -> dict:
     result = {
         "test": "content_analysis",
         "passed": True,  # Analysis itself always "passes"
-        "details": {}
+        "details": {},
     }
 
     if not content:
@@ -151,7 +165,7 @@ def analyze_content(content: str) -> dict:
     # Check what we actually find
     tail_800 = content[-800:] if len(content) > 800 else content
     tail_1500 = content[-1500:] if len(content) > 1500 else content
-    last_lines = content.strip().split('\n')[-20:]
+    last_lines = content.strip().split("\n")[-20:]
 
     # Processing indicators
     processing_found = []
@@ -213,19 +227,32 @@ def analyze_content(content: str) -> dict:
 # LAYER 4: Compare detected state vs what the app reports
 # =============================================================================
 
+
 def test_app_detection(session_name: str) -> dict:
     """Test what the actual app code detects for this session."""
     result = {"test": "app_detection", "session": session_name, "passed": False, "details": {}}
 
     try:
-        # Import the actual app code
-        from lib.sessions import parse_activity_state, capture_pane
+        # Try new architecture first (src/), fall back to legacy (lib/)
+        try:
+            from src.backends.tmux import get_tmux_backend
 
-        content = capture_pane(session_name, lines=200) or ""
-        state, summary = parse_activity_state("", content)  # Empty title for tmux
+            backend = get_tmux_backend()
+            content = backend.get_content(session_name, lines=200) or ""
+            # New architecture uses StateInterpreter, but for diagnostic we just report content
+            result["details"]["app_detected_state"] = "see_content_analysis"
+            result["details"]["app_summary"] = "(use dashboard for full state detection)"
+            result["details"]["architecture"] = "src (new)"
+        except ImportError:
+            # Fall back to legacy lib/
+            from lib.sessions import capture_pane, parse_activity_state
 
-        result["details"]["app_detected_state"] = state
-        result["details"]["app_summary"] = summary
+            content = capture_pane(session_name, lines=200) or ""
+            state, summary = parse_activity_state("", content)  # Empty title for tmux
+            result["details"]["app_detected_state"] = state
+            result["details"]["app_summary"] = summary
+            result["details"]["architecture"] = "lib (legacy)"
+
         result["details"]["content_length"] = len(content)
         result["passed"] = True
 
@@ -240,6 +267,7 @@ def test_app_detection(session_name: str) -> dict:
 # =============================================================================
 # DIAGNOSTIC RUNNER
 # =============================================================================
+
 
 def print_result(result: dict, verbose: bool = True):
     """Pretty print a test result."""
@@ -305,7 +333,9 @@ def run_full_diagnostic(session_name: str = None, verbose: bool = True):
             # Get full content for analysis
             proc = subprocess.run(
                 ["tmux", "capture-pane", "-t", sess, "-p", "-S", "-200"],
-                capture_output=True, text=True, timeout=10
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             if proc.returncode == 0:
                 analysis = analyze_content(proc.stdout)
@@ -320,12 +350,12 @@ def run_full_diagnostic(session_name: str = None, verbose: bool = True):
                     detected = analysis["details"].get("detected_state", "UNKNOWN")
                     app_detected = app_result["details"].get("app_detected_state", "unknown")
 
-                    print(f"\n--- COMPARISON ---")
+                    print("\n--- COMPARISON ---")
                     print(f"  Raw analysis detected: {detected}")
                     print(f"  App code detected:     {app_detected}")
 
                     if detected.lower() != app_detected.lower():
-                        print(f"  ⚠️  MISMATCH - This indicates a bug!")
+                        print("  ⚠️  MISMATCH - This indicates a bug!")
 
 
 def run_live_monitor(interval: int = 2):
@@ -337,7 +367,9 @@ def run_live_monitor(interval: int = 2):
             # Get sessions
             proc = subprocess.run(
                 ["tmux", "list-sessions", "-F", "#{session_name}"],
-                capture_output=True, text=True, timeout=5
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
 
             if proc.returncode != 0:
@@ -345,13 +377,15 @@ def run_live_monitor(interval: int = 2):
                 time.sleep(interval)
                 continue
 
-            sessions = [s for s in proc.stdout.strip().split('\n') if s.startswith("claude-")]
+            sessions = [s for s in proc.stdout.strip().split("\n") if s.startswith("claude-")]
 
             for sess in sessions:
                 # Quick capture and analysis
                 cap = subprocess.run(
                     ["tmux", "capture-pane", "-t", sess, "-p", "-S", "-200"],
-                    capture_output=True, text=True, timeout=10
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 )
 
                 if cap.returncode == 0:
@@ -365,7 +399,7 @@ def run_live_monitor(interval: int = 2):
                         state = "INPUT_NEEDED"
                     elif any(f"✻ {v} for" in tail for v in COMPLETION_VERBS):
                         state = "IDLE (completed)"
-                    elif "❯" in content.strip().split('\n')[-1]:
+                    elif "❯" in content.strip().split("\n")[-1]:
                         state = "IDLE (prompt)"
                     else:
                         state = "UNKNOWN"

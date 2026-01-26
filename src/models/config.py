@@ -146,6 +146,52 @@ class TerminalLoggingConfig(BaseModel):
     )
 
 
+class HeadspaceConfig(BaseModel):
+    """Headspace feature configuration."""
+
+    enabled: bool = Field(
+        default=True,
+        description="Whether headspace features are enabled",
+    )
+    history_enabled: bool = Field(
+        default=True,
+        description="Whether to track headspace history",
+    )
+
+
+class SessionSyncConfig(BaseModel):
+    """Session synchronization configuration.
+
+    Controls background sync of session state with JSONL logs.
+    """
+
+    enabled: bool = Field(
+        default=True,
+        description="Whether session sync is enabled",
+    )
+    interval: int = Field(
+        default=60,
+        ge=10,
+        le=600,
+        description="Sync interval in seconds",
+    )
+    jsonl_tail_entries: int = Field(
+        default=20,
+        ge=5,
+        le=100,
+        description="Number of JSONL tail entries to read for sync",
+    )
+
+
+class PrioritiesConfig(BaseModel):
+    """AI-driven priorities configuration."""
+
+    enabled: bool = Field(
+        default=True,
+        description="Whether AI priority computation is enabled",
+    )
+
+
 class AppConfig(BaseModel):
     """Root application configuration.
 
@@ -190,6 +236,30 @@ class AppConfig(BaseModel):
     terminal_logging: TerminalLoggingConfig = Field(
         default_factory=TerminalLoggingConfig,
         description="Terminal session logging configuration",
+    )
+    headspace: HeadspaceConfig = Field(
+        default_factory=HeadspaceConfig,
+        description="Headspace feature configuration",
+    )
+    session_sync: SessionSyncConfig = Field(
+        default_factory=SessionSyncConfig,
+        description="Session synchronization configuration",
+    )
+    priorities: PrioritiesConfig = Field(
+        default_factory=PrioritiesConfig,
+        description="AI-driven priorities configuration",
+    )
+    idle_timeout_minutes: int = Field(
+        default=60,
+        ge=5,
+        le=1440,
+        description="Minutes of inactivity before marking agent idle",
+    )
+    stale_threshold_hours: int = Field(
+        default=4,
+        ge=1,
+        le=168,
+        description="Hours before marking project data as stale",
     )
     port: int = Field(
         default=5050,

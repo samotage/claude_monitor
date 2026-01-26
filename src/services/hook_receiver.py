@@ -103,6 +103,10 @@ class HookReceiver:
         self._last_event_time: float = 0
         self._event_count: int = 0
 
+        # Enter signal tracking (for WezTerm Enter key detection)
+        # Maps pane_id -> timestamp of Enter press
+        self._enter_signals: dict[str, float] = {}
+
     def set_governing_agent(self, governing_agent: "GoverningAgent") -> None:
         """Set the governing agent (for late binding).
 
@@ -571,6 +575,56 @@ class HookReceiver:
         """
         with self._lock:
             return self._session_map.copy()
+
+    def record_enter_signal(self, pane_id: str) -> None:
+        """Record that Enter was pressed in a WezTerm pane.
+
+        Called by the /api/wezterm/enter-pressed endpoint.
+        The signal can be consumed later to detect turn starts.
+
+        Args:
+            pane_id: The WezTerm pane ID (as string).
+        """
+        with self._lock:
+            self._enter_signals[pane_id] = time.time()
+
+        logger.debug(f"[HookReceiver] Recorded Enter signal for pane {pane_id}")
+
+    def consume_enter_signal(self, pane_id: str, max_age_seconds: float = 10.0) -> float | None:
+        """Consume and return the pending Enter signal for a pane.
+
+        Returns the signal timestamp and removes it from the pending dict.
+        Returns None if no signal is pending or if the signal is stale.
+
+        Args:
+            pane_id: The WezTerm pane ID.
+            max_age_seconds: Maximum age of signal to accept (default 10s).
+
+        Returns:
+            The timestamp when Enter was pressed, or None.
+        """
+        with self._lock:
+            signal_time = self._enter_signals.pop(pane_id, None)
+
+        if signal_time is None:
+            return None
+
+        # Expire if older than max_age_seconds
+        age = time.time() - signal_time
+        if age > max_age_seconds:
+            logger.debug(f"[HookReceiver] Enter signal for pane {pane_id} expired (age={age:.1f}s)")
+            return None
+
+        return signal_time
+
+    def get_pending_enter_signals(self) -> dict[str, float]:
+        """Get all pending enter signals.
+
+        Returns:
+            Dict mapping pane_id -> timestamp.
+        """
+        with self._lock:
+            return self._enter_signals.copy()
 
     @staticmethod
     def validate_session_id(session_id: str) -> bool:

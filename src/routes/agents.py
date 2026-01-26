@@ -233,6 +233,223 @@ def get_agent_content(agent_id: str):
     )
 
 
+# =============================================================================
+# Legacy Compatibility Routes
+# These routes provide backward compatibility with the legacy API
+# =============================================================================
+
+
+@agents_bp.route("/send/<session_id>", methods=["POST"])
+def send_to_session(session_id: str):
+    """Legacy: Send text to a session by session_id/uuid/uuid_short.
+
+    This route provides backward compatibility with the legacy API.
+    The session_id can be:
+    - terminal_session_id (e.g., pane ID)
+    - agent uuid
+    - agent uuid_short (first 8 chars)
+
+    Request body:
+        {
+            "text": "text to send",
+            "enter": true  // whether to press enter after (default: true)
+        }
+
+    Returns:
+        JSON object with success status.
+    """
+    store = _get_store()
+
+    # Find agent by various identifiers
+    agent = _find_agent_by_session_id(store, session_id)
+
+    if agent is None:
+        return jsonify({"success": False, "error": f"Session '{session_id}' not found"}), 404
+
+    data = request.get_json() or {}
+    text = data.get("text", "")
+    enter = data.get("enter", True)  # Default True for legacy compat
+
+    if not text:
+        return jsonify({"success": False, "error": "No text provided"}), 400
+
+    backend = current_app.extensions.get("terminal_backend")
+    if backend is None:
+        backend = get_wezterm_backend()
+
+    if not backend.is_available():
+        return jsonify({"success": False, "error": "Terminal backend not available"}), 503
+
+    success = backend.send_text(agent.terminal_session_id, text, enter=enter)
+
+    return jsonify({"success": success})
+
+
+@agents_bp.route("/output/<session_id>", methods=["GET"])
+def output_from_session(session_id: str):
+    """Legacy: Capture output from a session by session_id/uuid/uuid_short.
+
+    This route provides backward compatibility with the legacy API.
+    The session_id can be:
+    - terminal_session_id (e.g., pane ID)
+    - agent uuid
+    - agent uuid_short (first 8 chars)
+
+    Query params:
+        lines: Number of lines to capture (default: 100)
+
+    Returns:
+        JSON object with session output.
+    """
+    store = _get_store()
+
+    # Find agent by various identifiers
+    agent = _find_agent_by_session_id(store, session_id)
+
+    if agent is None:
+        return jsonify({"success": False, "error": f"Session '{session_id}' not found"}), 404
+
+    # Cap lines to prevent memory exhaustion
+    config = current_app.extensions.get("config")
+    max_lines = config.wezterm.max_lines if config else 10000
+    lines = min(request.args.get("lines", 100, type=int), max_lines)
+
+    backend = current_app.extensions.get("terminal_backend")
+    if backend is None:
+        backend = get_wezterm_backend()
+
+    if not backend.is_available():
+        return jsonify({"success": False, "error": "Terminal backend not available"}), 503
+
+    content = backend.get_content(agent.terminal_session_id, lines=lines)
+
+    if content is None:
+        return jsonify(
+            {
+                "success": False,
+                "error": f"Failed to capture output from session '{session_id}'",
+            }
+        ), 500
+
+    return jsonify(
+        {
+            "success": True,
+            "session_id": session_id,
+            "session_type": "wezterm",
+            "output": content,
+            "lines": len(content.split("\n")),
+        }
+    )
+
+
+@agents_bp.route("/readme", methods=["GET"])
+def get_readme():
+    """Get README as HTML for the help modal.
+
+    Returns:
+        JSON object with:
+        - html: The README rendered as HTML
+    """
+    from pathlib import Path
+
+    try:
+        import markdown
+    except ImportError:
+        return jsonify({"error": "markdown package not installed"}), 500
+
+    # Look for README.md in the project root
+    readme_path = Path(__file__).parent.parent.parent / "README.md"
+
+    if not readme_path.exists():
+        return jsonify({"html": "<p>README.md not found</p>"})
+
+    try:
+        content = readme_path.read_text()
+        html = markdown.markdown(content, extensions=["tables", "fenced_code", "codehilite"])
+        return jsonify({"html": html})
+    except Exception as e:
+        logger.error(f"Failed to render README: {e}")
+        return jsonify({"html": f"<p>Error rendering README: {e}</p>"})
+
+
+@agents_bp.route("/wezterm/enter-pressed", methods=["POST"])
+def wezterm_enter_pressed():
+    """Receive Enter-key notification from WezTerm.
+
+    Called by the WezTerm Lua hook when the user presses Enter
+    in a claude-* pane. This provides an early signal for turn
+    start detection, reducing latency vs. polling.
+
+    Request body:
+        {
+            "pane_id": int  // WezTerm numeric pane ID
+        }
+
+    The signal is stored for consumption by the scan loop on the next poll.
+    It does NOT directly trigger state changes.
+
+    Returns:
+        JSON with processing status.
+    """
+    data = request.get_json(silent=True) or {}
+    pane_id = data.get("pane_id")
+
+    if pane_id is None:
+        return jsonify({"success": False, "error": "pane_id required"}), 400
+
+    # Convert to string for storage
+    pane_id_str = str(pane_id)
+
+    # Get hook receiver to record the signal
+    hook_receiver = current_app.extensions.get("hook_receiver")
+    if hook_receiver:
+        hook_receiver.record_enter_signal(pane_id_str)
+
+    # Get event bus to broadcast SSE event
+    event_bus = current_app.extensions.get("event_bus")
+    if event_bus:
+        event_bus.emit(
+            "session_update",
+            {
+                "event": "enter_pressed",
+                "pane_id": pane_id_str,
+            },
+        )
+
+    logger.debug(f"[WezTerm] Enter pressed in pane {pane_id_str}")
+
+    return jsonify({"success": True, "pane_id": pane_id_str})
+
+
+def _find_agent_by_session_id(store: AgentStore, session_id: str):
+    """Find an agent by session_id, uuid, or uuid_short.
+
+    Args:
+        store: The agent store.
+        session_id: The identifier to search for.
+
+    Returns:
+        The matching agent, or None if not found.
+    """
+    agents = store.list_agents()
+
+    for agent in agents:
+        # Match by terminal_session_id
+        if agent.terminal_session_id == session_id:
+            return agent
+        # Match by full uuid
+        if agent.id == session_id:
+            return agent
+        # Match by uuid_short (first 8 chars)
+        if agent.id[:8] == session_id:
+            return agent
+        # Match by session_name
+        if agent.session_name == session_id:
+            return agent
+
+    return None
+
+
 @agents_bp.route("/reset", methods=["POST"])
 def reset_working_state():
     """Reset all working state for a clean slate.
@@ -268,3 +485,82 @@ def reset_working_state():
         )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+# =============================================================================
+# Session Summarization Routes
+# =============================================================================
+
+
+@agents_bp.route("/session/<session_id>/summarise", methods=["GET"])
+def summarise_session_route(session_id: str):
+    """Generate a summary for a session.
+
+    This route provides session summarization by parsing JSONL logs
+    and extracting activity data (files modified, commands run, errors).
+
+    Args:
+        session_id: The session identifier (agent ID or UUID).
+
+    Returns:
+        JSON object with session summary.
+    """
+    from src.services.summarization_service import summarise_session
+
+    store = _get_store()
+
+    # Find the agent/session
+    agent = _find_agent_by_session_id(store, session_id)
+    if agent is None:
+        return jsonify({"success": False, "error": f"Session '{session_id}' not found"}), 404
+
+    # Get the project path for this agent
+    project = store.get_project(agent.project_id) if agent.project_id else None
+    if project is None:
+        return jsonify({"success": False, "error": "Could not determine project for session"}), 400
+
+    # Generate summary from JSONL logs
+    summary = summarise_session(project.path, agent.id)
+
+    if summary is None:
+        return jsonify(
+            {"success": False, "error": "Could not find session logs for summarization"}
+        ), 404
+
+    return jsonify({"success": True, "summary": summary})
+
+
+# =============================================================================
+# Focus Routes (iTerm/tmux integration)
+# =============================================================================
+
+# Note: /api/focus/<pid> is handled in app.py as a legacy deprecation stub.
+# The route below provides actual tmux session focusing via iTerm.
+
+
+@agents_bp.route("/focus/tmux/<session_name>", methods=["POST"])
+def focus_by_tmux_session(session_name: str):
+    """Focus the iTerm window running a tmux session.
+
+    This route focuses the iTerm window that has the specified tmux
+    session attached. Uses tmux client info to find the TTY.
+
+    Args:
+        session_name: The tmux session name (e.g., "claude-my-project-87c165e4").
+
+    Returns:
+        JSON object with success status.
+    """
+    from src.backends.iterm import focus_iterm_window_by_tmux_session
+
+    success = focus_iterm_window_by_tmux_session(session_name)
+
+    if success:
+        return jsonify({"success": True})
+    else:
+        return jsonify(
+            {
+                "success": False,
+                "error": f"Could not focus tmux session '{session_name}'",
+            }
+        ), 404

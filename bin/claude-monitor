@@ -16,7 +16,6 @@ Requirements:
 """
 
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -162,10 +161,13 @@ def launch_claude_code_tmux(
     # -d creates detached, then we attach
     result = subprocess.run(
         [
-            "tmux", "new-session",
+            "tmux",
+            "new-session",
             "-d",  # Detached initially
-            "-s", session_name,
-            "-c", str(project_dir),
+            "-s",
+            session_name,
+            "-c",
+            str(project_dir),
             f"env {env_str} claude",  # Run claude with our env var
         ],
         capture_output=True,
@@ -190,8 +192,15 @@ def launch_claude_code_tmux(
     # Auto-copy to macOS clipboard when mouse selection ends (global binding)
     subprocess.run(
         [
-            "tmux", "bind-key", "-T", "copy-mode",
-            "MouseDragEnd1Pane", "send-keys", "-X", "copy-pipe-and-cancel", "pbcopy",
+            "tmux",
+            "bind-key",
+            "-T",
+            "copy-mode",
+            "MouseDragEnd1Pane",
+            "send-keys",
+            "-X",
+            "copy-pipe-and-cancel",
+            "pbcopy",
         ],
         capture_output=True,
     )
@@ -302,11 +311,16 @@ def launch_claude_code_wezterm(
 
     result = subprocess.run(
         [
-            "wezterm", "cli", "spawn",
+            "wezterm",
+            "cli",
+            "spawn",
             "--new-window",
-            "--cwd", str(project_dir),
+            "--cwd",
+            str(project_dir),
             "--",
-            "bash", "-c", shell_cmd,
+            "bash",
+            "-c",
+            shell_cmd,
         ],
         capture_output=True,
         text=True,
@@ -365,7 +379,8 @@ def cmd_start(backend_override: Optional[str] = None) -> None:
 
         # Create state file
         state_file = create_state_file(
-            session_uuid, project_dir,
+            session_uuid,
+            project_dir,
             tmux_session=session_name,  # Use same field for session name
             session_type="wezterm",
         )
@@ -373,9 +388,7 @@ def cmd_start(backend_override: Optional[str] = None) -> None:
 
         try:
             # Launch in WezTerm (non-blocking - WezTerm manages its own window)
-            pane_id = launch_claude_code_wezterm(
-                session_uuid, session_name, project_dir
-            )
+            pane_id = launch_claude_code_wezterm(session_uuid, session_name, project_dir)
             if pane_id:
                 # Update state file with pane_id (can be used for focus)
                 state = json.loads(state_file.read_text())
@@ -402,7 +415,8 @@ def cmd_start(backend_override: Optional[str] = None) -> None:
 
         # Create state file
         state_file = create_state_file(
-            session_uuid, project_dir,
+            session_uuid,
+            project_dir,
             tmux_session=session_name,
             session_type="tmux",
         )
@@ -424,7 +438,13 @@ def cmd_start(backend_override: Optional[str] = None) -> None:
 
 def cmd_setup_wezterm() -> None:
     """Print setup instructions for WezTerm Enter-key integration."""
-    hooks_file = Path(__file__).resolve().parent.parent / "lib" / "backends" / "wezterm_hooks.lua"
+    # Use new src/ path - prefer it if exists, fall back to lib/
+    hooks_file = Path(__file__).resolve().parent.parent / "src" / "backends" / "wezterm_hooks.lua"
+    if not hooks_file.exists():
+        # Fall back to legacy location for compatibility
+        hooks_file = (
+            Path(__file__).resolve().parent.parent / "lib" / "backends" / "wezterm_hooks.lua"
+        )
 
     print("WezTerm Enter-Key Integration Setup")
     print("=" * 40)

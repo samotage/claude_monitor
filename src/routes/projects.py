@@ -81,6 +81,180 @@ def _get_inference_service() -> InferenceService:
     return InferenceService()
 
 
+# =============================================================================
+# Legacy Compatibility Routes - these use project NAME instead of ID
+# =============================================================================
+
+
+@projects_bp.route("/project/<name>/roadmap", methods=["GET"])
+def legacy_get_roadmap_by_name(name: str):
+    """Legacy: Get roadmap by project name.
+
+    Provides backward compatibility with the legacy API which used
+    project names instead of IDs.
+
+    Args:
+        name: The project name.
+
+    Returns:
+        JSON object with the roadmap.
+    """
+    store = _get_store()
+    project = store.get_project_by_name(name)
+
+    if project is None:
+        return jsonify({"success": False, "error": f"Project '{name}' not found"}), 404
+
+    return jsonify(
+        {
+            "success": True,
+            "roadmap": {
+                "next_up": {
+                    "title": project.roadmap.next_up.title,
+                    "why": project.roadmap.next_up.why,
+                    "definition_of_done": project.roadmap.next_up.definition_of_done,
+                }
+                if project.roadmap.next_up
+                else None,
+                "upcoming": project.roadmap.upcoming,
+                "later": project.roadmap.later,
+                "not_now": project.roadmap.not_now,
+                "recently_completed": project.roadmap.recently_completed,
+            },
+        }
+    )
+
+
+@projects_bp.route("/project/<name>/roadmap", methods=["POST"])
+def legacy_update_roadmap_by_name(name: str):
+    """Legacy: Update roadmap by project name.
+
+    Provides backward compatibility with the legacy API.
+
+    Args:
+        name: The project name.
+
+    Returns:
+        JSON object with the updated roadmap.
+    """
+    store = _get_store()
+    project = store.get_project_by_name(name)
+
+    if project is None:
+        return jsonify({"success": False, "error": f"Project '{name}' not found"}), 404
+
+    data = request.get_json() or {}
+
+    # Update next_up
+    if "next_up" in data:
+        next_up_data = data["next_up"]
+        if next_up_data:
+            project.roadmap.next_up = RoadmapItem(
+                title=next_up_data.get("title", ""),
+                why=next_up_data.get("why"),
+                definition_of_done=next_up_data.get("definition_of_done"),
+            )
+        else:
+            project.roadmap.next_up = None
+
+    # Update lists
+    if "upcoming" in data:
+        project.roadmap.upcoming = data["upcoming"]
+    if "later" in data:
+        project.roadmap.later = data["later"]
+    if "not_now" in data:
+        project.roadmap.not_now = data["not_now"]
+
+    store.update_project(project)
+
+    return jsonify(
+        {
+            "success": True,
+            "roadmap": {
+                "next_up": {
+                    "title": project.roadmap.next_up.title,
+                    "why": project.roadmap.next_up.why,
+                    "definition_of_done": project.roadmap.next_up.definition_of_done,
+                }
+                if project.roadmap.next_up
+                else None,
+                "upcoming": project.roadmap.upcoming,
+                "later": project.roadmap.later,
+                "not_now": project.roadmap.not_now,
+            },
+        }
+    )
+
+
+@projects_bp.route("/project/<name>/brain-refresh", methods=["GET"])
+@rate_limit()
+def legacy_brain_refresh_by_name(name: str):
+    """Legacy: Get brain refresh briefing by project name.
+
+    Args:
+        name: The project name.
+
+    Returns:
+        JSON object with brain refresh briefing.
+    """
+    store = _get_store()
+    project = store.get_project_by_name(name)
+
+    if project is None:
+        return jsonify({"success": False, "error": f"Project '{name}' not found"}), 404
+
+    # Delegate to the ID-based route logic
+    refresh = request.args.get("refresh_narrative", "false").lower() == "true"
+
+    git_analyzer = _get_git_analyzer()
+    narrative = git_analyzer.generate_progress_narrative(project, use_cache=not refresh)
+
+    project.roadmap.recently_completed = narrative
+    store.update_project(project)
+
+    headspace = store.get_headspace()
+
+    agents = [a for a in store.list_agents() if a.project_id == project.id]
+    active_agents = []
+    for agent in agents:
+        task = store.get_current_task(agent.id)
+        active_agents.append(
+            {
+                "id": agent.id,
+                "session_name": agent.session_name,
+                "state": task.state.value if task else "unknown",
+            }
+        )
+
+    return jsonify(
+        {
+            "success": True,
+            "headspace": {
+                "focus": headspace.current_focus if headspace else None,
+                "constraints": headspace.constraints if headspace else None,
+            }
+            if headspace
+            else None,
+            "roadmap": {
+                "next_up": {
+                    "title": project.roadmap.next_up.title,
+                    "why": project.roadmap.next_up.why,
+                }
+                if project.roadmap.next_up
+                else None,
+                "upcoming": project.roadmap.upcoming[:5],
+            },
+            "recently_completed": narrative,
+            "active_agents": active_agents,
+        }
+    )
+
+
+# =============================================================================
+# New Architecture Routes - these use project ID
+# =============================================================================
+
+
 @projects_bp.route("/projects", methods=["GET"])
 def list_projects():
     """List all configured projects.
