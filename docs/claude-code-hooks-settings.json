@@ -1,4 +1,5 @@
 {
+  "_comment": "IMPORTANT: Replace $HOME with your actual home directory path (e.g., /Users/yourname)",
   "hooks": {
     "SessionStart": [
       {
@@ -6,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/notify-monitor.sh session-start"
+            "command": "$HOME/.claude/hooks/notify-monitor.sh session-start"
           }
         ]
       }
@@ -17,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/notify-monitor.sh session-end"
+            "command": "$HOME/.claude/hooks/notify-monitor.sh session-end"
           }
         ]
       }
@@ -28,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/notify-monitor.sh stop"
+            "command": "$HOME/.claude/hooks/notify-monitor.sh stop"
           }
         ]
       }
@@ -39,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/notify-monitor.sh notification"
+            "command": "$HOME/.claude/hooks/notify-monitor.sh notification"
           }
         ]
       }
@@ -50,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/notify-monitor.sh user-prompt-submit"
+            "command": "$HOME/.claude/hooks/notify-monitor.sh user-prompt-submit"
           }
         ]
       }

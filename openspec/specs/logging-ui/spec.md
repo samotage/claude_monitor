@@ -1,7 +1,7 @@
 # logging-ui Specification
 
 ## Purpose
-TBD - created by archiving change logging-ui. Update Purpose after archive.
+Provides a web UI for viewing OpenRouter API call logs and terminal session logs. Routes are implemented in `src/routes/logging.py` with business logic delegated to `lib/logging.py` and `lib/terminal_logging.py`. The UI displays logs with search, filtering, and auto-refresh capabilities.
 ## Requirements
 ### Requirement: Logging Tab Navigation
 
@@ -134,4 +134,3 @@ The logging system SHALL capture specific data for each OpenRouter API call.
   - Error message (if failure)
 
 ---
-

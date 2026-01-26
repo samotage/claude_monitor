@@ -146,4 +146,3 @@ The system SHALL provide a `POST /api/session/<id>/summarise` endpoint for manua
 - **GIVEN** a session ID that doesn't match any known session
 - **WHEN** POST request is made to `/api/session/<id>/summarise`
 - **THEN** the system SHALL return HTTP 404 with an error message
-

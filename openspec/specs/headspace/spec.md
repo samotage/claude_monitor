@@ -1,7 +1,7 @@
 # headspace Specification
 
 ## Purpose
-Implements the Headspace system for tracking cross-project user context including current focus, energy level, and available time. Provides YAML-based storage, REST API endpoints for reading/updating headspace, history tracking for context evolution, and dashboard UI integration.
+Implements the Headspace system for tracking cross-project user context including current focus and constraints. Uses Pydantic models with centralized storage in `data/state.yaml` via AgentStore. Provides REST API endpoints for reading/updating headspace, history tracking for context evolution, and dashboard UI integration.
 ## Requirements
 ### Requirement: Headspace Data Model
 
@@ -156,7 +156,7 @@ The headspace feature SHALL be configurable.
 
 ### Requirement: Data Persistence
 
-Headspace data SHALL persist independently of project data.
+Headspace data SHALL persist via AgentStore in the centralized state file.
 
 #### Scenario: Browser refresh
 
@@ -166,10 +166,9 @@ Headspace data SHALL persist independently of project data.
 #### Scenario: Server restart
 
 - **WHEN** the server is restarted
-- **THEN** the headspace SHALL remain as last saved (from data/headspace.yaml)
+- **THEN** the headspace SHALL remain as last saved (from data/state.yaml via AgentStore)
 
 #### Scenario: Storage format
 
 - **WHEN** headspace is saved
-- **THEN** it SHALL be stored in `data/headspace.yaml` in human-readable YAML format
-
+- **THEN** it SHALL be stored in `data/state.yaml` as part of the centralized application state

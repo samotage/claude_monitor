@@ -156,4 +156,3 @@ The system SHALL support configurable OpenRouter settings.
 - **GIVEN** any logging or error output
 - **WHEN** the API key could potentially appear
 - **THEN** the system SHALL NEVER log or expose the API key value
-

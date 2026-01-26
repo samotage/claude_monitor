@@ -1,7 +1,7 @@
 # terminal-logging-rename Specification
 
 ## Purpose
-TBD - created by archiving change terminal-logging-rename. Update Purpose after archive.
+Defines the terminal logging system with backend-agnostic naming and filtering. Renames tmux-specific logging to generic "terminal" logging to support multiple backends (tmux, WezTerm). Provides API endpoints for log retrieval with backend filtering, log clearing, and statistics.
 ## Requirements
 ### Requirement: Backend Identification
 
@@ -148,4 +148,3 @@ The Logging panel SHALL display a "terminal" tab instead of "tmux".
 - **WHEN** the user clicks the "Clear Logs" button
 - **THEN** a confirmation dialog SHALL appear
 - **AND** upon confirmation, all logs SHALL be deleted
-

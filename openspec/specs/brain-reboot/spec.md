@@ -1,63 +1,46 @@
 # brain-reboot Specification
 
 ## Purpose
-Enables quick context reload for stale projects via a "Brain Reboot" feature. Calculates project staleness based on configurable thresholds, generates structured briefings combining roadmap focus, recent session summaries, and compressed history, and provides a REST API endpoint for the dashboard side panel.
+Enables quick context reload for projects via a "Brain Reboot" feature. Uses LLM-powered briefing generation combining roadmap focus, git-based progress narratives, and active agent context. Provides a REST API endpoint for the dashboard side panel.
+
 ## Requirements
 ### Requirement: Reboot API Endpoint
 
-The system SHALL provide a `GET /api/project/<name>/reboot` endpoint that returns a structured briefing for quick context reload.
+The system SHALL provide a `GET /api/projects/<project_id>/brain-reboot` endpoint that returns an LLM-generated briefing for quick context reload.
 
 #### Scenario: Successful reboot with complete data
 
-- **WHEN** a GET request is made to `/api/project/<name>/reboot` for a project with complete data
+- **WHEN** a GET request is made to `/api/projects/<project_id>/brain-reboot` for a project with complete data
 - **THEN** the response status SHALL be 200
-- **AND** the response SHALL include a `briefing` object with:
-  - `roadmap`: `{ focus, why, next_steps[] }`
-  - `state`: `{ status, last_action, last_session_time }`
-  - `recent`: `[{ date, summary, files_count }]`
-  - `history`: `{ narrative, period }`
-- **AND** the response SHALL include a `meta` object with:
-  - `is_stale`: boolean
-  - `last_activity`: ISO timestamp or null
-  - `staleness_hours`: number or null
+- **AND** the response SHALL include:
+  - `briefing`: LLM-generated context summary string
+  - `headspace`: current user headspace (if set)
+  - `roadmap`: project roadmap data
+  - `recently_completed`: git-based progress narrative
+  - `active_agents`: list of active agents for this project
 
 #### Scenario: Reboot with partial data
 
-- **WHEN** a GET request is made to `/api/project/<name>/reboot` for a project with some missing data
+- **WHEN** a GET request is made to `/api/projects/<project_id>/brain-reboot` for a project with some missing data
 - **THEN** the response status SHALL be 200
 - **AND** missing sections SHALL be returned as null or empty structures
 - **AND** present sections SHALL be returned normally
 
 #### Scenario: Project not found
 
-- **WHEN** a GET request is made to `/api/project/<name>/reboot` for a non-existent project
+- **WHEN** a GET request is made to `/api/projects/<project_id>/brain-reboot` for a non-existent project
 - **THEN** the response status SHALL be 404
-- **AND** the response SHALL include `{ success: false, error: "Project '<name>' not found" }`
+- **AND** the response SHALL include an error message
 
-### Requirement: Stale Detection
+### Requirement: Brain Refresh Endpoint
 
-The system SHALL calculate project staleness based on time since last session activity.
+The system SHALL also provide a `GET /api/projects/<project_id>/brain-refresh` endpoint for quick refresh without LLM.
 
-#### Scenario: Fresh project (not stale)
+#### Scenario: Refresh returns cached data
 
-- **WHEN** a project's last activity is within the configured stale threshold
-- **THEN** `meta.is_stale` SHALL be `false`
-- **AND** the project card SHALL display with normal appearance
-
-#### Scenario: Stale project
-
-- **WHEN** a project's last activity exceeds the configured stale threshold
-- **THEN** `meta.is_stale` SHALL be `true`
-- **AND** `meta.staleness_hours` SHALL contain the hours since last activity
-- **AND** the project card SHALL display with faded/dimmed appearance
-- **AND** the project card SHALL show a clock icon and "Stale - X hours" label
-
-#### Scenario: Configurable threshold
-
-- **WHEN** `stale_threshold_hours` is set in config.yaml
-- **THEN** that value SHALL be used as the stale threshold
-- **WHEN** `stale_threshold_hours` is not set
-- **THEN** the default value of 4 hours SHALL be used
+- **WHEN** a GET request is made to `/api/projects/<project_id>/brain-refresh`
+- **THEN** the response SHALL return roadmap and progress data without calling the LLM
+- **AND** this endpoint is faster but provides less context than brain-reboot
 
 ### Requirement: Reboot Button
 
@@ -66,13 +49,8 @@ Each project card SHALL display a Reboot button that opens the briefing panel.
 #### Scenario: Click reboot button
 
 - **WHEN** user clicks the Reboot button on a project card
-- **THEN** the side panel SHALL open within 500ms
-- **AND** the panel SHALL display the structured briefing for that project
-
-#### Scenario: Button emphasis on stale cards
-
-- **WHEN** a project is stale
-- **THEN** the Reboot button SHALL be visually emphasized
+- **THEN** the side panel SHALL open
+- **AND** the panel SHALL display the LLM-generated briefing for that project
 
 ### Requirement: Side Panel
 
@@ -98,33 +76,26 @@ The briefing SHALL be displayed in a side panel alongside the dashboard.
 
 ### Requirement: Empty State Handling
 
-The system SHALL handle missing data gracefully with helpful prompts.
+The system SHALL handle missing data gracefully.
 
 #### Scenario: Empty roadmap
 
 - **WHEN** the project has no roadmap data
-- **THEN** the roadmap section SHALL display: "No roadmap defined yet. Would you like to define one?"
-- **AND** SHALL include a clickable link to the roadmap editor
+- **THEN** the roadmap section SHALL display an appropriate empty state message
 
-#### Scenario: Empty state
+#### Scenario: No recent git activity
 
-- **WHEN** the project has no session state data
-- **THEN** the state section SHALL display: "No session activity recorded yet"
+- **WHEN** the project has no recent commits
+- **THEN** the recently_completed section SHALL be empty or null
 
-#### Scenario: Empty recent sessions
+#### Scenario: No active agents
 
-- **WHEN** the project has no recent sessions
-- **THEN** the recent section SHALL display: "No recent sessions"
-
-#### Scenario: Empty history
-
-- **WHEN** the project has no compressed history
-- **THEN** the history section SHALL display: "No compressed history yet"
+- **WHEN** the project has no active agents
+- **THEN** the active_agents list SHALL be empty
 
 #### Scenario: Partial data display
 
 - **WHEN** some sections have data and others are empty
 - **THEN** populated sections SHALL display their data normally
-- **AND** empty sections SHALL display their respective empty state message
-- **AND** empty sections SHALL NOT prevent other sections from displaying
-
+- **AND** empty sections SHALL be returned as null or empty structures
+- **AND** empty sections SHALL NOT prevent the briefing from being generated

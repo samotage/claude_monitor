@@ -8,7 +8,7 @@
 # 1. Creates ~/.claude/hooks directory if needed
 # 2. Copies the notify-monitor.sh hook script
 # 3. Makes the script executable
-# 4. Creates or updates ~/.claude/settings.json with hook configuration
+# 4. Merges hook configuration into ~/.claude/settings.json (requires jq)
 #
 # Usage:
 #   ./bin/install-hooks.sh
@@ -31,6 +31,9 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 
+# Get absolute home directory path
+HOME_DIR="$HOME"
+
 echo "Installing Claude Code hooks for Claude Monitor..."
 echo ""
 
@@ -45,40 +48,111 @@ cp "$REPO_DIR/bin/notify-monitor.sh" ~/.claude/hooks/
 chmod +x ~/.claude/hooks/notify-monitor.sh
 echo -e "${GREEN}done${NC}"
 
-# Step 3: Handle settings.json
-SETTINGS_FILE=~/.claude/settings.json
-TEMPLATE_FILE="$REPO_DIR/docs/claude-code-hooks-settings.json"
+# Step 3: Generate hooks configuration with absolute paths
+HOOK_SCRIPT="$HOME_DIR/.claude/hooks/notify-monitor.sh"
+SETTINGS_FILE="$HOME_DIR/.claude/settings.json"
 
-if [ -f "$SETTINGS_FILE" ]; then
-    echo -e "${YELLOW}Found existing ~/.claude/settings.json${NC}"
-    echo ""
-    echo "You have two options:"
-    echo "  1. Backup and replace with hook-enabled settings"
-    echo "  2. Manually merge hooks from the template"
-    echo ""
-    read -p "Replace settings.json? (y/n): " -n 1 -r
-    echo ""
+# Check if jq is available for smart merging
+if command -v jq &> /dev/null; then
+    echo -n "Merging hooks into settings.json... "
 
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
+    # Create the hooks JSON with absolute paths
+    HOOKS_JSON=$(cat <<EOF
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": null,
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOOK_SCRIPT session-start"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": null,
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOOK_SCRIPT session-end"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": null,
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOOK_SCRIPT stop"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": null,
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOOK_SCRIPT notification"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": null,
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOOK_SCRIPT user-prompt-submit"
+          }
+        ]
+      }
+    ]
+  }
+}
+EOF
+)
+
+    if [ -f "$SETTINGS_FILE" ]; then
         # Backup existing
-        BACKUP_FILE=~/.claude/settings.json.backup.$(date +%s)
+        BACKUP_FILE="$SETTINGS_FILE.backup.$(date +%s)"
         cp "$SETTINGS_FILE" "$BACKUP_FILE"
-        echo -e "Backed up to: ${YELLOW}$BACKUP_FILE${NC}"
 
-        # Replace with template
-        cp "$TEMPLATE_FILE" "$SETTINGS_FILE"
-        echo -e "${GREEN}Settings replaced with hook configuration${NC}"
+        # Merge hooks into existing settings (deep merge)
+        MERGED=$(jq -s '.[0] * .[1]' "$SETTINGS_FILE" <(echo "$HOOKS_JSON"))
+        echo "$MERGED" > "$SETTINGS_FILE"
+        echo -e "${GREEN}done${NC}"
+        echo -e "  Backup saved to: ${YELLOW}$BACKUP_FILE${NC}"
     else
-        echo ""
-        echo "Please manually merge hooks from:"
-        echo -e "  ${YELLOW}$TEMPLATE_FILE${NC}"
-        echo ""
-        echo "Add the \"hooks\" section to your existing settings.json"
+        # Create new settings file
+        echo "$HOOKS_JSON" > "$SETTINGS_FILE"
+        echo -e "${GREEN}done${NC}"
     fi
 else
-    echo -n "Creating ~/.claude/settings.json... "
-    cp "$TEMPLATE_FILE" "$SETTINGS_FILE"
-    echo -e "${GREEN}done${NC}"
+    echo -e "${YELLOW}jq not found - cannot automatically merge settings${NC}"
+    echo ""
+    echo "Please manually add hooks to ~/.claude/settings.json"
+    echo ""
+    echo "Add this to your settings.json (merge with existing content):"
+    echo ""
+    cat <<EOF
+  "hooks": {
+    "SessionStart": [{"matcher": null, "hooks": [{"type": "command", "command": "$HOOK_SCRIPT session-start"}]}],
+    "SessionEnd": [{"matcher": null, "hooks": [{"type": "command", "command": "$HOOK_SCRIPT session-end"}]}],
+    "Stop": [{"matcher": null, "hooks": [{"type": "command", "command": "$HOOK_SCRIPT stop"}]}],
+    "Notification": [{"matcher": null, "hooks": [{"type": "command", "command": "$HOOK_SCRIPT notification"}]}],
+    "UserPromptSubmit": [{"matcher": null, "hooks": [{"type": "command", "command": "$HOOK_SCRIPT user-prompt-submit"}]}]
+  }
+EOF
+    echo ""
+    echo -e "${YELLOW}Or install jq (brew install jq) and run this script again${NC}"
 fi
 
 # Step 4: Verify installation
@@ -95,13 +169,21 @@ else
     VERIFY_FAILED=1
 fi
 
-# Check settings.json exists
+# Check settings.json exists and contains hooks
 if [ -f ~/.claude/settings.json ]; then
-    # Check if it contains hooks configuration
     if grep -q '"hooks"' ~/.claude/settings.json 2>/dev/null; then
-        echo -e "  ${GREEN}✓${NC} settings.json contains hooks configuration"
+        # Check that paths are absolute (not using ~ or $HOME)
+        if grep -q '~/.claude/hooks' ~/.claude/settings.json 2>/dev/null; then
+            echo -e "  ${YELLOW}!${NC} settings.json uses ~ paths - may not work correctly"
+            echo -e "      Run this script again with jq installed to fix"
+        elif grep -q '\$HOME' ~/.claude/settings.json 2>/dev/null; then
+            echo -e "  ${YELLOW}!${NC} settings.json uses \$HOME - may not work correctly"
+            echo -e "      Run this script again with jq installed to fix"
+        else
+            echo -e "  ${GREEN}✓${NC} settings.json contains hooks with absolute paths"
+        fi
     else
-        echo -e "  ${YELLOW}!${NC} settings.json exists but may need hooks configuration"
+        echo -e "  ${YELLOW}!${NC} settings.json exists but needs hooks configuration"
     fi
 else
     echo -e "  ${RED}✗${NC} settings.json not found"

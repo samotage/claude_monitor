@@ -1,68 +1,68 @@
 # roadmap-management Specification
 
 ## Purpose
-Defines the roadmap management system that allows users to track project direction through a structured schema (next_up, upcoming, later, not_now). Provides REST API endpoints for reading and updating roadmaps, with validation and normalization to ensure data consistency.
+Defines the roadmap management system that allows users to track project direction through a structured schema (next_up, upcoming, later, not_now, recently_completed). Provides REST API endpoints for reading and updating roadmaps, with Pydantic validation to ensure data consistency. Roadmaps are stored in the centralized state.yaml via AgentStore.
+
 ## Requirements
 ### Requirement: Roadmap Schema Structure
 
-The project YAML roadmap section SHALL support a structured format with four sections: `next_up` (object), `upcoming` (list), `later` (list), and `not_now` (list).
+The Roadmap model SHALL support a structured format with five sections: `next_up` (RoadmapItem), `upcoming` (list), `later` (list), `not_now` (list), and `recently_completed` (string, git-based).
 
 #### Scenario: Valid roadmap with all sections
 
-- **GIVEN** a project YAML file
-- **WHEN** the roadmap section contains all four sections with valid data
-- **THEN** the system SHALL accept and persist the data
+- **GIVEN** a project in AgentStore
+- **WHEN** the roadmap section contains all sections with valid data
+- **THEN** the system SHALL accept and persist the data via Pydantic validation
 
 #### Scenario: Partial roadmap
 
-- **GIVEN** a project YAML file
+- **GIVEN** a project in AgentStore
 - **WHEN** the roadmap section contains only some fields
-- **THEN** the system SHALL accept the partial roadmap as valid
+- **THEN** the system SHALL accept the partial roadmap as valid (optional fields)
 
 #### Scenario: Empty roadmap
 
-- **GIVEN** a project YAML file
-- **WHEN** the roadmap section is `{}`
-- **THEN** the system SHALL treat it as a roadmap with all fields empty
+- **GIVEN** a project in AgentStore
+- **WHEN** the roadmap is None or empty
+- **THEN** the system SHALL treat it as a roadmap with all fields at defaults
 
 ### Requirement: GET Roadmap API Endpoint
 
-The system SHALL provide a `GET /api/project/<name>/roadmap` endpoint that returns the project's roadmap data as JSON.
+The system SHALL provide a `GET /api/projects/<project_id>/roadmap` endpoint that returns the project's roadmap data as JSON.
 
-#### Scenario: Valid project name
+#### Scenario: Valid project ID
 
-- **GIVEN** a project exists with name "my-project"
-- **WHEN** a GET request is made to `/api/project/my-project/roadmap`
+- **GIVEN** a project exists with ID "my-project"
+- **WHEN** a GET request is made to `/api/projects/my-project/roadmap`
 - **THEN** the system SHALL return HTTP 200 with the roadmap JSON
 
-#### Scenario: Invalid project name
+#### Scenario: Invalid project ID
 
-- **GIVEN** no project exists with name "nonexistent"
-- **WHEN** a GET request is made to `/api/project/nonexistent/roadmap`
+- **GIVEN** no project exists with ID "nonexistent"
+- **WHEN** a GET request is made to `/api/projects/nonexistent/roadmap`
 - **THEN** the system SHALL return HTTP 404 with an error message
 
 ### Requirement: POST Roadmap API Endpoint
 
-The system SHALL provide a `POST /api/project/<name>/roadmap` endpoint that updates the project's roadmap data from a JSON request body.
+The system SHALL provide a `POST /api/projects/<project_id>/roadmap` endpoint that updates the project's roadmap data from a JSON request body.
 
 #### Scenario: Valid update
 
-- **GIVEN** a project exists with name "my-project"
-- **WHEN** a POST request with valid roadmap JSON is made to `/api/project/my-project/roadmap`
-- **THEN** the system SHALL update the roadmap and return HTTP 200 with the updated data
-- **AND** the system SHALL preserve all non-roadmap project data
+- **GIVEN** a project exists with ID "my-project"
+- **WHEN** a POST request with valid roadmap JSON is made to `/api/projects/my-project/roadmap`
+- **THEN** the system SHALL update the roadmap via AgentStore and return HTTP 200 with the updated data
 
-#### Scenario: Invalid project name
+#### Scenario: Invalid project ID
 
-- **GIVEN** no project exists with name "nonexistent"
-- **WHEN** a POST request is made to `/api/project/nonexistent/roadmap`
+- **GIVEN** no project exists with ID "nonexistent"
+- **WHEN** a POST request is made to `/api/projects/nonexistent/roadmap`
 - **THEN** the system SHALL return HTTP 404 with an error message
 
 #### Scenario: Malformed request body
 
-- **GIVEN** a project exists with name "my-project"
+- **GIVEN** a project exists with ID "my-project"
 - **WHEN** a POST request with invalid JSON structure is made
-- **THEN** the system SHALL return HTTP 400 with a validation error message
+- **THEN** the system SHALL return HTTP 400 with a Pydantic validation error message
 
 ### Requirement: Roadmap Panel Display
 
@@ -119,4 +119,3 @@ The roadmap panel SHALL support an edit mode for modifying roadmap fields.
 - **WHEN** the user clicks Save and the API returns an error
 - **THEN** the system SHALL display an error message
 - **AND** keep the user in edit mode to retry or cancel
-

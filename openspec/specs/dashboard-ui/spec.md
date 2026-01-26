@@ -1,45 +1,44 @@
 # dashboard-ui Specification
 
 ## Purpose
-Defines the headspace-aware dashboard UI enhancements including the "Recommended Next" panel for highlighting priority sessions, priority badges on session cards, sort-by-priority toggle with persistence, expanded context panels showing roadmap and session data, and priority-aware notification formatting.
+Defines the headspace-aware dashboard UI enhancements including priority badges on agent cards, context panels showing roadmap and agent data, and priority-aware notification formatting. The dashboard displays agents in a Kanban-style layout with 5-state support (idle, commanded, processing, awaiting_input, complete).
 ## Requirements
-### Requirement: Recommended Next Panel
+### Requirement: Priority Display
 
-The dashboard SHALL display a prominent "Recommended Next" panel at the top (below headspace, above session columns) that highlights the highest-priority session.
+The dashboard MAY display priority information when available from the PriorityService.
 
-#### Scenario: Panel displays top-priority session
+#### Scenario: Priorities displayed on agent cards
 
 - **WHEN** the dashboard loads and priorities are available
-- **THEN** the Recommended Next panel displays:
-  - Project name and session identifier
+- **THEN** agent cards MAY display:
   - Priority score (0-100) in a visually distinct badge
   - AI-generated rationale explaining the recommendation
-  - Current activity state (processing/idle/input_needed)
+  - Current task state (idle/commanded/processing/awaiting_input/complete)
 
-#### Scenario: User clicks to focus session
+#### Scenario: User clicks to focus agent
 
-- **WHEN** user clicks the Recommended Next panel
-- **THEN** the corresponding iTerm window is focused
+- **WHEN** user clicks an agent card
+- **THEN** the corresponding terminal window is focused (via WezTerm or tmux backend)
 
-#### Scenario: No active sessions
+#### Scenario: No active agents
 
-- **WHEN** no sessions are active
-- **THEN** the panel displays an appropriate empty state message
+- **WHEN** no agents are active
+- **THEN** the dashboard displays an appropriate empty state message
 
 #### Scenario: Prioritisation unavailable
 
 - **WHEN** `/api/priorities` returns an error or is disabled
-- **THEN** the Recommended Next panel is hidden (not shown)
+- **THEN** priority features are hidden (graceful degradation)
 
 ---
 
-### Requirement: Priority Badges on Session Cards
+### Requirement: Priority Badges on Agent Cards
 
-Each session card SHALL display a priority badge showing the score (0-100) with visual styling indicating priority level.
+Each agent card MAY display a priority badge showing the score (0-100) with visual styling indicating priority level.
 
 #### Scenario: Badge displays with color coding
 
-- **WHEN** priority data is available for a session
+- **WHEN** priority data is available for an agent
 - **THEN** the badge displays:
   - Score value (0-100)
   - High priority (70-100): cyan/bright background
@@ -48,100 +47,56 @@ Each session card SHALL display a priority badge showing the score (0-100) with 
 
 #### Scenario: No priority data available
 
-- **WHEN** priority data is unavailable for a session
+- **WHEN** priority data is unavailable for an agent
 - **THEN** the card displays without a badge (graceful degradation)
-
----
-
-### Requirement: Sort-by-Priority Toggle
-
-The dashboard SHALL include a toggle to switch between priority-sorted and default-grouped session views.
-
-#### Scenario: Toggle to priority-sorted view
-
-- **WHEN** user enables priority sort
-- **THEN** sessions are ordered by priority score (highest first) across all projects
-
-#### Scenario: Toggle to default-grouped view
-
-- **WHEN** user disables priority sort
-- **THEN** sessions are grouped by project (existing behavior)
-
-#### Scenario: Toggle state persists
-
-- **WHEN** user changes toggle state and refreshes the page
-- **THEN** the previous toggle state is restored from localStorage
-
-#### Scenario: Toggle hidden when unavailable
-
-- **WHEN** prioritisation is unavailable
-- **THEN** the toggle is disabled and hidden
 
 ---
 
 ### Requirement: Context Panel
 
-Clicking a session card SHALL open a context panel displaying detailed project information.
+Clicking an agent card SHALL open a context panel displaying detailed project information.
 
 #### Scenario: Panel opens with full context
 
-- **WHEN** user clicks a session card
+- **WHEN** user clicks an agent card
 - **THEN** a side panel opens displaying:
   - Project roadmap (next_up, upcoming)
-  - Current state summary
-  - Recent session history (last 3-5 sessions)
-  - Priority score and rationale
-  - Button to focus iTerm window
+  - Current task state and details
+  - Recently completed work (git-based)
+  - Priority score and rationale (if available)
+  - Button to focus terminal window
   - Close button
 
 #### Scenario: Only one panel open
 
-- **WHEN** user clicks a different session card while panel is open
-- **THEN** the panel updates to show the new session's context
+- **WHEN** user clicks a different agent card while panel is open
+- **THEN** the panel updates to show the new agent's context
 
 #### Scenario: Incomplete project data
 
-- **WHEN** project data is incomplete (missing roadmap, state, etc.)
+- **WHEN** project data is incomplete (missing roadmap, etc.)
 - **THEN** the panel displays available information gracefully
 
 ---
 
-### Requirement: Priority-Aware Notifications
+### Requirement: Notifications
 
-Notifications for high-priority sessions SHALL include priority context.
+Notifications SHALL alert the user when agents need input or complete tasks.
 
-#### Scenario: High-priority notification
+#### Scenario: Agent needs input notification
 
-- **WHEN** a session with priority score ≥70 needs input
-- **THEN** the notification includes:
-  - "High Priority" indicator (emoji prefix)
-  - Headspace relevance when available
+- **WHEN** an agent transitions to awaiting_input state
+- **THEN** a macOS notification is sent via terminal-notifier
 
-#### Scenario: Standard notification
+#### Scenario: Task completion notification
 
-- **WHEN** a session with priority score <70 needs input
-- **THEN** the notification displays normally without priority indicator
+- **WHEN** an agent's task transitions to complete state
+- **THEN** a macOS notification is sent via terminal-notifier
 
-#### Scenario: Prioritisation unavailable
+#### Scenario: Notification configuration
 
-- **WHEN** prioritisation is unavailable
-- **THEN** notifications continue to work with standard format
-
----
-
-### Requirement: Soft Transition Indicator
-
-The dashboard SHALL display a subtle indicator when priorities are pending update.
-
-#### Scenario: Indicator appears
-
-- **WHEN** `soft_transition_pending` is true in priority response
-- **THEN** a subtle indicator appears showing "Priorities updating..."
-
-#### Scenario: Indicator disappears
-
-- **WHEN** priorities are applied (soft transition complete)
-- **THEN** the indicator disappears
+- **WHEN** notifications are disabled in config
+- **THEN** no notifications are sent
 
 ---
 
@@ -152,7 +107,7 @@ The dashboard SHALL function normally when prioritisation is disabled or unavail
 #### Scenario: API error
 
 - **WHEN** `/api/priorities` returns an error
-- **THEN** the dashboard displays sessions without priority features
+- **THEN** the dashboard displays agents without priority features
 - **AND** error is logged but not shown to user
 
 #### Scenario: Prioritisation disabled
@@ -164,4 +119,3 @@ The dashboard SHALL function normally when prioritisation is disabled or unavail
 
 - **WHEN** API becomes available after being unavailable
 - **THEN** the dashboard recovers and displays priority features
-

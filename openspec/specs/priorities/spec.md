@@ -1,7 +1,7 @@
 # priorities Specification
 
 ## Purpose
-Implements AI-powered session prioritization using headspace, roadmap, and session context. Aggregates data from multiple sources, calls OpenRouter for intelligent ranking, parses structured responses with fallback defaults, and provides caching with soft transitions to prevent jarring UI changes.
+Implements AI-powered agent prioritization using headspace, roadmap, and agent context. Uses the PriorityService to aggregate data from AgentStore, calls OpenRouter for intelligent ranking via InferenceService, and provides caching to prevent redundant API calls.
 ## Requirements
 ### Requirement: Context Aggregation
 
@@ -55,8 +55,8 @@ The system SHALL expose `GET /api/priorities` returning ranked sessions with rat
 - **WHEN** `GET /api/priorities` is called
 - **AND** prioritisation is enabled
 - **THEN** the response includes a `priorities` array ordered by priority_score descending
-- **AND** each entry contains project_name, session_id, priority_score (0-100), rationale, activity_state
-- **AND** metadata includes timestamp, headspace_summary, cache_hit, soft_transition_pending
+- **AND** each entry contains agent context with priority_score (0-100) and rationale
+- **AND** metadata includes timestamp, cache status (`cached` boolean), and cache_size
 
 #### Scenario: Prioritisation disabled
 
@@ -81,14 +81,14 @@ The system SHALL cache priorities within the polling interval to avoid redundant
 - **AND** cached priorities exist
 - **AND** cache age is less than polling_interval
 - **THEN** the cached response is returned
-- **AND** metadata.cache_hit is true
+- **AND** metadata.cached is true
 
 #### Scenario: Cache miss
 
 - **WHEN** `GET /api/priorities` is called
 - **AND** no cached priorities exist OR cache has expired
 - **THEN** fresh prioritisation is performed
-- **AND** metadata.cache_hit is false
+- **AND** metadata.cached is false
 
 #### Scenario: Force refresh
 
@@ -131,4 +131,3 @@ The system SHALL allow configuration of prioritisation behavior in config.yaml.
 - **WHEN** configuration is changed in config.yaml
 - **THEN** changes take effect without application restart
 - **AND** next prioritisation request uses new settings
-

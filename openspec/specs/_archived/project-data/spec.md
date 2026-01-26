@@ -161,4 +161,3 @@ YAML operations SHALL use existing codebase patterns.
 
 - **WHEN** writing YAML files
 - **THEN** `yaml.dump()` SHALL be used with `default_flow_style=False`
-

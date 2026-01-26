@@ -173,9 +173,14 @@ For instant, accurate state detection, install Claude Code hooks. Instead of pol
 
 Ask Claude Code to install the hooks for you:
 
-> "Install the Claude Monitor hooks from this project. Copy `bin/notify-monitor.sh` to `~/.claude/hooks/` and merge the hook configuration from `docs/claude-code-hooks-settings.json` into my `~/.claude/settings.json`."
+> "Install the Claude Monitor hooks. Copy `bin/notify-monitor.sh` to `~/.claude/hooks/` and merge the hook configuration from `docs/claude-code-hooks-settings.json` into my `~/.claude/settings.json`. Use absolute paths (not ~ or $HOME)."
 
-Claude Code will intelligently merge the hooks into your existing settings without overwriting other configurations.
+**Important:** Hook commands must use absolute paths (e.g., `/Users/yourname/.claude/hooks/...`), not `~` or `$HOME`, as these may not expand correctly.
+
+Alternatively, if you have `jq` installed, run the install script:
+```bash
+./bin/install-hooks.sh
+```
 
 After installation, the dashboard shows "hooks" badges on session cards when hooks are active.
 
