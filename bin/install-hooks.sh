@@ -57,12 +57,13 @@ if command -v jq &> /dev/null; then
     echo -n "Merging hooks into settings.json... "
 
     # Create the hooks JSON with absolute paths
+    # Note: matcher must be "" (empty string) not null - Claude Code requires string type
     HOOKS_JSON=$(cat <<EOF
 {
   "hooks": {
     "SessionStart": [
       {
-        "matcher": null,
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
@@ -73,7 +74,7 @@ if command -v jq &> /dev/null; then
     ],
     "SessionEnd": [
       {
-        "matcher": null,
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
@@ -84,7 +85,7 @@ if command -v jq &> /dev/null; then
     ],
     "Stop": [
       {
-        "matcher": null,
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
@@ -95,7 +96,7 @@ if command -v jq &> /dev/null; then
     ],
     "Notification": [
       {
-        "matcher": null,
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
@@ -106,7 +107,7 @@ if command -v jq &> /dev/null; then
     ],
     "UserPromptSubmit": [
       {
-        "matcher": null,
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
@@ -144,11 +145,11 @@ else
     echo ""
     cat <<EOF
   "hooks": {
-    "SessionStart": [{"matcher": null, "hooks": [{"type": "command", "command": "$HOOK_SCRIPT session-start"}]}],
-    "SessionEnd": [{"matcher": null, "hooks": [{"type": "command", "command": "$HOOK_SCRIPT session-end"}]}],
-    "Stop": [{"matcher": null, "hooks": [{"type": "command", "command": "$HOOK_SCRIPT stop"}]}],
-    "Notification": [{"matcher": null, "hooks": [{"type": "command", "command": "$HOOK_SCRIPT notification"}]}],
-    "UserPromptSubmit": [{"matcher": null, "hooks": [{"type": "command", "command": "$HOOK_SCRIPT user-prompt-submit"}]}]
+    "SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": "$HOOK_SCRIPT session-start"}]}],
+    "SessionEnd": [{"matcher": "", "hooks": [{"type": "command", "command": "$HOOK_SCRIPT session-end"}]}],
+    "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "$HOOK_SCRIPT stop"}]}],
+    "Notification": [{"matcher": "", "hooks": [{"type": "command", "command": "$HOOK_SCRIPT notification"}]}],
+    "UserPromptSubmit": [{"matcher": "", "hooks": [{"type": "command", "command": "$HOOK_SCRIPT user-prompt-submit"}]}]
   }
 EOF
     echo ""

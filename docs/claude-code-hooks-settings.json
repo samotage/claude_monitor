@@ -3,7 +3,7 @@
   "hooks": {
     "SessionStart": [
       {
-        "matcher": null,
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
@@ -14,7 +14,7 @@
     ],
     "SessionEnd": [
       {
-        "matcher": null,
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
@@ -25,7 +25,7 @@
     ],
     "Stop": [
       {
-        "matcher": null,
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
@@ -36,7 +36,7 @@
     ],
     "Notification": [
       {
-        "matcher": null,
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
@@ -47,7 +47,7 @@
     ],
     "UserPromptSubmit": [
       {
-        "matcher": null,
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
