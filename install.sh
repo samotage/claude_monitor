@@ -51,19 +51,32 @@ check_python() {
     echo -e "${GREEN}✓${NC} Python $PYTHON_VERSION"
 }
 
-# Check for iTerm2
-check_iterm() {
-    if [[ ! -d "/Applications/iTerm.app" ]]; then
-        echo -e "${YELLOW}Warning: iTerm2 not found in /Applications${NC}"
-        echo "  Claude Headspace requires iTerm2 for session tracking."
-        echo "  Download from: https://iterm2.com/"
-        read -p "Continue anyway? (y/N) " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            exit 1
-        fi
-    else
-        echo -e "${GREEN}✓${NC} iTerm2 found"
+# Check for WezTerm (preferred) or iTerm2
+check_terminal() {
+    if command -v wezterm &> /dev/null; then
+        echo -e "${GREEN}✓${NC} WezTerm found (recommended)"
+        return
+    fi
+
+    if [[ -d "/Applications/WezTerm.app" ]]; then
+        echo -e "${GREEN}✓${NC} WezTerm found (recommended)"
+        return
+    fi
+
+    if [[ -d "/Applications/iTerm.app" ]]; then
+        echo -e "${YELLOW}!${NC} iTerm2 found (WezTerm recommended for better integration)"
+        echo "  Install WezTerm: brew install --cask wezterm"
+        return
+    fi
+
+    echo -e "${YELLOW}Warning: No supported terminal found${NC}"
+    echo "  Claude Headspace works best with WezTerm (recommended) or iTerm2."
+    echo "  Install WezTerm: brew install --cask wezterm"
+    echo "  Or iTerm2: https://iterm2.com/"
+    read -p "Continue anyway? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
     fi
 }
 
@@ -172,7 +185,7 @@ print_success() {
     echo -e "     ${YELLOW}cd $SCRIPT_DIR && ./restart_server.sh${NC}"
     echo ""
     echo "     Or manually:"
-    echo -e "     ${YELLOW}source venv/bin/activate && python monitor.py${NC}"
+    echo -e "     ${YELLOW}source venv/bin/activate && python run.py${NC}"
     echo ""
     echo "  3. Launch Claude Code with monitoring:"
     echo -e "     ${YELLOW}cd /path/to/your/project && claude-monitor start${NC}"
@@ -191,7 +204,7 @@ main() {
 
     check_macos
     check_python
-    check_iterm
+    check_terminal
     check_claude
 
     echo ""

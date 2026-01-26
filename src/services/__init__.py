@@ -1,0 +1,64 @@
+"""Services for Claude Headspace."""
+
+from src.services.agent_store import AgentStore
+from src.services.config_service import (
+    ConfigService,
+    get_config_service,
+    reset_config_service,
+)
+from src.services.event_bus import Event, EventBus, get_event_bus, reset_event_bus
+from src.services.git_analyzer import Commit, GitActivity, GitAnalyzer
+from src.services.governing_agent import AgentSnapshot, GoverningAgent
+from src.services.inference_service import CacheEntry, InferenceService
+from src.services.notification_service import (
+    NotificationPayload,
+    NotificationService,
+    NotificationType,
+    get_notification_service,
+    reset_notification_service,
+)
+from src.services.priority_service import AgentContext, PriorityResult, PriorityService
+from src.services.state_interpreter import (
+    InterpretationMethod,
+    InterpretationResult,
+    StateInterpreter,
+)
+from src.services.task_state_machine import (
+    InvalidTransitionError,
+    TaskStateMachine,
+    TransitionResult,
+    TransitionTrigger,
+)
+
+__all__ = [
+    "AgentContext",
+    "AgentSnapshot",
+    "AgentStore",
+    "CacheEntry",
+    "Commit",
+    "ConfigService",
+    "Event",
+    "EventBus",
+    "get_config_service",
+    "get_event_bus",
+    "get_notification_service",
+    "reset_config_service",
+    "reset_event_bus",
+    "reset_notification_service",
+    "GitActivity",
+    "GitAnalyzer",
+    "GoverningAgent",
+    "InferenceService",
+    "InterpretationMethod",
+    "InterpretationResult",
+    "InvalidTransitionError",
+    "NotificationPayload",
+    "NotificationService",
+    "NotificationType",
+    "PriorityResult",
+    "PriorityService",
+    "StateInterpreter",
+    "TaskStateMachine",
+    "TransitionResult",
+    "TransitionTrigger",
+]

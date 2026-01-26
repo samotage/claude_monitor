@@ -235,40 +235,60 @@
     transform: translateX(1px);
 }
 
+/* COMMANDED - Command sent, processing about to start */
+.activity-state.commanded {
+    background: rgba(224, 176, 115, 0.15);
+    border: 1px solid rgba(224, 176, 115, 0.3);
+    color: var(--amber);
+}
+
+/* PROCESSING - Claude actively working */
 .activity-state.processing {
     background: rgba(0, 212, 170, 0.15);
     border: 1px solid rgba(0, 212, 170, 0.3);
     color: var(--green);
 }
 
-/* INPUT NEEDED - Claude is blocked waiting for response */
-.activity-state.input_needed {
+/* INPUT NEEDED (legacy) / AWAITING_INPUT - Claude is blocked waiting for response */
+.activity-state.input_needed,
+.activity-state.awaiting_input {
     background: rgba(255, 180, 100, 0.2);
     border: 1px solid rgba(255, 180, 100, 0.5);
     color: #ffb464;
     font-weight: 600;
 }
 
+/* COMPLETE - Task finished successfully */
+.activity-state.complete {
+    background: rgba(115, 224, 160, 0.12);
+    border: 1px solid rgba(115, 224, 160, 0.25);
+    color: var(--green);
+}
+
 /* Card highlight when input is needed - cyan for non-priority items */
-.card.input-needed-card {
+.card.input-needed-card,
+.card.awaiting-input-card {
     border-color: var(--cyan) !important;
 }
 
-.card.input-needed-card::before {
+.card.input-needed-card::before,
+.card.awaiting-input-card::before {
     background: var(--cyan) !important;
     opacity: 1 !important;
 }
 
 /* Recommended next card - orange call-to-action for top priority */
 .card.recommended-next-card,
-.card.input-needed-card.recommended-next-card {
+.card.input-needed-card.recommended-next-card,
+.card.awaiting-input-card.recommended-next-card {
     border-color: #ffb464 !important;
     box-shadow: 0 0 15px rgba(255, 180, 100, 0.35), 0 0 30px rgba(255, 180, 100, 0.2) !important;
     animation: recommended-glow 2s ease-in-out infinite alternate;
 }
 
 .card.recommended-next-card::before,
-.card.input-needed-card.recommended-next-card::before {
+.card.input-needed-card.recommended-next-card::before,
+.card.awaiting-input-card.recommended-next-card::before {
     background: #ffb464 !important;
     opacity: 1 !important;
 }
@@ -348,6 +368,17 @@
     font-style: normal;
 }
 
+/* Commanded summary - brief transitional state */
+.activity-summary.commanded-summary {
+    font-style: normal;
+    color: var(--amber);
+}
+
+.activity-summary.commanded-summary::before {
+    content: "⏳ ";
+    color: var(--amber);
+}
+
 /* Processing summary shows user's command - not italic, cyan accent */
 .activity-summary.processing-summary {
     font-style: normal;
@@ -355,8 +386,19 @@
 }
 
 .activity-summary.processing-summary::before {
-    content: "⏳ ";
-    color: var(--amber);
+    content: "⚙ ";
+    color: var(--green);
+}
+
+/* Complete summary - task finished */
+.activity-summary.complete-summary {
+    font-style: normal;
+    color: var(--green);
+}
+
+.activity-summary.complete-summary::before {
+    content: "✓ ";
+    color: var(--green);
 }
 
 /* Syntax highlighting for task summary */

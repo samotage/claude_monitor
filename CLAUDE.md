@@ -21,22 +21,40 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 ## Project Overview
 
-Claude Headspace is a Kanban-style web dashboard for tracking Claude Code sessions across multiple projects. It monitors iTerm windows and displays real-time session status with click-to-focus functionality and native macOS notifications.
+Claude Headspace is a Kanban-style web dashboard for tracking Claude Code sessions across multiple projects. It monitors terminal sessions and displays real-time session status with click-to-focus functionality and native macOS notifications.
 
 **Purpose:**
-- Track active Claude Code sessions across projects
-- Display session status (processing/input needed/idle) in a visual dashboard
-- Click-to-focus: bring iTerm windows to foreground from the dashboard
+- Track active Claude Code agents across projects
+- Display agent status using a 5-state model (idle/commanded/processing/awaiting_input/complete)
+- Click-to-focus: bring WezTerm windows to foreground from the dashboard
 - Native macOS notifications when input is needed or tasks complete
-- Auto-refresh to keep status current
+- Real-time updates via Server-Sent Events (SSE)
+
+## Architecture
+
+The project has two architectures:
+
+1. **New Architecture (src/)** - Recommended
+   - Pydantic models with validation
+   - 5-state task model
+   - Service injection and proper testing
+   - WezTerm-first with Lua hooks
+   - 450+ tests, 70%+ coverage
+
+2. **Legacy Architecture (lib/)** - Deprecated
+   - Single-file Flask app
+   - 3-state model (processing/input_needed/idle)
+   - iTerm/tmux focus
 
 ## Tech Stack
 
 - **Python:** 3.10+
-- **Framework:** Flask
-- **Config:** PyYAML
-- **macOS Integration:** AppleScript via osascript subprocess
+- **Framework:** Flask with blueprints
+- **Models:** Pydantic v2
+- **Config:** PyYAML with migration
+- **Terminal:** WezTerm (recommended) or tmux
 - **Notifications:** terminal-notifier
+- **LLM:** OpenRouter API
 
 ## Common Commands
 
@@ -47,77 +65,106 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the monitor
-python monitor.py
+# Run the application (NEW - recommended)
+python run.py
+# Or: python -m src.app
 # Dashboard available at http://localhost:5050
+
+# Run legacy mode (deprecated)
+python monitor.py
+# Or with new architecture: USE_NEW_ARCH=1 python monitor.py
 
 # Restart the server
 ./restart_server.sh
 
 # Run tests
 pytest
-pytest --cov=.  # With coverage
+pytest --cov=src  # With coverage
 
 # Start a monitored Claude session (in your project directory)
-# Default: runs in configured backend (tmux by default)
-claude-monitor start
-
-# Explicitly use tmux backend
-claude-monitor start --tmux
-
-# Use WezTerm backend
-claude-monitor start --wezterm
+claude-monitor start --wezterm  # WezTerm (recommended)
+claude-monitor start --tmux     # tmux (legacy)
 ```
 
 ## Directory Structure
 
 ```
 claude_monitor/
-├── monitor.py           # Main application (all-in-one Flask app)
-├── install.sh           # Installation script
-├── restart_server.sh    # Script to restart the Flask server
+├── run.py               # NEW: Entry point (recommended)
+├── monitor.py           # LEGACY: All-in-one Flask app (deprecated)
+├── config.py            # LEGACY: Config module (deprecated)
 ├── config.yaml.example  # Configuration template
 ├── config.yaml          # User configuration (gitignored)
-├── .env                 # Environment variables (gitignored, contains API keys)
+├── .env                 # Environment variables (gitignored)
 ├── .env.example         # Environment template
 ├── requirements.txt     # Python dependencies
+│
+├── src/                 # NEW: Main application code
+│   ├── __init__.py
+│   ├── app.py           # Flask application factory
+│   ├── models/          # Pydantic domain models
+│   │   ├── __init__.py
+│   │   ├── agent.py     # Agent model
+│   │   ├── task.py      # Task model with 5-state machine
+│   │   ├── project.py   # Project model
+│   │   ├── headspace.py # Headspace model
+│   │   └── config.py    # AppConfig model
+│   ├── services/        # Business logic services
+│   │   ├── __init__.py
+│   │   ├── agent_store.py      # Single source of truth
+│   │   ├── state_interpreter.py # LLM state detection
+│   │   ├── inference_service.py # OpenRouter API
+│   │   ├── governing_agent.py   # Main orchestrator
+│   │   ├── priority_service.py  # Cross-project priorities
+│   │   ├── notification_service.py
+│   │   ├── event_bus.py        # SSE broadcasting
+│   │   ├── config_service.py   # Config with migration
+│   │   └── git_analyzer.py     # Git history analysis
+│   ├── backends/        # Terminal backends
+│   │   ├── __init__.py
+│   │   ├── base.py      # Abstract interface
+│   │   ├── wezterm.py   # WezTerm backend (recommended)
+│   │   └── tmux.py      # tmux backend
+│   └── routes/          # Flask blueprints
+│       ├── __init__.py
+│       ├── agents.py    # /api/agents endpoints
+│       ├── tasks.py     # /api/tasks endpoints
+│       ├── config.py    # /api/config endpoints
+│       └── events.py    # /api/events SSE endpoint
+│
+├── tests/               # Test suite (mirrors src/)
+│   ├── conftest.py      # Shared fixtures
+│   ├── models/
+│   ├── services/
+│   ├── backends/
+│   └── routes/
+│
+├── lib/                 # LEGACY: Deprecated modules
+│   └── ...              # See lib/__init__.py for migration guide
+│
+├── static/              # Frontend assets
+│   ├── css/
+│   │   └── kanban.css   # Dashboard styles (5-state support)
+│   └── js/
+│       ├── api.js       # API client
+│       ├── kanban.js    # Dashboard logic
+│       ├── sse.js       # SSE client
+│       └── utils.js     # Utilities (5-state support)
+├── templates/
+│   └── index.html       # Dashboard template
+│
+├── data/                # Application data
+│   ├── agents.json      # Agent persistence
+│   ├── tasks.json       # Task persistence
+│   └── projects/        # Project YAML files
+│
 ├── bin/
 │   └── claude-monitor   # Session wrapper script
-├── lib/                 # Python modules
-│   ├── sessions.py      # Session scanning and tracking
-│   ├── headspace.py     # Headspace and priorities
-│   ├── compression.py   # Session summarization
-│   ├── tmux.py          # tmux integration (backwards compat)
-│   ├── backends/        # Terminal backend abstraction
-│   │   ├── __init__.py  # Backend factory
-│   │   ├── base.py      # Abstract interface
-│   │   ├── tmux.py      # tmux backend
-│   │   └── wezterm.py   # WezTerm backend
-│   └── ...              # Other modules
-├── data/                # Application data
-│   ├── projects/        # Project YAML data files
-│   │   └── <project>.yaml
-│   ├── logs/            # Application logs
-│   │   ├── openrouter.jsonl  # OpenRouter API call logs
-│   │   └── tmux.jsonl        # tmux session message logs
-│   ├── headspace.yaml   # Current focus and constraints
-│   └── session_state.yaml  # Persisted session tracking
-├── venv/                # Python virtual environment
-├── orch/                # PRD orchestration Ruby scripts
-│   ├── orchestrator.rb  # Main dispatcher
-│   ├── commands/        # Command implementations
-│   ├── working/         # State files (gitignored)
-│   └── log/             # Log files (gitignored)
-├── docs/
-│   └── prds/            # PRD documents by subsystem
-├── .claude/
-│   ├── settings.json    # Permissions for bash commands
-│   └── commands/
-│       ├── openspec/    # OpenSpec commands
-│       └── otl/         # PRD orchestration commands
+├── orch/                # PRD orchestration
+├── docs/                # Documentation
+├── .claude/             # Claude Code settings
 ├── CLAUDE.md            # This file
-├── README.md            # User documentation
-└── LICENSE              # MIT license
+└── README.md            # User documentation
 ```
 
 ## Configuration
@@ -185,62 +232,137 @@ curl http://localhost:5050/api/output/<session_id>?lines=100
 
 ## How It Works
 
-1. **State Files:** The `claude-monitor start` wrapper creates `.claude-monitor-*.json` files in project directories
-2. **PID/TTY Matching:** The monitor reads the PID from state files, finds its TTY, and matches to iTerm sessions
-3. **Activity Detection:** Terminal content is analyzed to detect if Claude is processing, idle, or waiting for input
-4. **Status Detection:** Sessions with matching iTerm windows are "active"; others are hidden
-5. **Notifications:** State changes trigger macOS notifications via terminal-notifier
-6. **Focus Feature:** Clicking a card or notification runs AppleScript to bring that iTerm window to foreground
+### New Architecture (src/)
 
-## Key Functions
+1. **GoverningAgent:** Main orchestrator that coordinates all services
+2. **AgentStore:** Single source of truth for all agents, tasks, and projects
+3. **Terminal Backends:** WezTerm or tmux capture terminal output
+4. **StateInterpreter:** LLM-based state detection with regex fast-path
+5. **5-State Model:** Tasks transition through idle → commanded → processing → awaiting_input/complete
+6. **EventBus:** Real-time SSE broadcasting to dashboard
+7. **NotificationService:** macOS notifications on state changes
+
+### 5-State Task Model
+
+```
+         ┌─────────────────────────────────────┐
+         │                                     │
+         ▼                                     │
+     ┌───────┐  user_command  ┌───────────┐   │
+     │ idle  │──────────────▶│ commanded │   │
+     └───────┘                └─────┬─────┘   │
+         ▲                          │         │
+         │                   agent_started    │
+         │                          │         │
+         │                          ▼         │
+         │                   ┌────────────┐   │
+         │   task_completed  │ processing │───┘
+         │◀──────────────────┴─────┬──────┘
+         │                         │
+         │                  needs_input
+         │                         │
+         │                         ▼
+         │                 ┌───────────────┐
+         │  input_provided │awaiting_input │
+         └◀────────────────┴───────────────┘
+```
+
+### Legacy Architecture (lib/)
+
+1. **State Files:** `.claude-monitor-*.json` files in project directories
+2. **PID/TTY Matching:** Match process to terminal session
+3. **3-State Model:** processing/input_needed/idle
+4. **iTerm/tmux:** AppleScript-based focus
+
+## Key Services (New Architecture)
+
+| Service | Purpose |
+|---------|---------|
+| `AgentStore` | Single source of truth for agents, tasks, projects |
+| `GoverningAgent` | Main orchestrator, coordinates scan loop |
+| `StateInterpreter` | LLM-based state detection with regex fast-path |
+| `InferenceService` | OpenRouter API integration |
+| `PriorityService` | Cross-project priority ranking |
+| `NotificationService` | macOS notifications via terminal-notifier |
+| `EventBus` | SSE event broadcasting |
+| `ConfigService` | Config loading with legacy migration |
+| `GitAnalyzer` | Git history analysis for narratives |
+
+### Key Methods
+
+| Method | Service | Purpose |
+|--------|---------|---------|
+| `scan_once()` | GoverningAgent | Run one scan cycle across all terminals |
+| `interpret_state()` | StateInterpreter | Detect task state from terminal output |
+| `transition()` | TaskStateMachine | Apply state transition with validation |
+| `emit()` | EventBus | Broadcast SSE event to all clients |
+| `notify()` | NotificationService | Send macOS notification |
+| `get_current_task()` | AgentStore | Get agent's current task |
+| `compute_priorities()` | PriorityService | Rank agents by priority |
+
+### Legacy Functions (lib/)
 
 | Function | Purpose |
 |----------|---------|
-| `scan_sessions()` | Scan tmux sessions for active Claude Code sessions |
-| `get_iterm_windows()` | Get iTerm sessions mapped by TTY via AppleScript |
-| `get_pid_tty()` | Get the TTY for a given process ID |
-| `parse_activity_state()` | Determine if session is processing/input_needed/idle |
-| `focus_iterm_window_by_pid()` | Bring iTerm window to foreground by matching PID to TTY |
-| `send_macos_notification()` | Send notification via terminal-notifier |
-| `check_state_changes_and_notify()` | Track state changes and trigger notifications |
-| `track_turn_cycle()` | Track user command → Claude response cycle (tmux only) |
-| `compute_priorities()` | Calculate AI-ranked session priorities |
-| `aggregate_priority_context()` | Gather context for prioritization prompt |
-| `call_openrouter()` | Make API call to OpenRouter |
-| `emit_priorities_invalidation()` | Signal that priorities should refresh |
+| `scan_sessions()` | Scan tmux sessions for Claude Code |
+| `parse_activity_state()` | 3-state detection from terminal |
+| `focus_iterm_window_by_pid()` | Focus iTerm window |
+| `call_openrouter()` | Legacy OpenRouter API call |
 
 ## API Endpoints
+
+### New Architecture Routes
 
 | Route | Method | Description |
 |-------|--------|-------------|
 | `/` | GET | Main Kanban dashboard |
-| `/api/sessions` | GET | JSON list of all sessions |
-| `/api/focus/<pid>` | POST | Focus iTerm window by process ID |
-| `/api/send/<session_id>` | POST | Send text to a tmux session |
-| `/api/output/<session_id>` | GET | Capture session output |
-| `/api/projects/<name>/tmux` | GET | Get project tmux status |
-| `/api/projects/<name>/tmux/enable` | POST | Enable tmux for project |
-| `/api/projects/<name>/tmux/disable` | POST | Disable tmux for project |
+| `/api/agents` | GET | List all agents |
+| `/api/agents/<id>` | GET | Get agent by ID |
+| `/api/agents/<id>/task` | GET | Get agent's current task |
+| `/api/agents/<id>/task/transition` | POST | Trigger task state transition |
+| `/api/tasks` | GET | List all tasks |
+| `/api/tasks/<id>` | GET | Get task by ID |
+| `/api/events` | GET | SSE event stream |
 | `/api/config` | GET/POST | Read/write configuration |
+| `/api/priorities` | GET | Get AI-ranked agent priorities |
+
+### Legacy Routes (still supported)
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/sessions` | GET | JSON list of sessions (maps to agents) |
+| `/api/focus/<pid>` | POST | Focus window by PID (deprecated) |
+| `/api/focus/session/<name>` | POST | Focus window by session name |
+| `/api/send/<session_id>` | POST | Send text to session |
+| `/api/output/<session_id>` | GET | Capture session output |
 | `/api/notifications` | GET/POST | Notification enable/disable |
 | `/api/notifications/test` | POST | Send test notification |
-| `/api/priorities` | GET | Get AI-ranked session priorities |
-| `/api/logs/tmux` | GET | Get tmux session logs |
-| `/api/logs/tmux/debug` | GET/POST | Get/set tmux debug logging state |
-| `/api/session/<id>/summarise` | POST | Manually trigger session summarization |
-| `/api/project/<name>/roadmap` | GET/POST | Get/update project roadmap |
-| `/api/project/<permalink>/brain-refresh` | GET | Get brain reboot briefing |
 | `/api/headspace` | GET/POST | Get/set current headspace |
 | `/api/headspace/history` | GET | Get headspace history |
-| `/api/reset` | POST | Reset all working state |
 
 ## Notes for AI Assistants
 
+### New Architecture (src/)
+
+- **Service injection:** All services are injected via Flask's `app.extensions`
+- **Pydantic models:** Use `model_dump(mode="json")` for serialization
+- **5-state model:** Tasks use commanded/processing/awaiting_input/complete/idle
+- **Single source of truth:** AgentStore persists to `data/agents.json` and `data/tasks.json`
+- **Tests:** 450+ tests in `tests/` directory, run with `pytest`
+- **Coverage:** 70%+ enforced
+
+### Legacy Architecture (lib/)
+
 - **Single-file application:** All code is in `monitor.py` including HTML/CSS/JS template
-- **macOS-only:** AppleScript integration requires macOS with iTerm2
-- **State files:** Created by `claude-monitor start` wrapper, not this application
-- **No database:** All state is read from filesystem and iTerm at request time
+- **3-state model:** processing/input_needed/idle
+- **State files:** Created by `claude-monitor start` wrapper
+- **iTerm focus:** Uses AppleScript for window management
+
+### Common to Both
+
+- **macOS-only:** AppleScript/terminal-notifier requires macOS
 - **API Keys:** OpenRouter API key should be in `.env` file, not config.yaml
+- **Port:** Flask runs on port 5050 (not default 5000)
 
 ### Notifications
 
@@ -255,12 +377,23 @@ Notifications can be enabled/disabled via:
 
 ### Development Tips
 
-- The Flask app runs on port 5050 (not the default 5000)
-- Debug mode is disabled by default for cleaner output
-- AppleScript calls have timeouts to prevent hangs
+- **Run tests often:** `pytest` runs 450+ tests, `pytest --cov=src` for coverage
+- **Use run.py:** Recommended entry point for the new architecture
+- **Debug mode:** Set `debug: true` in config.yaml for Flask debug mode
+- **Service injection:** Access services via `app.extensions["service_name"]`
+- **State transitions:** Use `TaskStateMachine.transition()` for state changes
 - The HTML template uses vanilla JS with no external dependencies
 
-### Testing AppleScript
+### Testing
+
+```bash
+pytest                           # Run all tests
+pytest --cov=src                 # With coverage report
+pytest tests/services/           # Run specific test directory
+pytest -k "test_agent"           # Run tests matching pattern
+```
+
+### AppleScript (Legacy)
 
 Test AppleScript commands manually before modifying:
 ```bash

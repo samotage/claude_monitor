@@ -74,35 +74,94 @@ function formatActivityState(state) {
         'processing': 'processing',
         'input_needed': 'input needed',
         'idle': 'idle',
-        'completed': 'completed'
+        'completed': 'completed',
+        // New 5-state terminology
+        'commanded': 'commanded',
+        'awaiting_input': 'awaiting input',
+        'complete': 'complete'
     };
     return states[state] || state;
 }
 
+/**
+ * Get activity info for display (supports both 5-state and legacy 3-state).
+ *
+ * 5-State Model (new):
+ * - idle: Ready for new task
+ * - commanded: User sent command, processing starting
+ * - processing: Claude actively working
+ * - awaiting_input: Claude needs user response
+ * - complete: Task finished
+ *
+ * Legacy 3-State (backward compatible):
+ * - idle: Maps to idle
+ * - processing: Maps to processing/commanded
+ * - input_needed: Maps to awaiting_input
+ */
 function getActivityInfo(state) {
     const states = {
-        'processing': {
-            icon: '\u2699',
-            label: "Claude's turn - working..."
-        },
-        'input_needed': {
-            icon: '\uD83D\uDD14',
-            label: 'INPUT NEEDED!'
-        },
+        // New 5-state model
         'idle': {
-            icon: '\uD83D\uDCA4',
-            label: 'Idle - ready for task'
+            icon: '\uD83D\uDCA4',  // 💤
+            label: 'Idle - ready for task',
+            cssClass: 'state-idle'
+        },
+        'commanded': {
+            icon: '\u23F3',  // ⏳
+            label: 'Command sent...',
+            cssClass: 'state-commanded'
+        },
+        'processing': {
+            icon: '\u2699',  // ⚙
+            label: "Claude's turn - working...",
+            cssClass: 'state-processing'
+        },
+        'awaiting_input': {
+            icon: '\uD83D\uDD14',  // 🔔
+            label: 'INPUT NEEDED!',
+            cssClass: 'state-awaiting-input'
+        },
+        'complete': {
+            icon: '\u2713',  // ✓
+            label: 'Task complete',
+            cssClass: 'state-complete'
+        },
+
+        // Legacy 3-state support (for backward compatibility)
+        'input_needed': {
+            icon: '\uD83D\uDD14',  // 🔔
+            label: 'INPUT NEEDED!',
+            cssClass: 'state-awaiting-input'
         },
         'completed': {
-            icon: '\u2713',
-            label: 'Session ended'
+            icon: '\u2713',  // ✓
+            label: 'Session ended',
+            cssClass: 'state-complete'
         },
+
         'unknown': {
             icon: '?',
-            label: 'Unknown state'
+            label: 'Unknown state',
+            cssClass: 'state-unknown'
         }
     };
     return states[state] || states['unknown'];
+}
+
+/**
+ * Get the CSS class for a task state badge.
+ */
+function getStateClass(state) {
+    const classMap = {
+        'idle': 'state-idle',
+        'commanded': 'state-commanded',
+        'processing': 'state-processing',
+        'awaiting_input': 'state-awaiting-input',
+        'complete': 'state-complete',
+        // Legacy
+        'input_needed': 'state-awaiting-input'
+    };
+    return classMap[state] || 'state-unknown';
 }
 
 function getSessionFingerprint(sessions) {

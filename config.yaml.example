@@ -10,8 +10,8 @@
 #   - name: A display name for the dashboard
 #   - path: Absolute path to the project directory
 #
-# Sessions are discovered automatically from tmux (claude-* sessions).
-# Use claude-monitor start in your project directory to launch sessions.
+# Sessions are discovered automatically from WezTerm (claude-* sessions).
+# Use `claude-monitor start` in your project directory to launch sessions.
 
 projects:
   # Example projects - replace with your own
@@ -21,144 +21,87 @@ projects:
   - name: "another-project"
     path: "/Users/yourname/dev/another-project"
 
-  # Per-project backend override example (optional)
-  # - name: "wezterm-project"
-  #   path: "/Users/yourname/dev/wezterm-project"
-  #   terminal_backend: "wezterm"  # Use WezTerm for this project only
+  # Optional fields:
+  # - name: "project-with-git"
+  #   path: "/Users/yourname/dev/project"
+  #   goal: "Build the best app"  # Overrides CLAUDE.md
+  #   git_repo_path: "/Users/yourname/dev/project-repo"  # If different from path
 
 # =============================================================================
 # Dashboard Settings
 # =============================================================================
 
-# How often to refresh the dashboard (in seconds)
+# How often to poll for state changes (in seconds)
 # Lower values = more responsive but more CPU usage
-# Default: 5
-scan_interval: 5
+# Default: 2
+scan_interval: 2
 
-# =============================================================================
-# Session Summarization
-# =============================================================================
+# Port for the Flask server
+# Default: 5050
+port: 5050
 
-# Minutes of inactivity before a session is considered "ended"
-# Used to trigger automatic session summarization
-# Default: 60
-idle_timeout_minutes: 60
-
-# =============================================================================
-# Brain Reboot (Context Reload)
-# =============================================================================
-
-# Hours since last activity before a project is flagged as "stale"
-# Stale projects show the brain reboot indicator in the dashboard
-# Default: 4
-stale_threshold_hours: 4
-
-# =============================================================================
-# OpenRouter Configuration (AI-powered History Compression)
-# =============================================================================
-# Get your API key from https://openrouter.ai/keys
-# Note: The API key should never be committed to version control
-
-openrouter:
-  # Required: Your OpenRouter API key
-  # Uncomment and add your key to enable history compression
-  # api_key: "sk-or-v1-..."
-
-  # Optional: Model to use for compression
-  # Default: anthropic/claude-3-haiku
-  # model: "anthropic/claude-3-haiku"
-
-  # Optional: How often to check for pending compressions (seconds)
-  # Default: 300 (5 minutes)
-  # compression_interval: 300
-
-# =============================================================================
-# Headspace (Cross-Project Context)
-# =============================================================================
-# Headspace tracks your current focus and energy level across all projects
-
-headspace:
-  # Enable/disable the headspace panel in the dashboard
-  # Default: true
-  enabled: true
-
-  # Enable/disable headspace history tracking
-  # When enabled, headspace changes are logged to data/headspace.yaml
-  # Default: true
-  history_enabled: true
-
-# =============================================================================
-# AI Prioritization
-# =============================================================================
-# Uses AI to recommend which project/session to focus on next
-
-priorities:
-  # Enable/disable AI-powered session prioritization
-  # Requires OpenRouter API key to be configured
-  # Default: true (when OpenRouter is configured)
-  enabled: true
-
-  # How often to refresh priorities (seconds)
-  # Default: 60
-  polling_interval: 60
-
-  # Model to use for prioritization (can differ from compression model)
-  # Default: uses openrouter.model setting
-  # model: "anthropic/claude-3-haiku"
-
-# =============================================================================
-# Session State Sync
-# =============================================================================
-# Background thread that monitors sessions and populates headspace data
-# This enables the "Where You Are" section to show live session activity
-
-session_sync:
-  # Enable/disable session state synchronization
-  # Default: true
-  enabled: true
-
-  # How often to sync session state (seconds)
-  # Lower = more responsive, higher = less CPU/disk usage
-  # Default: 60
-  interval: 60
-
-  # Number of recent JSONL log entries to read for live context
-  # Higher = more context but more processing
-  # Default: 20
-  jsonl_tail_entries: 20
+# Enable Flask debug mode
+# Default: false
+debug: false
 
 # =============================================================================
 # Terminal Backend
 # =============================================================================
-# Choose which terminal multiplexer to use for Claude Code sessions.
-# Options: "tmux" (default), "wezterm"
+# Choose which terminal to use for Claude Code sessions.
+# Options: "wezterm" (recommended), "tmux" (deprecated)
 #
-# tmux: Requires tmux installed. Sessions persist across iTerm restarts.
-# wezterm: Requires WezTerm. Cross-platform, full scrollback access, native focus.
+# wezterm: Cross-platform, full scrollback access, native focus, Lua hooks
+# tmux: Legacy support, polling-only (no event hooks)
 
-terminal_backend: "tmux"
+terminal_backend: "wezterm"
 
 # WezTerm-specific settings (only used when terminal_backend: "wezterm")
 wezterm:
-  # Workspace name for grouping Claude sessions in WezTerm
+  # Workspace name for grouping Claude sessions
   # Default: "claude-monitor"
   workspace: "claude-monitor"
 
-  # Enable full scrollback capture (WezTerm advantage over tmux)
-  # If true, capture entire scrollback history
-  # If false, limit to configured number of lines
+  # Enable full scrollback capture
   # Default: true
   full_scrollback: true
 
 # =============================================================================
-# tmux Debug Logging
+# Notifications
 # =============================================================================
-# Log all messages sent to and received from Claude Code tmux sessions
-# Useful for debugging session state discrepancies
+# macOS notifications via terminal-notifier
 
-tmux_logging:
-  # Enable full payload logging for tmux operations
-  # When false: only high-level events are logged (session_started, send_attempted, etc.)
-  # When true: full message payloads are logged (with 10KB truncation)
-  # Default: false
-  debug_enabled: false
+notifications:
+  # Enable/disable all notifications
+  # Default: true
+  enabled: true
+
+  # Notify when agent needs input (AWAITING_INPUT state)
+  # Default: true
+  on_awaiting_input: true
+
+  # Notify when task completes
+  # Default: true
+  on_complete: true
+
+# =============================================================================
+# Inference Configuration (AI-powered features)
+# =============================================================================
+# Configure which models to use for different AI tasks.
+# Get your API key from https://openrouter.ai/keys
+# Set OPENROUTER_API_KEY in .env file
+#
+# Fast tier: High frequency, low latency (Haiku recommended)
+# Deep tier: Low frequency, high quality (Sonnet recommended)
+
+inference:
+  # Fast tier - used for real-time state detection
+  detect_state: "anthropic/claude-3-haiku"
+  summarize_command: "anthropic/claude-3-haiku"
+  classify_response: "anthropic/claude-3-haiku"
+  quick_priority: "anthropic/claude-3-haiku"
+
+  # Deep tier - used for batch operations
+  generate_progress_narrative: "anthropic/claude-3-sonnet"
+  full_priority: "anthropic/claude-3-sonnet"
+  roadmap_analysis: "anthropic/claude-3-sonnet"
+  brain_reboot: "anthropic/claude-3-sonnet"

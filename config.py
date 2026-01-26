@@ -1,11 +1,29 @@
 """Configuration management for Claude Headspace.
 
+DEPRECATED: Use src.services.config_service instead.
+
+This module is kept for backward compatibility with existing code.
+The new ConfigService provides Pydantic validation, migration from
+legacy formats, and better type safety.
+
+New usage:
+    from src.services import get_config_service
+    config_service = get_config_service()
+    config = config_service.get_config()
+
 This module handles loading and saving the config.yaml file.
 """
 
+import warnings
 from pathlib import Path
 
 import yaml
+
+warnings.warn(
+    "config.py is deprecated. Use src.services.config_service instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 # Path to the configuration file
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
@@ -74,9 +92,7 @@ def save_config(config: dict) -> bool:
         True if saved successfully, False otherwise
     """
     try:
-        CONFIG_PATH.write_text(
-            yaml.dump(config, default_flow_style=False, sort_keys=False)
-        )
+        CONFIG_PATH.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
         return True
     except Exception:
         return False

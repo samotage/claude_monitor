@@ -3,17 +3,27 @@
 /**
  * Get hybrid activity summary for display.
  *
- * Hybrid approach:
- * - Processing: Show deterministic "Processing: {turn_command}" (user's command)
- * - Input needed: Show "Waiting for input" or AI description of what's waiting
- * - Idle: Show AI-generated summary of what was completed
+ * Supports both 5-state (task_state) and legacy 3-state (activity_state):
+ *
+ * 5-State Model:
+ * - commanded: Show "Command sent..." or user's command
+ * - processing: Show deterministic "Processing: {turn_command}" (user's command)
+ * - awaiting_input: Show "Waiting for input" or AI description
+ * - complete: Show "Task completed" or summary
+ * - idle: Show AI-generated summary or "Ready for task"
+ *
+ * Legacy 3-State:
+ * - processing: Maps to processing/commanded
+ * - input_needed: Maps to awaiting_input
+ * - idle: Maps to idle/complete
  *
  * @param {Object} session - Session data including turn_command
  * @param {Object|null} priorityInfo - AI-generated priority data including activity_summary
  * @returns {string} HTML for the summary div
  */
 function getHybridSummary(session, priorityInfo) {
-    const state = session.activity_state;
+    // Support both 5-state and legacy 3-state
+    const state = session.task_state || session.activity_state;
     const turnCommand = session.turn_command;  // Current command (processing) or last completed (idle)
     const aiSummary = priorityInfo?.activity_summary;
     const taskSummary = session.task_summary;
@@ -21,7 +31,18 @@ function getHybridSummary(session, priorityInfo) {
     let summaryText = '';
     let cssClass = 'activity-summary';
 
-    if (state === 'processing') {
+    if (state === 'commanded') {
+        // Brief transitional state - command sent
+        if (turnCommand) {
+            const displayCommand = turnCommand.length > 60
+                ? turnCommand.substring(0, 57) + '...'
+                : turnCommand;
+            summaryText = `Sent: ${displayCommand}`;
+        } else {
+            summaryText = 'Command sent...';
+        }
+        cssClass = 'activity-summary commanded-summary';
+    } else if (state === 'processing') {
         // Deterministic: show what the user asked
         if (turnCommand) {
             // Truncate long commands
@@ -34,10 +55,23 @@ function getHybridSummary(session, priorityInfo) {
             summaryText = 'Processing...';
             cssClass = 'activity-summary processing-summary';
         }
-    } else if (state === 'input_needed') {
+    } else if (state === 'input_needed' || state === 'awaiting_input') {
         // Show AI summary if available, otherwise generic
         summaryText = aiSummary || 'Waiting for input';
         cssClass = 'activity-summary input-needed-summary';
+    } else if (state === 'complete') {
+        // Task finished
+        if (aiSummary) {
+            summaryText = aiSummary;
+        } else if (turnCommand) {
+            const displayCommand = turnCommand.length > 50
+                ? turnCommand.substring(0, 47) + '...'
+                : turnCommand;
+            summaryText = `Completed: ${displayCommand}`;
+        } else {
+            summaryText = 'Task completed';
+        }
+        cssClass = 'activity-summary complete-summary';
     } else {
         // Idle: prefer AI summary, then turn_command context
         // Avoid task_summary as fallback - it's often stale (from window title at session start)
@@ -74,13 +108,20 @@ function renderKanban(sessions, projects) {
     currentSessions = sessions;
     currentProjects = projects;
 
-    // Helper to render a single session card
+    // Helper to render a single session card (supports 5-state and legacy 3-state)
     function renderSessionCard(session, projectName) {
         const statusClass = session.status === 'active' ? 'active-session' : 'completed-session';
-        const inputNeededClass = session.activity_state === 'input_needed' ? 'input-needed-card' : '';
+
+        // Support both new task_state (5-state) and legacy activity_state (3-state)
+        const taskState = session.task_state || session.activity_state;
+        const needsInputClass = (taskState === 'input_needed' || taskState === 'awaiting_input')
+            ? 'input-needed-card awaiting-input-card' : '';
+        const inputNeededClass = needsInputClass;
         const lineNums = ['01', '02', '03', '04', '05'].join('<br>');
 
-        const activityInfo = getActivityInfo(session.activity_state);
+        // Use task_state (5-state) if available, fall back to activity_state (legacy 3-state)
+        const displayState = session.task_state || session.activity_state;
+        const activityInfo = getActivityInfo(displayState);
 
         // Calculate staleness from session data
         const lastActivity = session.started_at;
@@ -121,7 +162,7 @@ function renderKanban(sessions, projects) {
                         ${session.pid ? `<span class="pid-info">${session.pid}</span>` : ''}
                         <button class="reboot-btn" onclick="event.stopPropagation(); openRebootPanel('${escapeHtml(projectName)}', '${escapeHtml(session.uuid)}')">Headspace</button>
                     </div>
-                    <div class="activity-state ${session.activity_state}" onclick="event.stopPropagation(); focusWindow(${session.pid || 0}, '${escapeHtml(session.tmux_session || '')}')" title="Click to focus ${session.session_type === 'wezterm' ? 'WezTerm window' : session.session_type === 'tmux' ? 'tmux session' : 'iTerm window'}">
+                    <div class="activity-state ${displayState}" onclick="event.stopPropagation(); focusWindow(${session.pid || 0}, '${escapeHtml(session.tmux_session || session.session_name || '')}')" title="Click to focus ${session.session_type === 'wezterm' ? 'WezTerm window' : session.session_type === 'tmux' ? 'tmux session' : 'iTerm window'}">
                         <span class="activity-icon">${activityInfo.icon}</span>
                         <span class="activity-label">${activityInfo.label}</span>
                         ${session.session_type === 'tmux' ? `<span class="tmux-badge ${session.tmux_attached ? 'attached' : 'detached'}" title="tmux: ${escapeHtml(session.tmux_session || '')}${session.tmux_attached ? ' (attached)' : ' (detached)'}">tmux</span>` : ''}
@@ -173,12 +214,24 @@ function renderKanban(sessions, projects) {
                 return aIdx - bIdx;
             });
         } else {
-            // Default sort: by activity state (input_needed first, then processing, then idle)
-            const stateOrder = { 'input_needed': 0, 'processing': 1, 'idle': 2 };
+            // Default sort: by activity state (input needed first, then processing, then idle)
+            // Supports both 5-state (task_state) and legacy 3-state (activity_state)
+            const stateOrder = {
+                // 5-state model
+                'awaiting_input': 0,  // Highest priority - needs user attention
+                'commanded': 1,        // Just sent command
+                'processing': 2,       // Claude working
+                'idle': 3,             // Ready for new task
+                'complete': 4,         // Finished
+                // Legacy 3-state (for backward compatibility)
+                'input_needed': 0      // Maps to awaiting_input priority
+            };
             sortedProjectSessions = [...projectSessions].sort((a, b) => {
-                const aState = stateOrder[a.activity_state] ?? 3;
-                const bState = stateOrder[b.activity_state] ?? 3;
-                return aState - bState;
+                const aState = a.task_state || a.activity_state;
+                const bState = b.task_state || b.activity_state;
+                const aOrder = stateOrder[aState] ?? 5;
+                const bOrder = stateOrder[bState] ?? 5;
+                return aOrder - bOrder;
             });
         }
 

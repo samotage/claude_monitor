@@ -32,8 +32,42 @@ function connectSSE() {
             const message = JSON.parse(event.data);
             console.log('SSE event:', message.type, message.data);
 
-            if (message.type === 'session_update') {
-                // Enter pressed in WezTerm - immediately fetch fresh session data
+            // Handle new agent-based events
+            if (message.type === 'agent_created' ||
+                message.type === 'agent_updated' ||
+                message.type === 'agent_removed') {
+                // Agent lifecycle event - refresh agent list
+                if (typeof fetchSessions === 'function') {
+                    fetchSessions();
+                }
+            } else if (message.type === 'task_state_changed') {
+                // Task state transition - refresh and check for priority update
+                if (typeof fetchSessions === 'function') {
+                    fetchSessions();
+                }
+                // State change may affect priorities
+                setTimeout(() => {
+                    if (typeof fetchPriorities === 'function') {
+                        fetchPriorities(true);
+                    }
+                }, 500);
+            } else if (message.type === 'task_created') {
+                // New task created - refresh
+                if (typeof fetchSessions === 'function') {
+                    fetchSessions();
+                }
+            } else if (message.type === 'headspace_changed') {
+                // Headspace updated - refresh headspace display and priorities
+                if (typeof loadHeadspace === 'function') {
+                    loadHeadspace();
+                }
+                setTimeout(() => {
+                    if (typeof fetchPriorities === 'function') {
+                        fetchPriorities(true);
+                    }
+                }, 500);
+            } else if (message.type === 'session_update') {
+                // Legacy: Enter pressed in WezTerm - immediately fetch fresh session data
                 // This bypasses the 2-second polling delay
                 if (typeof fetchSessions === 'function') {
                     fetchSessions();

@@ -1,6 +1,21 @@
 #!/usr/bin/env python3
 """Claude Headspace - Kanban-style dashboard for tracking Claude Code sessions.
 
+DEPRECATED: This module uses the legacy lib/ architecture.
+For new installations, use run.py or python -m src.app instead.
+
+The new architecture (src/) provides:
+- Pydantic models with validation
+- 5-state task model (idle, commanded, processing, awaiting_input, complete)
+- Proper service injection and testing
+- WezTerm-first with Lua hooks (optional)
+- Git-derived progress narratives
+
+To migrate, use:
+    python run.py
+    # Or: python -m src.app
+
+Legacy mode (this file):
 This is the main Flask application entry point. Business logic is organized
 in modules under lib/:
 - lib/iterm.py - iTerm AppleScript integration
@@ -19,18 +34,37 @@ Usage:
     # Then open http://localhost:5050 in your browser
 """
 
+import os
+import sys
+import warnings
+
+# Check for new architecture flag
+if os.environ.get("USE_NEW_ARCH", "").lower() in ("1", "true", "yes"):
+    print("Using new src/ architecture...")
+    from src.app import main
+
+    sys.exit(main() or 0)
+
+warnings.warn(
+    "monitor.py uses the deprecated lib/ architecture. "
+    "Use 'python run.py' or set USE_NEW_ARCH=1 to use the new src/ architecture.",
+    DeprecationWarning,
+    stacklevel=1,
+)
+
+# ruff: noqa: E402 - imports must be after deprecation warning and new-arch check
 from datetime import datetime, timezone
 
 import markdown
-from flask import Flask, Response, jsonify, render_template, request
 
 # Configuration
 from config import load_config, save_config
+from flask import Flask, Response, jsonify, render_template, request
 
 # Library modules
 from lib.compression import (
     DEFAULT_COMPRESSION_INTERVAL,
-    add_to_compression_queue,
+    call_openrouter,
     get_openrouter_config,
     start_compression_thread,
 )
@@ -42,7 +76,6 @@ from lib.headspace import (
     get_headspace_history,
     get_last_invalidation_time,
     get_priorities_config,
-    get_sessions_with_activity,
     is_headspace_enabled,
     is_priorities_enabled,
     load_headspace,
@@ -52,7 +85,7 @@ from lib.headspace import (
     update_activity_states,
     update_priorities_cache,
 )
-from lib.iterm import focus_iterm_window_by_pid, focus_iterm_window_by_tmux_session, get_pid_tty
+from lib.iterm import focus_iterm_window_by_pid, focus_iterm_window_by_tmux_session
 from lib.notifications import (
     check_state_changes_and_notify,
     is_notifications_enabled,
@@ -70,18 +103,17 @@ from lib.projects import (
     save_project_data,
     validate_roadmap_data,
 )
+from lib.session_sync import start_session_sync_thread
 from lib.sessions import scan_sessions
 from lib.summarization import (
+    add_recent_session,
     find_session_log_file,
     summarise_session,
     update_project_state,
-    add_recent_session,
 )
-from lib.compression import call_openrouter
-from lib.session_sync import start_session_sync_thread
 
 # Flask application
-app = Flask(__name__, template_folder='templates', static_folder='static')
+app = Flask(__name__, template_folder="templates", static_folder="static")
 
 
 # =============================================================================
@@ -121,10 +153,12 @@ def api_sessions():
     sessions = scan_sessions(config)
     # Check for state changes and send macOS notifications
     check_state_changes_and_notify(sessions)
-    return jsonify({
-        "sessions": sessions,
-        "projects": config.get("projects", []),
-    })
+    return jsonify(
+        {
+            "sessions": sessions,
+            "projects": config.get("projects", []),
+        }
+    )
 
 
 @app.route("/api/focus/<int:pid>", methods=["POST"])
@@ -142,6 +176,7 @@ def api_focus(pid: int):
         for session in sessions:
             if session.get("pid") == pid and session.get("tmux_session"):
                 from lib.backends.wezterm import focus_window as wezterm_focus
+
                 success = wezterm_focus(session["tmux_session"])
                 return jsonify({"success": success})
         return jsonify({"success": False})
@@ -179,6 +214,7 @@ def api_focus_session(session_name: str):
 
     if backend_name == "wezterm":
         from lib.backends.wezterm import focus_window as wezterm_focus
+
         success = wezterm_focus(session_name)
     else:
         success = focus_iterm_window_by_tmux_session(session_name)
@@ -202,7 +238,7 @@ def api_events():
     The connection uses SSE (Server-Sent Events) which is a simple,
     HTTP-based streaming protocol for server-to-client push.
     """
-    from lib.sse import add_client, remove_client, event_stream
+    from lib.sse import add_client, event_stream, remove_client
 
     def stream():
         client_queue = add_client()
@@ -218,7 +254,7 @@ def api_events():
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable nginx buffering if behind nginx
-        }
+        },
     )
 
 
@@ -230,11 +266,7 @@ def api_events_test():
     client_count = get_client_count()
     broadcast("session_update", {"session": "test", "event": "manual_test"})
 
-    return jsonify({
-        "success": True,
-        "clients": client_count,
-        "message": "Broadcast sent"
-    })
+    return jsonify({"success": True, "clients": client_count, "message": "Broadcast sent"})
 
 
 # =============================================================================
@@ -274,11 +306,7 @@ def api_notifications_test_pid(pid: int):
 
     project = session.get("project_name", "Unknown")
     task = session.get("task_summary", "")[:50]
-    success = send_macos_notification(
-        "Test: Input Needed",
-        f"{project}: {task}",
-        pid=pid
-    )
+    success = send_macos_notification("Test: Input Needed", f"{project}: {task}", pid=pid)
     return jsonify({"success": success, "project": project, "task": task})
 
 
@@ -301,10 +329,10 @@ def reset_working_state() -> dict:
         Dict with reset status information
     """
     from lib.sessions import (
-        clear_previous_activity_states,
-        clear_turn_tracking,
         clear_enter_signals,
+        clear_previous_activity_states,
         clear_scan_sessions_cache,
+        clear_turn_tracking,
     )
 
     reset_notification_state()
@@ -333,16 +361,11 @@ def api_reset():
     try:
         result = reset_working_state()
         print("Working state reset via API")
-        return jsonify({
-            "success": True,
-            "message": "Working state reset successfully",
-            "details": result
-        })
+        return jsonify(
+            {"success": True, "message": "Working state reset successfully", "details": result}
+        )
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 # =============================================================================
@@ -354,10 +377,7 @@ def api_reset():
 def api_readme():
     """API endpoint to get README as HTML."""
     content = get_readme_content()
-    html = markdown.markdown(
-        content,
-        extensions=["tables", "fenced_code", "codehilite"]
-    )
+    html = markdown.markdown(content, extensions=["tables", "fenced_code", "codehilite"])
     return jsonify({"html": html})
 
 
@@ -370,54 +390,46 @@ def api_readme():
 def api_help_index():
     """Get index of all help documentation pages."""
     from lib.help import load_help_index
+
     pages = load_help_index()
-    return jsonify({
-        "success": True,
-        "pages": pages
-    })
+    return jsonify({"success": True, "pages": pages})
 
 
 @app.route("/api/help/search")
 def api_help_search():
     """Search help documentation."""
     from lib.help import search_help
+
     query = request.args.get("q", "")
     results = search_help(query)
-    return jsonify({
-        "success": True,
-        "query": query,
-        "results": results
-    })
+    return jsonify({"success": True, "query": query, "results": results})
 
 
 @app.route("/api/help/<slug>")
 def api_help_page(slug: str):
     """Get a specific help page as HTML."""
     from lib.help import load_help_page
+
     page = load_help_page(slug)
 
     if page is None:
-        return jsonify({
-            "success": False,
-            "error": f"Help page '{slug}' not found"
-        }), 404
+        return jsonify({"success": False, "error": f"Help page '{slug}' not found"}), 404
 
     # Convert markdown to HTML
-    html = markdown.markdown(
-        page["content"],
-        extensions=["tables", "fenced_code", "codehilite"]
-    )
+    html = markdown.markdown(page["content"], extensions=["tables", "fenced_code", "codehilite"])
 
-    return jsonify({
-        "success": True,
-        "page": {
-            "slug": page["slug"],
-            "title": page["title"],
-            "html": html,
-            "keywords": page["keywords"],
-            "headings": page["headings"]
+    return jsonify(
+        {
+            "success": True,
+            "page": {
+                "slug": page["slug"],
+                "title": page["title"],
+                "html": html,
+                "keywords": page["keywords"],
+                "headings": page["headings"],
+            },
         }
-    })
+    )
 
 
 # =============================================================================
@@ -433,26 +445,19 @@ def api_logs_openrouter():
         since: ISO 8601 timestamp - only return logs after this time
         search: Search query to filter logs
     """
-    from lib.logging import read_openrouter_logs, get_logs_since, search_logs
+    from lib.logging import get_logs_since, read_openrouter_logs, search_logs
 
     since = request.args.get("since")
     search_query = request.args.get("search", "").strip()
 
     # Get logs (optionally filtered by timestamp)
-    if since:
-        logs = get_logs_since(since)
-    else:
-        logs = read_openrouter_logs()
+    logs = get_logs_since(since) if since else read_openrouter_logs()
 
     # Apply search filter if provided
     if search_query:
         logs = search_logs(search_query, logs)
 
-    return jsonify({
-        "success": True,
-        "logs": logs,
-        "count": len(logs)
-    })
+    return jsonify({"success": True, "logs": logs, "count": len(logs)})
 
 
 @app.route("/api/logs/openrouter/stats")
@@ -461,10 +466,7 @@ def api_logs_openrouter_stats():
     from lib.logging import get_log_stats
 
     stats = get_log_stats()
-    return jsonify({
-        "success": True,
-        "stats": stats
-    })
+    return jsonify({"success": True, "stats": stats})
 
 
 @app.route("/api/logs/terminal")
@@ -477,7 +479,11 @@ def api_logs_terminal():
         session_id: Filter by session ID (optional)
         backend: Filter by backend - "tmux" or "wezterm" (optional)
     """
-    from lib.terminal_logging import read_terminal_logs, get_terminal_logs_since, search_terminal_logs
+    from lib.terminal_logging import (
+        get_terminal_logs_since,
+        read_terminal_logs,
+        search_terminal_logs,
+    )
 
     since = request.args.get("since")
     search_query = request.args.get("search", "")
@@ -485,20 +491,17 @@ def api_logs_terminal():
     backend = request.args.get("backend")
 
     # Get logs based on filters
-    if since:
-        logs = get_terminal_logs_since(since, backend=backend)
-    else:
-        logs = read_terminal_logs(backend=backend)
+    logs = (
+        get_terminal_logs_since(since, backend=backend)
+        if since
+        else read_terminal_logs(backend=backend)
+    )
 
     # Apply search and session_id filters
     if search_query or session_id:
         logs = search_terminal_logs(search_query, logs, session_id, backend=backend)
 
-    return jsonify({
-        "success": True,
-        "logs": logs,
-        "count": len(logs)
-    })
+    return jsonify({"success": True, "logs": logs, "count": len(logs)})
 
 
 @app.route("/api/logs/terminal", methods=["DELETE"])
@@ -508,15 +511,9 @@ def api_logs_terminal_clear():
 
     success = clear_terminal_logs()
     if success:
-        return jsonify({
-            "success": True,
-            "message": "All terminal logs cleared"
-        })
+        return jsonify({"success": True, "message": "All terminal logs cleared"})
     else:
-        return jsonify({
-            "success": False,
-            "error": "Failed to clear logs"
-        }), 500
+        return jsonify({"success": False, "error": "Failed to clear logs"}), 500
 
 
 @app.route("/api/logs/terminal/stats")
@@ -526,10 +523,7 @@ def api_logs_terminal_stats():
 
     backend = request.args.get("backend")
     stats = get_terminal_log_stats(backend=backend)
-    return jsonify({
-        "success": True,
-        "stats": stats
-    })
+    return jsonify({"success": True, "stats": stats})
 
 
 @app.route("/api/logs/terminal/debug", methods=["GET"])
@@ -537,10 +531,7 @@ def api_logs_terminal_debug_get():
     """Get terminal debug logging state."""
     from lib.tmux import get_debug_logging
 
-    return jsonify({
-        "success": True,
-        "debug_enabled": get_debug_logging()
-    })
+    return jsonify({"success": True, "debug_enabled": get_debug_logging()})
 
 
 @app.route("/api/logs/terminal/debug", methods=["POST"])
@@ -550,7 +541,7 @@ def api_logs_terminal_debug_post():
     Request body:
         enabled: boolean - whether to enable debug logging
     """
-    from lib.tmux import set_debug_logging, get_debug_logging
+    from lib.tmux import get_debug_logging, set_debug_logging
 
     data = request.get_json() or {}
     enabled = data.get("enabled", False)
@@ -565,10 +556,7 @@ def api_logs_terminal_debug_post():
     config["terminal_logging"]["debug_enabled"] = enabled
     save_config(config)
 
-    return jsonify({
-        "success": True,
-        "debug_enabled": get_debug_logging()
-    })
+    return jsonify({"success": True, "debug_enabled": get_debug_logging()})
 
 
 # =============================================================================
@@ -581,19 +569,14 @@ def api_project_roadmap_get(name: str):
     """Get a project's roadmap data."""
     project_data = load_project_data(name)
     if project_data is None:
-        return jsonify({
-            "success": False,
-            "error": f"Project '{name}' not found"
-        }), 404
+        return jsonify({"success": False, "error": f"Project '{name}' not found"}), 404
 
     roadmap = project_data.get("roadmap", {})
     normalized = normalize_roadmap(roadmap)
 
-    return jsonify({
-        "success": True,
-        "data": normalized,
-        "project_name": project_data.get("name", name)
-    })
+    return jsonify(
+        {"success": True, "data": normalized, "project_name": project_data.get("name", name)}
+    )
 
 
 @app.route("/api/project/<name>/roadmap", methods=["POST"])
@@ -602,32 +585,20 @@ def api_project_roadmap_post(name: str):
     # Load existing project data
     project_data = load_project_data(name)
     if project_data is None:
-        return jsonify({
-            "success": False,
-            "error": f"Project '{name}' not found"
-        }), 404
+        return jsonify({"success": False, "error": f"Project '{name}' not found"}), 404
 
     # Parse request body
     try:
         roadmap_data = request.get_json()
         if roadmap_data is None:
-            return jsonify({
-                "success": False,
-                "error": "No data provided"
-            }), 400
+            return jsonify({"success": False, "error": "No data provided"}), 400
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": f"Invalid JSON: {str(e)}"
-        }), 400
+        return jsonify({"success": False, "error": f"Invalid JSON: {str(e)}"}), 400
 
     # Validate roadmap structure
     is_valid, error_msg = validate_roadmap_data(roadmap_data)
     if not is_valid:
-        return jsonify({
-            "success": False,
-            "error": error_msg
-        }), 400
+        return jsonify({"success": False, "error": error_msg}), 400
 
     # Update only the roadmap section, preserving other data
     project_data["roadmap"] = roadmap_data
@@ -635,16 +606,11 @@ def api_project_roadmap_post(name: str):
     # Save the updated project data
     if save_project_data(name, project_data):
         normalized = normalize_roadmap(roadmap_data)
-        return jsonify({
-            "success": True,
-            "data": normalized,
-            "project_name": project_data.get("name", name)
-        })
+        return jsonify(
+            {"success": True, "data": normalized, "project_name": project_data.get("name", name)}
+        )
     else:
-        return jsonify({
-            "success": False,
-            "error": "Failed to save roadmap data"
-        }), 500
+        return jsonify({"success": False, "error": "Failed to save roadmap data"}), 500
 
 
 # =============================================================================
@@ -665,19 +631,12 @@ def api_project_brain_refresh(permalink: str):
     # Generate the briefing (permalink is the slugified project name)
     briefing = generate_reboot_briefing(permalink, session_id=session_id)
     if briefing is None:
-        return jsonify({
-            "success": False,
-            "error": f"Project '{permalink}' not found"
-        }), 404
+        return jsonify({"success": False, "error": f"Project '{permalink}' not found"}), 404
 
     # Calculate staleness information
     staleness = calculate_staleness(permalink)
 
-    return jsonify({
-        "success": True,
-        "briefing": briefing,
-        "meta": staleness
-    })
+    return jsonify({"success": True, "briefing": briefing, "meta": staleness})
 
 
 # =============================================================================
@@ -689,61 +648,40 @@ def api_project_brain_refresh(permalink: str):
 def api_headspace_get():
     """Get the current headspace data."""
     if not is_headspace_enabled():
-        return jsonify({
-            "success": False,
-            "error": "Headspace feature is disabled"
-        }), 404
+        return jsonify({"success": False, "error": "Headspace feature is disabled"}), 404
 
     headspace = load_headspace()
-    return jsonify({
-        "success": True,
-        "data": headspace
-    })
+    return jsonify({"success": True, "data": headspace})
 
 
 @app.route("/api/headspace", methods=["POST"])
 def api_headspace_post():
     """Update the headspace."""
     if not is_headspace_enabled():
-        return jsonify({
-            "success": False,
-            "error": "Headspace feature is disabled"
-        }), 404
+        return jsonify({"success": False, "error": "Headspace feature is disabled"}), 404
 
     data = request.get_json() or {}
     current_focus = data.get("current_focus", "").strip()
 
     if not current_focus:
-        return jsonify({
-            "success": False,
-            "error": "current_focus is required"
-        }), 400
+        return jsonify({"success": False, "error": "current_focus is required"}), 400
 
     constraints = data.get("constraints")
     if constraints:
         constraints = constraints.strip() or None
 
     saved = save_headspace(current_focus, constraints)
-    return jsonify({
-        "success": True,
-        "data": saved
-    })
+    return jsonify({"success": True, "data": saved})
 
 
 @app.route("/api/headspace/history", methods=["GET"])
 def api_headspace_history():
     """Get the headspace history."""
     if not is_headspace_enabled():
-        return jsonify({
-            "success": False,
-            "error": "Headspace feature is disabled"
-        }), 404
+        return jsonify({"success": False, "error": "Headspace feature is disabled"}), 404
 
     history = get_headspace_history()
-    return jsonify({
-        "success": True,
-        "data": history
-    })
+    return jsonify({"success": True, "data": history})
 
 
 # =============================================================================
@@ -755,10 +693,7 @@ def api_headspace_history():
 def api_priorities():
     """Get AI-ranked session priorities."""
     if not is_priorities_enabled():
-        return jsonify({
-            "success": False,
-            "error": "Priorities feature is disabled"
-        }), 404
+        return jsonify({"success": False, "error": "Priorities feature is disabled"}), 404
 
     # Check for refresh parameter
     force_refresh = request.args.get("refresh", "").lower() == "true"
@@ -778,11 +713,7 @@ def compute_priorities(force_refresh: bool = False) -> dict:
     """
     # Check feature enabled
     if not is_priorities_enabled():
-        return {
-            "success": False,
-            "error": "Priorities feature is disabled",
-            "priorities": []
-        }
+        return {"success": False, "error": "Priorities feature is disabled", "priorities": []}
 
     # Get current sessions FIRST (needed for content-based cache validation)
     context = aggregate_priority_context()
@@ -816,7 +747,7 @@ def compute_priorities(force_refresh: bool = False) -> dict:
                 "headspace_summary": None,  # Not fetched for cache hit
                 "cache_hit": True,
                 "last_invalidated": get_last_invalidation_time(),
-            }
+            },
         }
 
     if not sessions:
@@ -825,10 +756,12 @@ def compute_priorities(force_refresh: bool = False) -> dict:
             "priorities": [],
             "metadata": {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "headspace_summary": context.get("headspace", {}).get("current_focus") if context.get("headspace") else None,
+                "headspace_summary": context.get("headspace", {}).get("current_focus")
+                if context.get("headspace")
+                else None,
                 "cache_hit": False,
                 "last_invalidated": get_last_invalidation_time(),
-            }
+            },
         }
 
     # Build prompt and call AI
@@ -854,11 +787,13 @@ def compute_priorities(force_refresh: bool = False) -> dict:
             "priorities": priorities,
             "metadata": {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "headspace_summary": context.get("headspace", {}).get("current_focus") if context.get("headspace") else None,
+                "headspace_summary": context.get("headspace", {}).get("current_focus")
+                if context.get("headspace")
+                else None,
                 "cache_hit": False,
                 "error": f"AI unavailable ({error}), using default ordering",
                 "last_invalidated": get_last_invalidation_time(),
-            }
+            },
         }
 
     # Parse response
@@ -885,7 +820,7 @@ def compute_priorities(force_refresh: bool = False) -> dict:
             "headspace_summary": headspace_summary,
             "cache_hit": False,
             "last_invalidated": get_last_invalidation_time(),
-        }
+        },
     }
 
 
@@ -919,22 +854,19 @@ def api_session_summarise(session_id: str):
                 update_project_state(project_name, summary)
                 add_recent_session(project_name, summary)
 
-                return jsonify({
-                    "success": True,
-                    "data": summary,
-                    "project_name": project_name
-                })
+                return jsonify({"success": True, "data": summary, "project_name": project_name})
             else:
-                return jsonify({
-                    "success": False,
-                    "error": f"Failed to generate summary for session {session_id}"
-                }), 500
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": f"Failed to generate summary for session {session_id}",
+                    }
+                ), 500
 
     # Session not found in any project
-    return jsonify({
-        "success": False,
-        "error": f"Session '{session_id}' not found in any monitored project"
-    }), 404
+    return jsonify(
+        {"success": False, "error": f"Session '{session_id}' not found in any monitored project"}
+    ), 404
 
 
 # =============================================================================
@@ -981,13 +913,10 @@ def api_send_to_session(session_id: str):
 
     Only works with tmux sessions. iTerm sessions return an error.
     """
-    from lib.tmux import send_keys, is_tmux_available
+    from lib.tmux import is_tmux_available, send_keys
 
     if not is_tmux_available():
-        return jsonify({
-            "success": False,
-            "error": "tmux is not available on this system"
-        }), 400
+        return jsonify({"success": False, "error": "tmux is not available on this system"}), 400
 
     # Get request data
     data = request.get_json() or {}
@@ -995,10 +924,7 @@ def api_send_to_session(session_id: str):
     enter = data.get("enter", True)
 
     if not text:
-        return jsonify({
-            "success": False,
-            "error": "No text provided"
-        }), 400
+        return jsonify({"success": False, "error": "No text provided"}), 400
 
     # Find the session
     config = load_config()
@@ -1006,44 +932,39 @@ def api_send_to_session(session_id: str):
 
     session = None
     for s in sessions:
-        if s.get("session_id") == session_id or s.get("uuid") == session_id or s.get("uuid_short") == session_id:
+        if (
+            s.get("session_id") == session_id
+            or s.get("uuid") == session_id
+            or s.get("uuid_short") == session_id
+        ):
             session = s
             break
 
     if not session:
-        return jsonify({
-            "success": False,
-            "error": f"Session '{session_id}' not found"
-        }), 404
+        return jsonify({"success": False, "error": f"Session '{session_id}' not found"}), 404
 
     # Check if it's a tmux session
     if session.get("session_type") != "tmux":
-        return jsonify({
-            "success": False,
-            "error": "Send is only supported for tmux sessions. This session is using iTerm (read-only)."
-        }), 400
+        return jsonify(
+            {
+                "success": False,
+                "error": "Send is only supported for tmux sessions. This session is using iTerm (read-only).",
+            }
+        ), 400
 
     tmux_session = session.get("tmux_session")
     if not tmux_session:
-        return jsonify({
-            "success": False,
-            "error": "tmux session name not found"
-        }), 400
+        return jsonify({"success": False, "error": "tmux session name not found"}), 400
 
     # Send the text (log_operation=True for user-initiated API calls)
     success = send_keys(tmux_session, text, enter=enter, log_operation=True)
 
     if success:
-        return jsonify({
-            "success": True,
-            "session_id": session_id,
-            "tmux_session": tmux_session
-        })
+        return jsonify({"success": True, "session_id": session_id, "tmux_session": tmux_session})
     else:
-        return jsonify({
-            "success": False,
-            "error": f"Failed to send text to tmux session '{tmux_session}'"
-        }), 500
+        return jsonify(
+            {"success": False, "error": f"Failed to send text to tmux session '{tmux_session}'"}
+        ), 500
 
 
 @app.route("/api/output/<session_id>", methods=["GET"])
@@ -1069,56 +990,57 @@ def api_output_from_session(session_id: str):
 
     session = None
     for s in sessions:
-        if s.get("session_id") == session_id or s.get("uuid") == session_id or s.get("uuid_short") == session_id:
+        if (
+            s.get("session_id") == session_id
+            or s.get("uuid") == session_id
+            or s.get("uuid_short") == session_id
+        ):
             session = s
             break
 
     if not session:
-        return jsonify({
-            "success": False,
-            "error": f"Session '{session_id}' not found"
-        }), 404
+        return jsonify({"success": False, "error": f"Session '{session_id}' not found"}), 404
 
     # Get output based on session type
     if session.get("session_type") == "tmux":
         tmux_session = session.get("tmux_session")
         if not tmux_session:
-            return jsonify({
-                "success": False,
-                "error": "tmux session name not found"
-            }), 400
+            return jsonify({"success": False, "error": "tmux session name not found"}), 400
 
         if not is_tmux_available():
-            return jsonify({
-                "success": False,
-                "error": "tmux is not available on this system"
-            }), 400
+            return jsonify({"success": False, "error": "tmux is not available on this system"}), 400
 
         # log_operation=True for user-initiated API calls
         output = capture_pane(tmux_session, lines=lines, log_operation=True)
         if output is None:
-            return jsonify({
-                "success": False,
-                "error": f"Failed to capture output from tmux session '{tmux_session}'"
-            }), 500
+            return jsonify(
+                {
+                    "success": False,
+                    "error": f"Failed to capture output from tmux session '{tmux_session}'",
+                }
+            ), 500
 
-        return jsonify({
-            "success": True,
-            "session_id": session_id,
-            "session_type": "tmux",
-            "output": output,
-            "lines": lines
-        })
+        return jsonify(
+            {
+                "success": True,
+                "session_id": session_id,
+                "session_type": "tmux",
+                "output": output,
+                "lines": lines,
+            }
+        )
     else:
         # iTerm session - use content_snippet from session data
-        return jsonify({
-            "success": True,
-            "session_id": session_id,
-            "session_type": "iterm",
-            "output": session.get("content_snippet", ""),
-            "lines": lines,
-            "note": "iTerm sessions have limited output capture (last ~5000 chars)"
-        })
+        return jsonify(
+            {
+                "success": True,
+                "session_id": session_id,
+                "session_type": "iterm",
+                "output": session.get("content_snippet", ""),
+                "lines": lines,
+                "note": "iTerm sessions have limited output capture (last ~5000 chars)",
+            }
+        )
 
 
 # =============================================================================
@@ -1141,7 +1063,8 @@ def api_wezterm_enter_pressed():
     on the next poll. It does NOT directly trigger state changes.
     """
     import time
-    from lib.sessions import record_enter_signal, get_previous_activity_state
+
+    from lib.sessions import get_previous_activity_state, record_enter_signal
 
     data = request.get_json(silent=True) or {}
     pane_id = data.get("pane_id")
@@ -1173,6 +1096,7 @@ def api_wezterm_enter_pressed():
     # Broadcast SSE event to connected dashboard clients
     # This triggers immediate session refresh instead of waiting for poll cycle
     from lib.sse import broadcast
+
     broadcast("session_update", {"session": session_name, "event": "enter_pressed"})
     print(f"[SSE] Enter-pressed for {session_name}, broadcast sent", flush=True)
 
@@ -1192,7 +1116,8 @@ def _resolve_pane_to_session(pane_id_str: str):
         Session name (e.g., "claude-myproject-abc123") or None
     """
     try:
-        from lib.backends.wezterm import _session_pane_map, list_sessions as wezterm_list_sessions
+        from lib.backends.wezterm import _session_pane_map
+        from lib.backends.wezterm import list_sessions as wezterm_list_sessions
 
         # Reverse lookup in cached map
         for name, pid in _session_pane_map.items():
@@ -1218,7 +1143,7 @@ def _resolve_pane_to_session(pane_id_str: str):
 def main():
     """Run the monitor web server."""
     config = load_config()
-    print(f"Claude Headspace starting...")
+    print("Claude Headspace starting...")
     print(f"Monitoring {len(config.get('projects', []))} projects")
     print(f"Refresh interval: {config.get('scan_interval', 2)}s")
 
@@ -1250,12 +1175,12 @@ def main():
     # Configure terminal debug logging from config
     # Uses new key first, falls back to legacy tmux_logging key
     from lib.tmux import set_debug_logging
+
     terminal_logging_config = config.get("terminal_logging", {})
     tmux_logging_config = config.get("tmux_logging", {})
     # New key takes precedence, fall back to legacy key
     debug_enabled = terminal_logging_config.get(
-        "debug_enabled",
-        tmux_logging_config.get("debug_enabled", False)
+        "debug_enabled", tmux_logging_config.get("debug_enabled", False)
     )
     set_debug_logging(debug_enabled)
     if debug_enabled:
@@ -1263,7 +1188,7 @@ def main():
     else:
         print("Terminal debug logging disabled (events only)")
 
-    print(f"\nOpen http://localhost:5050 in your browser")
+    print("\nOpen http://localhost:5050 in your browser")
     print("Press Ctrl+C to stop\n")
 
     app.run(host="0.0.0.0", port=5050, debug=False, threaded=True)

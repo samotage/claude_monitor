@@ -6,8 +6,8 @@ order: 1
 
 # Claude Headspace: Conceptual Design
 
-**Version:** 2.0  
-**Status:** Input artifact for major refactor  
+**Version:** 2.0
+**Status:** Input artifact for major refactor
 **Last Updated:** 2026-01-26
 
 ---
@@ -194,11 +194,15 @@ class Task(BaseModel):
     state: TaskState
     started_at: datetime
     completed_at: Optional[datetime]
-    turns: list[Turn]
+    turn_ids: list[str]                   # Turn IDs (objects managed by AgentStore)
     summary: Optional[str]                # LLM-generated summary
     priority_score: Optional[int]         # 0-100, relative to headspace
     priority_rationale: Optional[str]
 ```
+
+> **Implementation Note:** `turn_ids` stores Turn IDs rather than embedded Turn objects
+> to avoid circular dependencies. The AgentStore manages the actual Turn objects and
+> provides methods to retrieve them by ID.
 
 ### Turn
 
@@ -218,8 +222,12 @@ class Turn(BaseModel):
     content: str                          # Command text or response text
     result_type: Optional[ResponseResultType]  # Only for agent_response
     timestamp: datetime
-    inference_calls: list[InferenceCall]
+    inference_call_ids: list[str]         # InferenceCall IDs (managed separately)
 ```
+
+> **Implementation Note:** `inference_call_ids` stores IDs rather than embedded objects
+> for the same reason as Task.turn_ids - avoids circular dependencies and allows
+> the InferenceService to manage call records independently.
 
 ### InferenceCall
 
@@ -255,25 +263,25 @@ class InferenceCall(BaseModel):
 ```python
 class InferenceConfig(BaseModel):
     """Per-purpose model configuration for inference calls.
-    
+
     Allows tuning model selection based on:
     - Latency requirements (fast tier for real-time, deep for batch)
     - Quality requirements (deep tier for complex reasoning)
     - Cost constraints (fast tier is cheaper)
     """
-    
+
     # Fast tier - high frequency, low latency (default: claude-3-haiku)
     detect_state: str = "anthropic/claude-3-haiku"
     summarize_command: str = "anthropic/claude-3-haiku"
     classify_response: str = "anthropic/claude-3-haiku"
     quick_priority: str = "anthropic/claude-3-haiku"
-    
+
     # Deep tier - low frequency, high quality (default: claude-3-sonnet)
     generate_progress_narrative: str = "anthropic/claude-3-sonnet"
     full_priority: str = "anthropic/claude-3-sonnet"
     roadmap_analysis: str = "anthropic/claude-3-sonnet"
     brain_reboot: str = "anthropic/claude-3-sonnet"
-    
+
     def get_model(self, purpose: InferencePurpose) -> str:
         """Resolve model for a given purpose."""
         return getattr(self, purpose.value)
