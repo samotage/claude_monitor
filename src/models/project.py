@@ -9,9 +9,15 @@ from pydantic import BaseModel, Field
 class RoadmapItem(BaseModel):
     """A single item on the project roadmap."""
 
-    title: str
-    why: str | None = None
-    definition_of_done: str | None = None
+    title: str = Field(..., description="Brief title of the roadmap item")
+    why: str | None = Field(
+        default=None,
+        description="Explanation of why this item is important",
+    )
+    definition_of_done: str | None = Field(
+        default=None,
+        description="Criteria for considering this item complete",
+    )
 
 
 class Roadmap(BaseModel):
@@ -71,8 +77,14 @@ class ProjectStatus(str, Enum):
 class ProjectState(BaseModel):
     """Current state of a project."""
 
-    status: ProjectStatus = ProjectStatus.ACTIVE
-    last_activity_at: datetime | None = None
+    status: ProjectStatus = Field(
+        default=ProjectStatus.ACTIVE,
+        description="Current project status (active, paused, archived)",
+    )
+    last_activity_at: datetime | None = Field(
+        default=None,
+        description="Timestamp of last activity on this project",
+    )
 
 
 class Project(BaseModel):
@@ -85,9 +97,18 @@ class Project(BaseModel):
         default=None,
         description="Project goal from CLAUDE.md or config",
     )
-    context: ProjectContext = Field(default_factory=ProjectContext)
-    roadmap: Roadmap = Field(default_factory=Roadmap)
-    state: ProjectState = Field(default_factory=ProjectState)
+    context: ProjectContext = Field(
+        default_factory=ProjectContext,
+        description="Additional project context for AI understanding",
+    )
+    roadmap: Roadmap = Field(
+        default_factory=Roadmap,
+        description="Project roadmap with prioritized work items",
+    )
+    state: ProjectState = Field(
+        default_factory=ProjectState,
+        description="Current project state and activity tracking",
+    )
     git_repo_path: str | None = Field(
         default=None,
         description="Path to git repository (if different from path)",

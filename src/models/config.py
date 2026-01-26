@@ -32,6 +32,18 @@ class WezTermConfig(BaseModel):
         default=True,
         description="Enable full scrollback capture",
     )
+    max_cache_size: int = Field(
+        default=100,
+        ge=10,
+        le=1000,
+        description="Maximum session cache entries before LRU eviction",
+    )
+    max_lines: int = Field(
+        default=10000,
+        ge=100,
+        le=100000,
+        description="Maximum lines to capture from terminal scrollback",
+    )
 
 
 class NotificationConfig(BaseModel):
@@ -80,6 +92,29 @@ class HookConfig(BaseModel):
     )
 
 
+class ApiLimitsConfig(BaseModel):
+    """API rate limiting and bounds configuration."""
+
+    max_history_limit: int = Field(
+        default=100,
+        ge=10,
+        le=1000,
+        description="Maximum entries for history endpoints",
+    )
+    rate_limit_requests: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Maximum requests per rate limit window",
+    )
+    rate_limit_window: int = Field(
+        default=60,
+        ge=10,
+        le=600,
+        description="Rate limit window in seconds",
+    )
+
+
 class AppConfig(BaseModel):
     """Root application configuration.
 
@@ -116,6 +151,10 @@ class AppConfig(BaseModel):
     hooks: HookConfig = Field(
         default_factory=HookConfig,
         description="Claude Code hooks configuration for event-driven state detection",
+    )
+    api_limits: ApiLimitsConfig = Field(
+        default_factory=ApiLimitsConfig,
+        description="API rate limiting and bounds configuration",
     )
     port: int = Field(
         default=5050,

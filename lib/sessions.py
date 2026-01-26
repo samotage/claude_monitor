@@ -32,6 +32,7 @@ _session_activity_cache: dict[str, dict] = {}
 # Turn Cycle Tracking
 # =============================================================================
 
+
 @dataclass
 class TurnState:
     """Track the state of a turn (user command → Claude response cycle).
@@ -42,12 +43,13 @@ class TurnState:
     The turn_id links the turn_start and turn_complete log entries together.
     The logged_* flags prevent duplicate log entries from state flickering.
     """
-    turn_id: str              # UUID linking start/complete log entries
-    command: str              # User's command that started the turn
-    started_at: datetime      # When processing began
-    previous_state: str       # State before processing started (idle/input_needed)
-    backend: str = "tmux"            # Terminal backend ("tmux" or "wezterm")
-    logged_start: bool = False       # Prevent duplicate start logs
+
+    turn_id: str  # UUID linking start/complete log entries
+    command: str  # User's command that started the turn
+    started_at: datetime  # When processing began
+    previous_state: str  # State before processing started (idle/input_needed)
+    backend: str = "tmux"  # Terminal backend ("tmux" or "wezterm")
+    logged_start: bool = False  # Prevent duplicate start logs
     logged_completion: bool = False  # Prevent duplicate completion logs
 
 
@@ -211,21 +213,98 @@ def cleanup_stale_session_data(active_session_ids: set[str]) -> int:
 # These appear as "✻ <Verb> for Xm Xs" when Claude finishes a turn
 # Source: Claude Code CLI internal verb list
 TURN_COMPLETE_VERBS = [
-    "Accomplished", "Actioned", "Actualized", "Baked", "Booped", "Brewed",
-    "Calculated", "Cerebrated", "Channelled", "Churned", "Clauded", "Coalesced",
-    "Cogitated", "Combobulated", "Computed", "Concocted", "Conjured", "Considered",
-    "Contemplated", "Cooked", "Crafted", "Created", "Crunched", "Deciphered",
-    "Deliberated", "Determined", "Discombobulated", "Divined", "Done", "Effected",
-    "Elucidated", "Enchanted", "Envisioned", "Finagled", "Flibbertigibbeted",
-    "Forged", "Formed", "Frolicked", "Generated", "Germinated", "Hatched",
-    "Herded", "Honked", "Hustled", "Ideated", "Imagined", "Incubated", "Inferred",
-    "Jived", "Manifested", "Marinated", "Meandered", "Moseyed", "Mulled",
-    "Mustered", "Mused", "Noodled", "Percolated", "Perused", "Philosophised",
-    "Pondered", "Pontificated", "Processed", "Puttered", "Puzzled", "Reticulated",
-    "Ruminated", "Sautéed", "Schemed", "Schlepped", "Shimmied", "Shucked", "Simmered",
-    "Smooshed", "Spelunked", "Spun", "Stewed", "Sussed", "Synthesized", "Thought",
-    "Tinkered", "Transmuted", "Unfurled", "Unravelled", "Vibed", "Wandered",
-    "Whirred", "Wibbled", "Whisked", "Wizarded", "Worked", "Wrangled"
+    "Accomplished",
+    "Actioned",
+    "Actualized",
+    "Baked",
+    "Booped",
+    "Brewed",
+    "Calculated",
+    "Cerebrated",
+    "Channelled",
+    "Churned",
+    "Clauded",
+    "Coalesced",
+    "Cogitated",
+    "Combobulated",
+    "Computed",
+    "Concocted",
+    "Conjured",
+    "Considered",
+    "Contemplated",
+    "Cooked",
+    "Crafted",
+    "Created",
+    "Crunched",
+    "Deciphered",
+    "Deliberated",
+    "Determined",
+    "Discombobulated",
+    "Divined",
+    "Done",
+    "Effected",
+    "Elucidated",
+    "Enchanted",
+    "Envisioned",
+    "Finagled",
+    "Flibbertigibbeted",
+    "Forged",
+    "Formed",
+    "Frolicked",
+    "Generated",
+    "Germinated",
+    "Hatched",
+    "Herded",
+    "Honked",
+    "Hustled",
+    "Ideated",
+    "Imagined",
+    "Incubated",
+    "Inferred",
+    "Jived",
+    "Manifested",
+    "Marinated",
+    "Meandered",
+    "Moseyed",
+    "Mulled",
+    "Mustered",
+    "Mused",
+    "Noodled",
+    "Percolated",
+    "Perused",
+    "Philosophised",
+    "Pondered",
+    "Pontificated",
+    "Processed",
+    "Puttered",
+    "Puzzled",
+    "Reticulated",
+    "Ruminated",
+    "Sautéed",
+    "Schemed",
+    "Schlepped",
+    "Shimmied",
+    "Shucked",
+    "Simmered",
+    "Smooshed",
+    "Spelunked",
+    "Spun",
+    "Stewed",
+    "Sussed",
+    "Synthesized",
+    "Thought",
+    "Tinkered",
+    "Transmuted",
+    "Unfurled",
+    "Unravelled",
+    "Vibed",
+    "Wandered",
+    "Whirred",
+    "Wibbled",
+    "Whisked",
+    "Wizarded",
+    "Worked",
+    "Wrangled",
 ]
 
 
@@ -271,7 +350,7 @@ def extract_turn_command(content: str, max_chars: int = 100) -> str:
         if "❯" in line:
             # Extract text after the prompt
             prompt_idx = line.rfind("❯")
-            command = line[prompt_idx + 1:].strip()
+            command = line[prompt_idx + 1 :].strip()
 
             # If there's content on the same line, that's the command
             if command:
@@ -402,7 +481,9 @@ def track_turn_cycle(
             _last_completed_turn[session_id] = turn_data
 
             # Log the turn completion with response summary
-            _log_turn_completion(session_id, tmux_session_name, turn_state, turn_data, response_summary)
+            _log_turn_completion(
+                session_id, tmux_session_name, turn_state, turn_data, response_summary
+            )
 
             # Mark as logged to prevent duplicates on state flicker
             turn_state.logged_completion = True
@@ -412,9 +493,12 @@ def track_turn_cycle(
 
             # Emit priorities invalidation event (late import to avoid circular dependency)
             from lib.headspace import emit_priorities_invalidation
+
             emit_priorities_invalidation(reason="turn_completed")
 
-            logger.debug(f"Turn completed for {session_id}: {duration_seconds:.1f}s, result={current_state} (turn_id={turn_state.turn_id[:8]})")
+            logger.debug(
+                f"Turn completed for {session_id}: {duration_seconds:.1f}s, result={current_state} (turn_id={turn_state.turn_id[:8]})"
+            )
             return turn_data
 
     return None
@@ -468,7 +552,13 @@ def _log_turn_start(session_id: str, tmux_session_name: str, turn_state: TurnSta
     write_terminal_log_entry(entry)
 
 
-def _log_turn_completion(session_id: str, tmux_session_name: str, turn_state: TurnState, turn_data: dict, response_summary: str) -> None:
+def _log_turn_completion(
+    session_id: str,
+    tmux_session_name: str,
+    turn_state: TurnState,
+    turn_data: dict,
+    response_summary: str,
+) -> None:
     """Log a turn completion to the terminal log file.
 
     Creates a log entry with event_type="turn_complete" and direction="in" (Claude response).
@@ -519,15 +609,16 @@ def get_current_turn_command(session_id: str) -> Optional[str]:
     return None
 
 
-from lib.iterm import get_pid_tty, focus_iterm_window_by_pid
+from lib.iterm import get_pid_tty
 from lib.summarization import prepare_content_for_summary
 from lib.tmux import (
     capture_pane,
     get_session_info,
     is_tmux_available,
-    list_sessions as tmux_list_sessions,
-    session_exists as tmux_session_exists,
     slugify_project_name,
+)
+from lib.tmux import (
+    list_sessions as tmux_list_sessions,
 )
 
 
@@ -620,7 +711,7 @@ def extract_last_message(content_tail: str, max_chars: int = 500) -> str:
         return ""
 
     # Split into lines and work backwards to find last substantial content
-    lines = cleaned.strip().split('\n')
+    lines = cleaned.strip().split("\n")
 
     # Filter out empty lines and very short lines (likely prompts or UI)
     substantial_lines = []
@@ -630,24 +721,24 @@ def extract_last_message(content_tail: str, max_chars: int = 500) -> str:
         if not line:
             continue
         # Skip lines that look like prompts (common prompt patterns)
-        if line in ('>', '$', '❯', '%', '#') or len(line) < 5:
+        if line in (">", "$", "❯", "%", "#") or len(line) < 5:
             continue
         # Skip lines that are just UI elements
-        if line.startswith('---') or line.startswith('==='):
+        if line.startswith("---") or line.startswith("==="):
             continue
         substantial_lines.insert(0, line)
         # Stop after collecting enough lines (last meaningful paragraph)
-        if len('\n'.join(substantial_lines)) > max_chars:
+        if len("\n".join(substantial_lines)) > max_chars:
             break
 
     if not substantial_lines:
         return ""
 
-    result = '\n'.join(substantial_lines)
+    result = "\n".join(substantial_lines)
 
     # Truncate if needed
     if len(result) > max_chars:
-        result = result[:max_chars].rsplit(' ', 1)[0] + '...'
+        result = result[:max_chars].rsplit(" ", 1)[0] + "..."
 
     return result.strip()
 
@@ -729,7 +820,7 @@ def match_project(slug: str, projects: list[dict]) -> Optional[dict]:
         # Check if slug starts with project_slug followed by a hyphen and digits
         # e.g., "claude-monitor-3" starts with "claude-monitor-"
         if slug.startswith(project_slug + "-"):
-            suffix = slug[len(project_slug) + 1:]
+            suffix = slug[len(project_slug) + 1 :]
             # Only match if suffix looks like a number (malformed UUID)
             if suffix.isdigit():
                 return project
@@ -737,7 +828,7 @@ def match_project(slug: str, projects: list[dict]) -> Optional[dict]:
         dir_name = Path(project.get("path", "")).name
         dir_slug = slugify_project_name(dir_name)
         if slug.startswith(dir_slug + "-"):
-            suffix = slug[len(dir_slug) + 1:]
+            suffix = slug[len(dir_slug) + 1 :]
             if suffix.isdigit():
                 return project
 
@@ -1012,6 +1103,7 @@ def _get_config_hash(config: dict) -> str:
     """Get a simple hash of config to detect changes."""
     import hashlib
     import json
+
     # Only hash the relevant parts
     relevant = {
         "projects": config.get("projects", []),
@@ -1049,9 +1141,11 @@ def scan_sessions(config: dict) -> list[dict]:
     config_hash = _get_config_hash(config)
     now = datetime.now(timezone.utc)
 
-    if (_scan_sessions_cache["sessions"] is not None
+    if (
+        _scan_sessions_cache["sessions"] is not None
         and _scan_sessions_cache["timestamp"] is not None
-        and _scan_sessions_cache["config_hash"] == config_hash):
+        and _scan_sessions_cache["config_hash"] == config_hash
+    ):
         age_ms = (now - _scan_sessions_cache["timestamp"]).total_seconds() * 1000
         if age_ms < _SCAN_CACHE_TTL_MS:
             # Return cached result
@@ -1077,11 +1171,18 @@ def _scan_sessions_uncached(config: dict) -> list[dict]:
     # Select backend functions based on configuration
     if backend_name == "wezterm":
         from lib.backends.wezterm import (
-            is_wezterm_available,
-            list_sessions as backend_list_sessions,
-            get_session_info as backend_get_session_info,
             capture_pane as backend_capture_pane,
         )
+        from lib.backends.wezterm import (
+            get_session_info as backend_get_session_info,
+        )
+        from lib.backends.wezterm import (
+            is_wezterm_available,
+        )
+        from lib.backends.wezterm import (
+            list_sessions as backend_list_sessions,
+        )
+
         if not is_wezterm_available():
             logger.warning("WezTerm not available - no sessions will be discovered")
             return sessions
@@ -1090,7 +1191,9 @@ def _scan_sessions_uncached(config: dict) -> list[dict]:
         # Warn if tmux claude sessions are detected while using WezTerm
         # This helps catch configuration mismatches
         if is_tmux_available():
-            tmux_claude_sessions = [s for s in tmux_list_sessions() if s.get("name", "").startswith("claude-")]
+            tmux_claude_sessions = [
+                s for s in tmux_list_sessions() if s.get("name", "").startswith("claude-")
+            ]
             if tmux_claude_sessions:
                 tmux_names = [s.get("name") for s in tmux_claude_sessions]
                 logger.warning(
@@ -1112,6 +1215,11 @@ def _scan_sessions_uncached(config: dict) -> list[dict]:
     # Clean up stale state files
     cleanup_stale_state_files(config, active_session_names)
 
+    # Clean up stale in-memory tracking data for sessions that no longer exist
+    cleaned_count = cleanup_stale_session_data(active_session_names)
+    if cleaned_count > 0:
+        logger.debug(f"Cleaned up {cleaned_count} stale in-memory session entries")
+
     # Filter to claude-* sessions only
     claude_sessions = [s for s in all_sessions if s.get("name", "").startswith("claude-")]
 
@@ -1131,8 +1239,12 @@ def _scan_sessions_uncached(config: dict) -> list[dict]:
 
         # Build session info
         session = scan_backend_session(
-            sess_info, matched_project, project_slug or "", uuid8,
-            capture_fn=backend_capture_pane, session_type=session_type,
+            sess_info,
+            matched_project,
+            project_slug or "",
+            uuid8,
+            capture_fn=backend_capture_pane,
+            session_type=session_type,
         )
         if session:
             sessions.append(session)

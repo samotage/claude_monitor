@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from lib.headspace import load_headspace, get_priorities_cache
+from lib.headspace import get_priorities_cache, load_headspace
 
 # Directory for notification AppleScript files
 _SCRIPT_DIR = Path(tempfile.gettempdir()) / "claude-monitor-scripts"
@@ -29,6 +29,7 @@ def _cleanup_old_scripts(max_age_seconds: int = 3600) -> None:
                 f.unlink()
         except Exception:
             pass
+
 
 # Track session states for notifications
 _previous_states: dict[str, str] = {}
@@ -64,11 +65,21 @@ def reset_notification_state() -> None:
     _previous_states.clear()
 
 
+def _validate_pid(pid: int) -> bool:
+    """Validate that a PID is safe to use in shell commands.
+
+    Args:
+        pid: Process ID to validate.
+
+    Returns:
+        True if PID is valid, False otherwise.
+    """
+    # PIDs must be positive integers, typically < 99999 on most systems
+    return isinstance(pid, int) and 1 <= pid <= 99999
+
+
 def send_macos_notification(
-    title: str,
-    message: str,
-    sound: bool = True,
-    pid: Optional[int] = None
+    title: str, message: str, sound: bool = True, pid: Optional[int] = None
 ) -> bool:
     """Send a native macOS notification via terminal-notifier with click-to-focus.
 
@@ -82,11 +93,18 @@ def send_macos_notification(
         True if notification sent successfully, False otherwise
     """
     try:
+        # Validate PID before use in shell commands (security)
+        if pid is not None and not _validate_pid(pid):
+            print(f"Invalid PID: {pid}")
+            return False
         cmd = [
             "terminal-notifier",
-            "-title", title,
-            "-message", message,
-            "-sender", "com.googlecode.iterm2",  # Shows iTerm icon
+            "-title",
+            title,
+            "-message",
+            message,
+            "-sender",
+            "com.googlecode.iterm2",  # Shows iTerm icon
         ]
 
         if sound:
@@ -95,7 +113,7 @@ def send_macos_notification(
         # If PID provided, clicking notification will focus that iTerm session
         if pid:
             # Create AppleScript to focus the window by PID's TTY
-            focus_script = f'''
+            focus_script = f"""
             tell application "iTerm"
                 activate
                 set targetTty to do shell script "ps -p {pid} -o tty= 2>/dev/null || echo ''"
@@ -117,13 +135,16 @@ def send_macos_notification(
                     end repeat
                 end if
             end tell
-            '''
+            """
             # Cleanup old scripts and write new one to dedicated directory
             _cleanup_old_scripts()
             _SCRIPT_DIR.mkdir(exist_ok=True)
             script_path = _SCRIPT_DIR / f"focus-{pid}.applescript"
             script_path.write_text(focus_script)
-            cmd.extend(["-execute", f'osascript "{script_path}"'])
+            # Use shlex.quote to safely escape the path
+            import shlex
+
+            cmd.extend(["-execute", f"osascript {shlex.quote(str(script_path))}"])
 
         result = subprocess.run(
             cmd,

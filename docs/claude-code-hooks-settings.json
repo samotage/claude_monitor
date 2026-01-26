@@ -1,5 +1,6 @@
 {
-  "_comment": "IMPORTANT: Replace $HOME with your actual home directory path (e.g., /Users/yourname)",
+  "_comment": "IMPORTANT: Replace /YOUR/HOME/PATH with your actual home directory (e.g., /Users/yourname). Do NOT use $HOME or ~ - JSON does not expand shell variables.",
+  "_example": "For user 'john' on macOS: /Users/john/.claude/hooks/notify-monitor.sh",
   "hooks": {
     "SessionStart": [
       {
@@ -7,7 +8,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/notify-monitor.sh session-start"
+            "command": "/YOUR/HOME/PATH/.claude/hooks/notify-monitor.sh session-start"
           }
         ]
       }
@@ -18,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/notify-monitor.sh session-end"
+            "command": "/YOUR/HOME/PATH/.claude/hooks/notify-monitor.sh session-end"
           }
         ]
       }
@@ -29,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/notify-monitor.sh stop"
+            "command": "/YOUR/HOME/PATH/.claude/hooks/notify-monitor.sh stop"
           }
         ]
       }
@@ -40,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/notify-monitor.sh notification"
+            "command": "/YOUR/HOME/PATH/.claude/hooks/notify-monitor.sh notification"
           }
         ]
       }
@@ -51,7 +52,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/notify-monitor.sh user-prompt-submit"
+            "command": "/YOUR/HOME/PATH/.claude/hooks/notify-monitor.sh user-prompt-submit"
           }
         ]
       }

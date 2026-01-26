@@ -36,7 +36,10 @@ class Agent(BaseModel):
         default=None,
         description="ID of the currently active task (if any)",
     )
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(
+        default_factory=datetime.now,
+        description="When this agent was first created",
+    )
     # State is stored directly since we can't derive it without the Task object
     # AgentStore is responsible for keeping this in sync
     _cached_state: TaskState = TaskState.IDLE

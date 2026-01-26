@@ -6,7 +6,7 @@ Provides REST API endpoints for headspace management:
 - Get headspace history
 """
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from src.services.agent_store import AgentStore
 
@@ -92,7 +92,10 @@ def get_headspace_history():
     Returns:
         JSON array of historical focus entries.
     """
-    limit = request.args.get("limit", 10, type=int)
+    # Cap limit to prevent excessive data retrieval
+    config = current_app.extensions.get("config")
+    max_limit = config.api_limits.max_history_limit if config else 100
+    limit = min(request.args.get("limit", 10, type=int), max_limit)
     store = _get_store()
     headspace = store.get_headspace()
 

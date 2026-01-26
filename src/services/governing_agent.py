@@ -22,6 +22,9 @@ from src.services.notification_service import NotificationService, get_notificat
 from src.services.state_interpreter import StateInterpreter
 from src.services.task_state_machine import TaskStateMachine, TransitionTrigger
 
+if True:  # TYPE_CHECKING equivalent without import overhead
+    from src.models.config import AppConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -48,14 +51,10 @@ class GoverningAgent:
     6. Support hybrid polling + hooks mode
     """
 
-    # Polling interval for state detection (normal mode)
-    POLL_INTERVAL_SECONDS = 2.0
-
-    # Reduced polling interval when hooks are active
-    POLL_INTERVAL_WITH_HOOKS_SECONDS = 60.0
-
-    # Time without hook events before falling back to normal polling
-    HOOK_TIMEOUT_SECONDS = 300.0
+    # Polling interval for state detection (normal mode) - defaults, overridden by config
+    DEFAULT_POLL_INTERVAL_SECONDS = 2.0
+    DEFAULT_POLL_INTERVAL_WITH_HOOKS_SECONDS = 60.0
+    DEFAULT_HOOK_TIMEOUT_SECONDS = 300.0
 
     def __init__(
         self,
@@ -65,6 +64,7 @@ class GoverningAgent:
         state_interpreter: StateInterpreter | None = None,
         backend: WezTermBackend | None = None,
         notification_service: NotificationService | None = None,
+        config: "AppConfig | None" = None,
     ):
         """Initialize the GoverningAgent.
 
@@ -75,7 +75,9 @@ class GoverningAgent:
             state_interpreter: For state detection.
             backend: WezTerm backend for terminal interaction.
             notification_service: Service for macOS notifications.
+            config: Application configuration for polling/hook timeouts.
         """
+        self._config = config
         self._store = agent_store or AgentStore()
         self._event_bus = event_bus or get_event_bus()
         self._inference = inference_service or InferenceService()
@@ -102,6 +104,27 @@ class GoverningAgent:
 
         # Callbacks for extension
         self._on_state_change_callbacks: list[Callable] = []
+
+    @property
+    def poll_interval_seconds(self) -> float:
+        """Get poll interval from config or use default."""
+        if self._config:
+            return float(self._config.scan_interval)
+        return self.DEFAULT_POLL_INTERVAL_SECONDS
+
+    @property
+    def poll_interval_with_hooks_seconds(self) -> float:
+        """Get reduced poll interval when hooks are active."""
+        if self._config:
+            return float(self._config.hooks.polling_interval_with_hooks)
+        return self.DEFAULT_POLL_INTERVAL_WITH_HOOKS_SECONDS
+
+    @property
+    def hook_timeout_seconds(self) -> float:
+        """Get hook timeout from config or use default."""
+        if self._config:
+            return float(self._config.hooks.session_timeout)
+        return self.DEFAULT_HOOK_TIMEOUT_SECONDS
 
     def start(self) -> None:
         """Start the monitoring loop."""
@@ -252,7 +275,8 @@ class GoverningAgent:
         if trigger:
             transition = self._state_machine.transition(current_task, new_state, trigger)
             if transition.success:
-                self._store.update_task(current_task.id, state=new_state)
+                current_task.state = new_state
+                self._store.update_task(current_task)
 
         # Emit event
         self._event_bus.emit(
@@ -360,18 +384,23 @@ class GoverningAgent:
         if current_task is None:
             return
 
+        # Get agent to access project_id
+        agent = self._store.get_agent(agent_id)
+        project_id = agent.project_id if agent else None
+
         result = self._inference.call(
             purpose=InferencePurpose.SUMMARIZE_COMMAND,
             input_data={"terminal_content": content[-2000:]},
             user_prompt="Summarize the user's command in 1-2 sentences.",
             turn_id=None,
-            project_id=current_task.agent_id,
+            project_id=project_id,
         )
 
         # Store the result
         if "error" not in result.result:
             summary = result.result.get("content", "")
-            self._store.update_task(current_task.id, command_summary=summary)
+            current_task.command_summary = summary
+            self._store.update_task(current_task)
             logger.debug(f"Command summary for {agent_id}: {summary}")
 
     def _trigger_classify_response(self, agent_id: str, content: str) -> None:
@@ -484,7 +513,8 @@ class GoverningAgent:
             priority = result.result.get("priority", 50)
             current_task = self._store.get_current_task(agent_id)
             if current_task:
-                self._store.update_task(current_task.id, priority_score=priority)
+                current_task.priority_score = priority
+                self._store.update_task(current_task)
 
     def invalidate_priorities(self) -> None:
         """Mark priorities as stale, triggering recalculation."""
@@ -551,7 +581,8 @@ class GoverningAgent:
             for agent_id, score in priorities.items():
                 task = self._store.get_current_task(agent_id)
                 if task:
-                    self._store.update_task(task.id, priority_score=score)
+                    task.priority_score = score
+                    self._store.update_task(task)
 
         self._event_bus.emit(
             "priorities_computed",
@@ -641,17 +672,17 @@ class GoverningAgent:
             Polling interval in seconds.
         """
         if not self._hooks_enabled:
-            return self.POLL_INTERVAL_SECONDS
+            return self.poll_interval_seconds
 
         # Check if hooks are active (received events recently)
         if self._last_hook_event_time > 0:
             elapsed = time.time() - self._last_hook_event_time
-            if elapsed < self.HOOK_TIMEOUT_SECONDS:
+            if elapsed < self.hook_timeout_seconds:
                 # Hooks are active, use reduced polling
-                return self.POLL_INTERVAL_WITH_HOOKS_SECONDS
+                return self.poll_interval_with_hooks_seconds
 
         # Hooks inactive or never received, use normal polling
-        return self.POLL_INTERVAL_SECONDS
+        return self.poll_interval_seconds
 
     def record_hook_event(self) -> None:
         """Record that a hook event was received.
@@ -672,7 +703,7 @@ class GoverningAgent:
 
         if self._last_hook_event_time > 0:
             elapsed = time.time() - self._last_hook_event_time
-            hooks_active = elapsed < self.HOOK_TIMEOUT_SECONDS
+            hooks_active = elapsed < self.hook_timeout_seconds
 
         return {
             "hooks_enabled": self._hooks_enabled,

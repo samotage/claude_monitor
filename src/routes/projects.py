@@ -6,7 +6,11 @@ Provides REST API endpoints for project management:
 - Get recently completed narrative
 """
 
-from flask import Blueprint, jsonify, request
+import time
+from collections import defaultdict
+from functools import wraps
+
+from flask import Blueprint, current_app, jsonify, request
 
 from src.models.inference import InferencePurpose
 from src.models.project import RoadmapItem
@@ -15,6 +19,51 @@ from src.services.git_analyzer import GitAnalyzer
 from src.services.inference_service import InferenceService
 
 projects_bp = Blueprint("projects", __name__)
+
+# Simple rate limiting for expensive operations
+_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+
+
+def rate_limit(max_requests: int | None = None, window_seconds: int | None = None):
+    """Simple rate limiter decorator.
+
+    Args:
+        max_requests: Maximum requests allowed in window (defaults to config or 10).
+        window_seconds: Time window in seconds (defaults to config or 60).
+    """
+
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            # Get limits from config or use defaults
+            config = current_app.extensions.get("config")
+            actual_max = max_requests
+            actual_window = window_seconds
+
+            if config:
+                if actual_max is None:
+                    actual_max = config.api_limits.rate_limit_requests
+                if actual_window is None:
+                    actual_window = config.api_limits.rate_limit_window
+            else:
+                actual_max = actual_max or 10
+                actual_window = actual_window or 60
+
+            key = f"{request.remote_addr}:{f.__name__}"
+            now = time.time()
+
+            # Clean old entries
+            _rate_limit_store[key] = [t for t in _rate_limit_store[key] if now - t < actual_window]
+
+            if len(_rate_limit_store[key]) >= actual_max:
+                return jsonify({"error": "Rate limit exceeded. Try again later."}), 429
+
+            _rate_limit_store[key].append(now)
+            return f(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 def _get_store() -> AgentStore:
@@ -209,6 +258,7 @@ def update_roadmap(project_id: str):
 
 
 @projects_bp.route("/projects/<project_id>/brain-refresh", methods=["GET"])
+@rate_limit()  # Uses config defaults
 def brain_refresh(project_id: str):
     """Get a brain refresh briefing for a project.
 
@@ -284,6 +334,7 @@ def brain_refresh(project_id: str):
 
 
 @projects_bp.route("/projects/<project_id>/brain-reboot", methods=["GET"])
+@rate_limit(max_requests=5)  # Stricter limit for expensive LLM operation
 def brain_reboot(project_id: str):
     """Get a comprehensive brain reboot briefing for a project.
 

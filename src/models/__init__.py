@@ -5,7 +5,9 @@ All entities from Conceptual Design §4.
 
 from src.models.agent import Agent
 from src.models.config import (
+    ApiLimitsConfig,
     AppConfig,
+    HookConfig,
     NotificationConfig,
     ProjectConfig,
     WezTermConfig,
@@ -48,7 +50,9 @@ __all__ = [
     "InferenceConfig",
     "InferencePurpose",
     # Config
+    "ApiLimitsConfig",
     "AppConfig",
+    "HookConfig",
     "ProjectConfig",
     "WezTermConfig",
     "NotificationConfig",

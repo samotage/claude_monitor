@@ -5,10 +5,18 @@ Implements the TerminalBackend interface using the wezterm CLI.
 
 import contextlib
 import json
+import logging
 import shutil
 import subprocess
+import sys
+import threading
 
 from src.backends.base import SessionInfo, TerminalBackend
+
+logger = logging.getLogger(__name__)
+
+# Thread lock for global state access
+_global_lock = threading.Lock()
 
 # Cache the WezTerm availability check
 _wezterm_available: bool | None = None
@@ -45,12 +53,24 @@ class WezTermBackend(TerminalBackend):
     Uses the wezterm CLI to manage sessions, send text, and capture content.
     """
 
+    # Default values (can be overridden by config)
+    DEFAULT_MAX_CACHE_SIZE = 100
+    DEFAULT_MAX_LINES = 10000
+
     # Session name to pane-id mapping cache
     _session_pane_map: dict[str, str]
 
-    def __init__(self):
-        """Initialize the WezTerm backend."""
+    def __init__(self, max_cache_size: int | None = None, max_lines: int | None = None):
+        """Initialize the WezTerm backend.
+
+        Args:
+            max_cache_size: Maximum cache entries before LRU eviction. Uses default if None.
+            max_lines: Maximum lines to capture from scrollback. Uses default if None.
+        """
         self._session_pane_map = {}
+        self._cache_access_order: list[str] = []  # LRU tracking
+        self._max_cache_size = max_cache_size or self.DEFAULT_MAX_CACHE_SIZE
+        self._max_lines = max_lines or self.DEFAULT_MAX_LINES
 
     @property
     def backend_name(self) -> str:
@@ -64,11 +84,12 @@ class WezTermBackend(TerminalBackend):
             True if wezterm CLI is available, False otherwise.
         """
         global _wezterm_available
-        if _wezterm_available is not None:
-            return _wezterm_available
+        with _global_lock:
+            if _wezterm_available is not None:
+                return _wezterm_available
 
-        _wezterm_available = shutil.which("wezterm") is not None
-        return _wezterm_available
+            _wezterm_available = shutil.which("wezterm") is not None
+            return _wezterm_available
 
     def list_sessions(self) -> list[SessionInfo]:
         """List all active WezTerm panes.
@@ -112,9 +133,30 @@ class WezTermBackend(TerminalBackend):
 
             # Update session map if this looks like a Claude session
             if name.startswith("claude-"):
-                self._session_pane_map[name] = pane_id
+                self._update_cache(name, pane_id)
 
         return sessions
+
+    def _update_cache(self, name: str, pane_id: str) -> None:
+        """Update cache with LRU eviction.
+
+        Args:
+            name: Session name.
+            pane_id: Pane ID.
+        """
+        # Update or add entry
+        self._session_pane_map[name] = pane_id
+
+        # Update access order (LRU tracking)
+        if name in self._cache_access_order:
+            self._cache_access_order.remove(name)
+        self._cache_access_order.append(name)
+
+        # Evict oldest entries if cache exceeds max size
+        while len(self._session_pane_map) > self._max_cache_size:
+            oldest = self._cache_access_order.pop(0)
+            self._session_pane_map.pop(oldest, None)
+            logger.debug(f"Evicted stale cache entry: {oldest}")
 
     def get_content(self, session_id: str, lines: int = 100) -> str | None:
         """Capture content from a WezTerm pane.
@@ -123,13 +165,16 @@ class WezTermBackend(TerminalBackend):
 
         Args:
             session_id: The pane ID.
-            lines: Number of lines to capture from scrollback.
+            lines: Number of lines to capture from scrollback (capped at max_lines config).
 
         Returns:
             Captured text content, or None on failure.
         """
         if not self.is_available():
             return None
+
+        # Cap lines to prevent memory exhaustion
+        lines = min(lines, self._max_lines)
 
         # WezTerm uses negative numbers for scrollback
         args = ["get-text", "--pane-id", session_id, "--start-line", str(-lines)]
@@ -182,13 +227,16 @@ class WezTermBackend(TerminalBackend):
         if returncode != 0:
             return False
 
-        # Also bring WezTerm application to foreground (macOS)
-        with contextlib.suppress(Exception):
-            subprocess.run(
-                ["osascript", "-e", 'tell application "WezTerm" to activate'],
-                capture_output=True,
-                timeout=5,
-            )
+        # Also bring WezTerm application to foreground (macOS only)
+        if sys.platform == "darwin":
+            with contextlib.suppress(Exception):
+                subprocess.run(
+                    ["osascript", "-e", 'tell application "WezTerm" to activate'],
+                    capture_output=True,
+                    timeout=5,
+                )
+        else:
+            logger.debug("Window activation not supported on this platform")
 
         return True
 
@@ -268,16 +316,31 @@ class WezTermBackend(TerminalBackend):
 _backend_instance: WezTermBackend | None = None
 
 
-def get_wezterm_backend() -> WezTermBackend:
-    """Get the singleton WezTerm backend instance."""
+def get_wezterm_backend(
+    max_cache_size: int | None = None, max_lines: int | None = None
+) -> WezTermBackend:
+    """Get the singleton WezTerm backend instance.
+
+    Args:
+        max_cache_size: Max cache entries (only used on first call when creating instance).
+        max_lines: Max lines to capture (only used on first call when creating instance).
+
+    Returns:
+        The singleton WezTermBackend instance.
+    """
     global _backend_instance
-    if _backend_instance is None:
-        _backend_instance = WezTermBackend()
-    return _backend_instance
+    with _global_lock:
+        if _backend_instance is None:
+            _backend_instance = WezTermBackend(
+                max_cache_size=max_cache_size,
+                max_lines=max_lines,
+            )
+        return _backend_instance
 
 
 def reset_wezterm_backend() -> None:
     """Reset the singleton instance (for testing)."""
     global _backend_instance, _wezterm_available
-    _backend_instance = None
-    _wezterm_available = None
+    with _global_lock:
+        _backend_instance = None
+        _wezterm_available = None

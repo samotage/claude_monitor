@@ -8,10 +8,13 @@ from pydantic import BaseModel, Field
 class HeadspaceHistoryEntry(BaseModel):
     """A previous headspace focus value."""
 
-    focus: str
-    constraints: str | None = None
-    started_at: datetime
-    ended_at: datetime
+    focus: str = Field(..., description="The focus objective that was active")
+    constraints: str | None = Field(
+        default=None,
+        description="Any constraints that applied during this focus period",
+    )
+    started_at: datetime = Field(..., description="When this focus period began")
+    ended_at: datetime = Field(..., description="When this focus period ended")
 
 
 class HeadspaceFocus(BaseModel):
@@ -29,7 +32,10 @@ class HeadspaceFocus(BaseModel):
         default=None,
         description="Optional constraints on work, e.g., 'No breaking API changes'",
     )
-    updated_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(
+        default_factory=datetime.now,
+        description="When the focus was last updated",
+    )
     history: list[HeadspaceHistoryEntry] = Field(
         default_factory=list,
         description="Previous focus values (max 50)",

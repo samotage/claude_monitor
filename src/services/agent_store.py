@@ -11,12 +11,15 @@ Replaces the 7+ scattered state locations in the legacy codebase:
 """
 
 import contextlib
+import logging
 import uuid
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 from src.models.agent import Agent
 from src.models.headspace import HeadspaceFocus
@@ -553,8 +556,12 @@ class AgentStore:
         }
 
         state_file = self._get_state_file()
-        with open(state_file, "w") as f:
-            yaml.dump(state, f, default_flow_style=False)
+        try:
+            with open(state_file, "w") as f:
+                yaml.dump(state, f, default_flow_style=False)
+            logger.info(f"Saved state: {len(self._agents)} agents, {len(self._tasks)} tasks")
+        except OSError as e:
+            logger.error(f"Failed to save state to {state_file}: {e}")
 
     def _serialize_agent(self, agent: Agent) -> dict:
         """Serialize an agent to dict."""

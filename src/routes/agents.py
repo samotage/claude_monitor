@@ -6,7 +6,7 @@ Provides REST API endpoints for agent management:
 - Focus agent's terminal window
 """
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from src.backends.wezterm import get_wezterm_backend
 from src.services.agent_store import AgentStore
@@ -194,7 +194,10 @@ def get_agent_content(agent_id: str):
     if agent is None:
         return jsonify({"error": "Agent not found"}), 404
 
-    lines = request.args.get("lines", 100, type=int)
+    # Cap lines to prevent memory exhaustion (DoS protection)
+    config = current_app.extensions.get("config")
+    max_lines = config.wezterm.max_lines if config else 10000
+    lines = min(request.args.get("lines", 100, type=int), max_lines)
     backend = get_wezterm_backend()
 
     if not backend.is_available():

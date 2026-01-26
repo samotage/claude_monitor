@@ -15,6 +15,8 @@ inference approach, with confidence=1.0 for all transitions.
 """
 
 import logging
+import re
+import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -91,6 +93,9 @@ class HookReceiver:
         self._event_bus = event_bus
         self._governing_agent = governing_agent
 
+        # Thread lock for protecting shared state
+        self._lock = threading.Lock()
+
         # Session correlation map: claude_session_id -> agent_id
         self._session_map: dict[str, str] = {}
 
@@ -128,9 +133,10 @@ class HookReceiver:
         Returns:
             HookResult with processing outcome.
         """
-        # Update activity tracking
-        self._last_event_time = time.time()
-        self._event_count += 1
+        # Update activity tracking (thread-safe)
+        with self._lock:
+            self._last_event_time = time.time()
+            self._event_count += 1
 
         # Notify GoverningAgent of hook activity (for dynamic polling)
         if self._governing_agent:
@@ -219,13 +225,12 @@ class HookReceiver:
         Returns:
             HookResult with processing outcome.
         """
-        agent_id = self._session_map.get(event.session_id)
+        # Get and remove session mapping (thread-safe)
+        with self._lock:
+            agent_id = self._session_map.pop(event.session_id, None)
 
         if agent_id:
-            # Remove session mapping
-            del self._session_map[event.session_id]
-
-            # Emit SSE event
+            # Emit SSE event (outside lock to avoid I/O while holding lock)
             self._event_bus.emit(
                 "hook_session_end",
                 {
@@ -409,12 +414,13 @@ class HookReceiver:
             The correlated Agent, or None if correlation failed.
         """
 
-        # Check if we already have this session mapped
-        if claude_session_id in self._session_map:
-            agent_id = self._session_map[claude_session_id]
-            agent = self._store.get_agent(agent_id)
-            if agent:
-                return agent
+        # Check if we already have this session mapped (thread-safe)
+        with self._lock:
+            if claude_session_id in self._session_map:
+                agent_id = self._session_map[claude_session_id]
+                agent = self._store.get_agent(agent_id)
+                if agent:
+                    return agent
 
         # Normalize cwd (remove trailing slash)
         cwd = cwd.rstrip("/") if cwd else ""
@@ -427,7 +433,8 @@ class HookReceiver:
                 if project and project.path:
                     project_path = project.path.rstrip("/")
                     if project_path == cwd:
-                        self._session_map[claude_session_id] = agent.id
+                        with self._lock:
+                            self._session_map[claude_session_id] = agent.id
                         logger.info(
                             f"Correlated session {claude_session_id[:8]} to agent {agent.id[:8]} by project path"
                         )
@@ -441,8 +448,9 @@ class HookReceiver:
             session_name=session_name,
         )
 
-        # Store mapping
-        self._session_map[claude_session_id] = agent.id
+        # Store mapping (thread-safe)
+        with self._lock:
+            self._session_map[claude_session_id] = agent.id
         logger.info(f"Created new agent {agent.id[:8]} for session {claude_session_id[:8]}")
 
         return agent
@@ -457,10 +465,11 @@ class HookReceiver:
         Returns:
             The Agent, or None if not found.
         """
-        # Check existing mapping
-        if claude_session_id in self._session_map:
-            agent_id = self._session_map[claude_session_id]
-            return self._store.get_agent(agent_id)
+        # Check existing mapping (thread-safe)
+        with self._lock:
+            if claude_session_id in self._session_map:
+                agent_id = self._session_map[claude_session_id]
+                return self._store.get_agent(agent_id)
 
         # Try to correlate if we have cwd
         if cwd:
@@ -474,15 +483,16 @@ class HookReceiver:
         Returns:
             Status dictionary with activity metrics.
         """
-        return {
-            "active": self._last_event_time > 0,
-            "last_event_time": self._last_event_time,
-            "seconds_since_last_event": (
-                time.time() - self._last_event_time if self._last_event_time > 0 else None
-            ),
-            "event_count": self._event_count,
-            "tracked_sessions": len(self._session_map),
-        }
+        with self._lock:
+            return {
+                "active": self._last_event_time > 0,
+                "last_event_time": self._last_event_time,
+                "seconds_since_last_event": (
+                    time.time() - self._last_event_time if self._last_event_time > 0 else None
+                ),
+                "event_count": self._event_count,
+                "tracked_sessions": len(self._session_map),
+            }
 
     def get_session_mapping(self) -> dict[str, str]:
         """Get the current session mapping.
@@ -490,4 +500,22 @@ class HookReceiver:
         Returns:
             Dict mapping claude_session_id -> agent_id.
         """
-        return self._session_map.copy()
+        with self._lock:
+            return self._session_map.copy()
+
+    @staticmethod
+    def validate_session_id(session_id: str) -> bool:
+        """Validate that a session ID is safe to use.
+
+        Session IDs should only contain alphanumeric chars, hyphens,
+        underscores, colons, and periods (for tmux name:window.pane format).
+
+        Args:
+            session_id: The session ID to validate.
+
+        Returns:
+            True if valid, False otherwise.
+        """
+        if not session_id or len(session_id) > 256:
+            return False
+        return bool(re.match(r"^[\w\-:.]+$", session_id))

@@ -55,7 +55,10 @@ class InferenceCall(BaseModel):
     model: str = Field(..., description="Model used (resolved from InferenceConfig)")
     input_hash: str = Field(..., description="Hash of input for caching")
     result: dict[str, Any] = Field(..., description="Structured output from LLM")
-    timestamp: datetime = Field(default_factory=datetime.now)
+    timestamp: datetime = Field(
+        default_factory=datetime.now,
+        description="When this inference call was made",
+    )
     latency_ms: int = Field(..., description="Time taken for the call in milliseconds")
     cost_cents: float | None = Field(
         default=None,

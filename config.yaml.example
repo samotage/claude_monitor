@@ -95,13 +95,15 @@ notifications:
 
 inference:
   # Fast tier - used for real-time state detection
-  detect_state: "anthropic/claude-3-haiku"
-  summarize_command: "anthropic/claude-3-haiku"
-  classify_response: "anthropic/claude-3-haiku"
-  quick_priority: "anthropic/claude-3-haiku"
+  # Using Claude 3.5 Haiku for speed and cost efficiency
+  detect_state: "anthropic/claude-3-5-haiku"
+  summarize_command: "anthropic/claude-3-5-haiku"
+  classify_response: "anthropic/claude-3-5-haiku"
+  quick_priority: "anthropic/claude-3-5-haiku"
 
   # Deep tier - used for batch operations
-  generate_progress_narrative: "anthropic/claude-3-sonnet"
-  full_priority: "anthropic/claude-3-sonnet"
-  roadmap_analysis: "anthropic/claude-3-sonnet"
-  brain_reboot: "anthropic/claude-3-sonnet"
+  # Using Claude 3.5 Sonnet for quality
+  generate_progress_narrative: "anthropic/claude-3-5-sonnet"
+  full_priority: "anthropic/claude-3-5-sonnet"
+  roadmap_analysis: "anthropic/claude-3-5-sonnet"
+  brain_reboot: "anthropic/claude-3-5-sonnet"

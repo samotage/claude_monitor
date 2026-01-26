@@ -172,7 +172,9 @@ def set_debug_state():
         - success: True
         - debug_enabled: New debug state
     """
-    from config import load_config, save_config
+    from pathlib import Path
+
+    import yaml
 
     data = request.get_json() or {}
     enabled = data.get("enabled", False)
@@ -180,11 +182,24 @@ def set_debug_state():
     # Update in-memory state
     set_debug_logging(enabled)
 
-    # Also update config file for persistence
-    config = load_config()
-    if "terminal_logging" not in config:
-        config["terminal_logging"] = {}
-    config["terminal_logging"]["debug_enabled"] = enabled
-    save_config(config)
+    # Also update config file for persistence using direct YAML access
+    # (avoiding circular imports with config service)
+    config_path = Path("config.yaml")
+    try:
+        if config_path.exists():
+            config = yaml.safe_load(config_path.read_text()) or {}
+        else:
+            config = {}
+
+        if "terminal_logging" not in config:
+            config["terminal_logging"] = {}
+        config["terminal_logging"]["debug_enabled"] = enabled
+
+        config_path.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
+    except Exception as e:
+        # Log error but don't fail - in-memory state is already updated
+        import logging
+
+        logging.getLogger(__name__).warning(f"Failed to persist debug state: {e}")
 
     return jsonify({"success": True, "debug_enabled": get_debug_logging()})

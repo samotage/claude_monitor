@@ -90,6 +90,9 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     # Register route blueprints
     register_blueprints(app)
 
+    # Add global error handlers
+    _register_error_handlers(app)
+
     # Add dashboard route
     @app.route("/")
     def index():
@@ -104,6 +107,63 @@ def create_app(config_path: str = "config.yaml") -> Flask:
     _add_legacy_routes(app, config)
 
     return app
+
+
+def _register_error_handlers(app: Flask) -> None:
+    """Register global error handlers for the application.
+
+    These handlers prevent stack traces from leaking to clients and
+    provide consistent error response formats.
+
+    Args:
+        app: Flask application.
+    """
+    from flask import jsonify, request
+
+    @app.errorhandler(400)
+    def bad_request(error):  # noqa: ARG001 - error param required by Flask
+        """Handle 400 Bad Request errors."""
+        return jsonify({"error": "Bad request"}), 400
+
+    @app.errorhandler(404)
+    def not_found(error):  # noqa: ARG001
+        """Handle 404 Not Found errors."""
+        return jsonify({"error": "Resource not found"}), 404
+
+    @app.errorhandler(405)
+    def method_not_allowed(error):  # noqa: ARG001
+        """Handle 405 Method Not Allowed errors."""
+        return jsonify({"error": "Method not allowed"}), 405
+
+    @app.errorhandler(500)
+    def internal_error(error):  # noqa: ARG001
+        """Handle 500 Internal Server Error."""
+        logger.exception("Internal server error")
+        return jsonify({"error": "Internal server error"}), 500
+
+    @app.errorhandler(Exception)
+    def handle_exception(error):
+        """Handle uncaught exceptions.
+
+        Logs the full exception and returns a generic error to avoid
+        leaking stack traces to clients.
+        """
+        logger.exception(f"Unhandled exception: {error}")
+        return jsonify({"error": "Internal server error"}), 500
+
+    @app.after_request
+    def add_cors_headers(response):
+        """Add CORS headers for localhost access.
+
+        Allows cross-origin requests from localhost only.
+        """
+        # Only allow localhost origins
+        origin = request.headers.get("Origin", "")
+        if origin.startswith("http://localhost") or origin.startswith("http://127.0.0.1"):
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return response
 
 
 def _init_services(app: Flask, config: AppConfig) -> None:
@@ -150,7 +210,10 @@ def _init_services(app: Flask, config: AppConfig) -> None:
     if config.terminal_backend == "wezterm":
         from src.backends.wezterm import get_wezterm_backend
 
-        backend = get_wezterm_backend()
+        backend = get_wezterm_backend(
+            max_cache_size=config.wezterm.max_cache_size,
+            max_lines=config.wezterm.max_lines,
+        )
         app.extensions["terminal_backend"] = backend
     else:
         from src.backends.tmux import get_tmux_backend
@@ -165,6 +228,7 @@ def _init_services(app: Flask, config: AppConfig) -> None:
         state_interpreter=state_interpreter,
         inference_service=inference_service,
         event_bus=event_bus,
+        config=config,
     )
     app.extensions["governing_agent"] = governing_agent
 
@@ -331,8 +395,9 @@ def main():
     port = config.port if config else 5050
     debug = config.debug if config else False
 
-    logger.info(f"Starting Claude Headspace on port {port}")
-    app.run(host="0.0.0.0", port=port, debug=debug, threaded=True)
+    logger.info(f"Starting Claude Headspace on port {port} (localhost only)")
+    # Security: Bind to localhost only - API should not be exposed to network
+    app.run(host="127.0.0.1", port=port, debug=debug, threaded=True)
 
 
 if __name__ == "__main__":

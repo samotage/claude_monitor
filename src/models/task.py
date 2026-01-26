@@ -3,7 +3,7 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TaskState(str, Enum):
@@ -51,7 +51,10 @@ class Task(BaseModel):
         default=TaskState.IDLE,
         description="Current state in the task lifecycle",
     )
-    started_at: datetime = Field(default_factory=datetime.now)
+    started_at: datetime = Field(
+        default_factory=datetime.now,
+        description="When this task was created/started",
+    )
     completed_at: datetime | None = Field(
         default=None,
         description="When the task reached COMPLETE state",
@@ -74,3 +77,15 @@ class Task(BaseModel):
         default=None,
         description="Explanation of the priority score",
     )
+    command_summary: str | None = Field(
+        default=None,
+        description="LLM-generated summary of the user's command",
+    )
+
+    @model_validator(mode="after")
+    def validate_completed_at(self) -> "Task":
+        """Validate that completed_at is set when state is COMPLETE."""
+        if self.state == TaskState.COMPLETE and self.completed_at is None:
+            # Auto-set completed_at for COMPLETE tasks
+            self.completed_at = datetime.now()
+        return self

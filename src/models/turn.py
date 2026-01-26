@@ -48,7 +48,10 @@ class Turn(BaseModel):
         default=None,
         description="Only for AGENT_RESPONSE turns - was it a question or completion?",
     )
-    timestamp: datetime = Field(default_factory=datetime.now)
+    timestamp: datetime = Field(
+        default_factory=datetime.now,
+        description="When this turn occurred",
+    )
     inference_call_ids: list[str] = Field(
         default_factory=list,
         description="IDs of inference calls triggered by this turn",
