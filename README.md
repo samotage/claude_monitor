@@ -169,37 +169,15 @@ For instant, accurate state detection, install Claude Code hooks. Instead of pol
 - 100% confidence (event-based vs inference)
 - Reduced resource usage
 
-**Quick Setup:**
+**Setup:**
 
-```bash
-./bin/install-hooks.sh
-```
+Ask Claude Code to install the hooks for you:
 
-This installs:
-1. A hook script at `~/.claude/hooks/notify-monitor.sh`
-2. Hook configuration in `~/.claude/settings.json`
+> "Install the Claude Monitor hooks from this project. Copy `bin/notify-monitor.sh` to `~/.claude/hooks/` and merge the hook configuration from `docs/claude-code-hooks-settings.json` into my `~/.claude/settings.json`."
+
+Claude Code will intelligently merge the hooks into your existing settings without overwriting other configurations.
 
 After installation, the dashboard shows "hooks" badges on session cards when hooks are active.
-
-**Manual Setup:**
-
-If you prefer manual installation:
-
-1. Copy the hook script:
-   ```bash
-   cp bin/notify-monitor.sh ~/.claude/hooks/
-   chmod +x ~/.claude/hooks/notify-monitor.sh
-   ```
-
-2. Add hooks to `~/.claude/settings.json`:
-   ```json
-   {
-     "hooks": {
-       "Stop": [{"matcher": null, "hooks": [{"type": "command", "command": "~/.claude/hooks/notify-monitor.sh stop"}]}],
-       "UserPromptSubmit": [{"matcher": null, "hooks": [{"type": "command", "command": "~/.claude/hooks/notify-monitor.sh user-prompt-submit"}]}]
-     }
-   }
-   ```
 
 See `docs/architecture/claude-code-hooks.md` for detailed documentation.
 
@@ -350,8 +328,7 @@ claude-monitor/
 ├── restart_server.sh    # Server restart helper
 ├── bin/
 │   ├── claude-monitor   # Session wrapper script
-│   ├── install-hooks.sh # Hook installation script
-│   └── notify-monitor.sh # Hook notification script
+│   └── notify-monitor.sh # Hook notification script (copy to ~/.claude/hooks/)
 ├── src/                 # Application source code
 │   ├── routes/hooks.py  # Hook API endpoints
 │   └── services/hook_receiver.py  # Hook event processing

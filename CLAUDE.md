@@ -299,9 +299,9 @@ The monitor can receive lifecycle events directly from Claude Code via hooks:
 - Reduced resource usage (no constant terminal scraping)
 
 **Setup:**
-```bash
-./bin/install-hooks.sh
-```
+
+Ask Claude Code to install the hooks:
+> "Install the Claude Monitor hooks. Copy `bin/notify-monitor.sh` to `~/.claude/hooks/` and merge `docs/claude-code-hooks-settings.json` into `~/.claude/settings.json`."
 
 See `docs/architecture/claude-code-hooks.md` for detailed documentation.
 
