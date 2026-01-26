@@ -165,4 +165,3 @@ The application SHALL behave identically after restructuring.
 - **GIVEN** the restructure is complete
 - **WHEN** user clicks to focus a session
 - **THEN** the correct iTerm window is focused
-

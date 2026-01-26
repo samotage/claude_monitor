@@ -217,4 +217,3 @@ The system SHALL provide an API endpoint to enable tmux integration for a config
 - **AND** project exists with `tmux: true`
 - **THEN** the project's config is updated to remove or set `tmux: false`
 - **AND** response is `{"success": true, "message": "tmux disabled for project"}`
-

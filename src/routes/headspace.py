@@ -70,14 +70,8 @@ def update_headspace():
         return jsonify({"error": "Focus is required"}), 400
 
     store = _get_store()
-    headspace = store.get_headspace()
-
-    if headspace:
-        headspace.update_focus(focus, constraints)
-        store.update_headspace(headspace)
-    else:
-        store.set_headspace(focus, constraints)
-        headspace = store.get_headspace()
+    # update_headspace handles both create (if none) and update cases
+    headspace = store.update_headspace(focus, constraints)
 
     return jsonify(
         {

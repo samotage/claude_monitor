@@ -198,14 +198,12 @@ class TestHeadspaceRoutes:
 
     def test_update_headspace_creates_new(self, client, mock_store):
         """update_headspace creates headspace when none exists."""
-        mock_store.get_headspace.return_value = None
-
-        # After set_headspace, return a new headspace
+        # update_headspace returns the created/updated headspace
         new_headspace = HeadspaceFocus(
             current_focus="New focus",
             constraints=None,
         )
-        mock_store.get_headspace.side_effect = [None, new_headspace]
+        mock_store.update_headspace.return_value = new_headspace
 
         with patch("src.routes.headspace._get_store", return_value=mock_store):
             response = client.post(
@@ -214,7 +212,28 @@ class TestHeadspaceRoutes:
             )
 
         assert response.status_code == 200
-        mock_store.set_headspace.assert_called_once()
+        mock_store.update_headspace.assert_called_once_with("New focus", None)
+        data = response.get_json()
+        assert data["focus"] == "New focus"
+
+    def test_update_headspace_with_constraints(self, client, mock_store):
+        """update_headspace passes constraints correctly."""
+        updated_headspace = HeadspaceFocus(
+            current_focus="Ship feature",
+            constraints="No breaking changes",
+        )
+        mock_store.update_headspace.return_value = updated_headspace
+
+        with patch("src.routes.headspace._get_store", return_value=mock_store):
+            response = client.post(
+                "/api/headspace",
+                json={"focus": "Ship feature", "constraints": "No breaking changes"},
+            )
+
+        assert response.status_code == 200
+        mock_store.update_headspace.assert_called_once_with("Ship feature", "No breaking changes")
+        data = response.get_json()
+        assert data["constraints"] == "No breaking changes"
 
 
 class TestNotificationRoutes:

@@ -207,4 +207,3 @@ The system SHALL log tmux capture_pane operations for debugging.
 - **GIVEN** capture_pane() is called with a correlation_id parameter
 - **WHEN** the log entry is created
 - **THEN** the correlation_id is included in the entry
-
